@@ -8,7 +8,7 @@ any module can call to record signal events.
 Data model for one signal:
     {
         "name"       : str,
-        "is_clock"   : bool,       # inputlimit == 0 → clock
+        "is_clock"   : bool,       # gate.inputlimit == INFINITE → clock
         "events"     : [(time: int, value: int), ...]
     }
 
@@ -26,13 +26,14 @@ if TYPE_CHECKING:
 
 # ── Signal types we care about ────────────────────────────────────────────────
 try:
-    from Const import VARIABLE_ID, BUFFER_ID, HIGH, LOW, UNKNOWN
+    from Const import VARIABLE_ID, BUFFER_ID, HIGH, LOW, UNKNOWN, INFINITE
 except ImportError:          # fallback when imported from outside `engine/`
     VARIABLE_ID = 6
     BUFFER_ID    = 8
     HIGH        = 1
     LOW         = 0
     UNKNOWN     = 2
+    INFINITE    = 255
 
 
 class _Signal:
@@ -106,7 +107,7 @@ class TimingTracer:
             return
 
         loc      = gate.location
-        is_clock = (gate.inputlimit == 0)
+        is_clock = (gate.inputlimit == INFINITE)
         name     = gate.custom_name if gate.custom_name else gate.codename
         value    = gate.output
 

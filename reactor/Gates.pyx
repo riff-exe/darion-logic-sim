@@ -345,7 +345,7 @@ cdef class Gate:
             self.custom_name,
             self.id,
             self.location,
-            info.inputlimit,
+            len(self._sources) if self.id!=VARIABLE_ID else self.inputlimit,
             bool(info.flags & FLAG_VALUE) if info.type == VARIABLE_ID else list(self._sources),
             ]
         return dictionary
@@ -358,7 +358,7 @@ cdef class Gate:
             self.custom_name,
             self.id,
             self.location,
-            info.inputlimit,
+            len(self._sources) if self.id!=VARIABLE_ID else self.inputlimit,
             bool(info.flags & FLAG_VALUE) if info.type == VARIABLE_ID else [src_loc if src_loc != -1 and (gate_infolist[src_loc].flags & FLAG_MARK) else -1 for src_loc in self._sources],
             ]
         return dictionary
@@ -390,7 +390,7 @@ cdef class Gate:
     cpdef bint clock(self):
         if self.id != VARIABLE_ID:
             return False
-        self.info.inputlimit = 255
+        self.info.inputlimit = INFINITE
         return True
 
 cdef class Variable(Gate):

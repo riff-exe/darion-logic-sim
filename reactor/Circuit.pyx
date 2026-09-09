@@ -186,7 +186,7 @@ cdef class Circuit:
             for gate in self.objlist[VARIABLE_ID]:
                 if gate is not None:
                     gate_info = &self.gate_infolist[gate.location]
-                    if gate_info.inputlimit == 255 and not (gate_info.flags & FLAG_SCHEDULED):
+                    if gate_info.inputlimit == INFINITE:
                         gate_info.flags |= FLAG_SCHEDULED
                         self.time_queue.push(Task(gate.location, self.Global_Clock + gate.delay_book[PRIMARY], gate.location))
             if self.runner is None or self.runner.done():
@@ -195,7 +195,7 @@ cdef class Circuit:
             for gate in self.objlist[VARIABLE_ID]:
                 if gate is not None:
                     gate_info = &self.gate_infolist[gate.location]
-                    if gate_info.inputlimit == 255:
+                    if gate_info.inputlimit == INFINITE:
                         gate_info.flags &= ~FLAG_SCHEDULED
 
     cpdef double batch_toggle(self, list batch, int batch_size=0, bint perf_trace=False):
@@ -1235,9 +1235,7 @@ cdef class Circuit:
                 with gil:
                     _tracer.record(<Gate>PyList_GET_ITEM(self.gate_verse, origin), self.Global_Clock)
         else:
-            if not (self_info.flags & FLAG_SCHEDULED):
-                return
-            if self_info.inputlimit == 255:
+            if  (self_info.flags & FLAG_SCHEDULED)   and self_info.inputlimit == INFINITE:
                 self_info.flags ^= FLAG_VALUE
                 self_info.output = (self_info.flags & FLAG_VALUE)
                 if self.recording:
@@ -1268,7 +1266,7 @@ cdef class Circuit:
                 self.time_queue.push(Task(profile.target - gate_infolist, target_info.target_time, profile.target - gate_infolist))
             profile.output = new_output
             profile += 1
-        if self_info.inputlimit == 255:
+        if self_info.inputlimit == INFINITE:
             with gil:
                 next_time = self.Global_Clock + (<Gate>PyList_GET_ITEM(self.gate_verse, origin)).delay_book[self_info.output]
             self_info.target_time = next_time
@@ -1488,8 +1486,8 @@ cdef class Circuit:
                 size = self.time_queue.size()
                 for i in range(size):
                     # Drain all oscillator tasks sitting at the head of the queue
-                    # (mirrors engine's inner while-inputlimit==255 loop)
-                    while (not self.time_queue.empty() and self.gate_infolist[self.time_queue.top().gate_loc].inputlimit == 255):
+                    # (mirrors engine's inner while-inputlimit==INFINITE loop)
+                    while (not self.time_queue.empty() and self.gate_infolist[self.time_queue.top().gate_loc].inputlimit == INFINITE):
                         with gil: await asyncio.sleep(DELAY)
                         task = self.time_queue.top()
                         self.time_queue.pop()

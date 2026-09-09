@@ -150,7 +150,7 @@ class Circuit:
 
     def toggle(self, target: Variable, value: int):
         """Switch a variable on/off."""
-        if target.scheduled:return
+        if self.clocks_enabled and target.scheduled:return
         if value != target.output:
             target.value = value
             target.output = value if get_MODE() != DESIGN else UNKNOWN
@@ -160,17 +160,16 @@ class Circuit:
         self.clocks_enabled = enable
         if enable:
             for gate in self.objlist[VARIABLE_ID]:
-                if gate is not None and getattr(gate, 'inputlimit', None) == 255:
-                    if not gate.scheduled:
-                        next_time = self.Global_Clock + gate.book[PRIMARY]
-                        gate.target_time = next_time
-                        heapq.heappush(self.time_queue, Task(gate, next_time, gate.location))
-                        gate.scheduled = True
+                if gate is not None and gate.inputlimit == INFINITE:
+                    gate.scheduled=True
+                    next_time = self.Global_Clock + gate.book[PRIMARY]
+                    gate.target_time = next_time
+                    heapq.heappush(self.time_queue, Task(gate, next_time, gate.location))
             if self.runner is None or self.runner.done():
                 self.runner = asyncio.create_task(self.task_manager())
         else:
             for gate in self.objlist[VARIABLE_ID]:
-                if gate is not None and getattr(gate, 'inputlimit', None) == 255:
+                if gate is not None:
                     gate.scheduled = False
 
     def batch_toggle(self, batch: list, batch_size: int = 0, perf_trace: bool = False) -> float:
@@ -721,7 +720,7 @@ class Circuit:
         while self.time_queue:
             n=len(self.time_queue)
             for i in range(n):
-                while self.time_queue and self.time_queue[0].gate.inputlimit==255:
+                while self.time_queue and self.time_queue[0].gate.inputlimit == INFINITE:
                     await asyncio.sleep(Const.DELAY)
                     self.complete_task(heapq.heappop(self.time_queue))
                     if self.time_limit:
@@ -741,16 +740,12 @@ class Circuit:
         # --- 1. TIMESTAMP VALIDATION ---
         
         if gate.id != VARIABLE_ID:
-            # print(f' {gate.codename} is scheduled:{gate.scheduled} output={gate.output}, time={task.time} orig={gate.target_time}')
-
             if task.time < gate.target_time:return # absorb glitch
             if self.recording and gate.id == BUFFER_ID:
                 _tracer.record(gate, self.Global_Clock)
         # Root variables/clocks
         else:
-            if not gate.scheduled:
-                return
-            if gate.inputlimit == 255:
+            if gate.scheduled and gate.inputlimit == INFINITE:
                 gate.value ^= 1
                 gate.output = gate.value
                 if self.recording:
@@ -760,7 +755,6 @@ class Circuit:
             gate.update = True
             self.visual_queue.append(gate)
             
-        gate.scheduled = False
         new_output = gate.output
         
         for profile in gate.hitlist:
@@ -809,7 +803,7 @@ class Circuit:
                     )
                 profile.output = new_output
 
-        if gate.inputlimit == 255:
+        if gate.inputlimit == INFINITE:
             next_time = self.Global_Clock + gate.book[gate.output]
             gate.target_time = next_time
             heapq.heappush(
@@ -821,7 +815,6 @@ class Circuit:
                 self.time_limit, 
                 next_time + (FanOut_delay[gate.id] * len(gate.hitlist))
             )
-            gate.scheduled = True
 
     def propagate(self, origin: Gate):
         """Double-buffer, fixed-size queue — mirrors reactor's queue[2][LIMIT] pattern."""
@@ -837,15 +830,13 @@ class Circuit:
                 for i in range(read_end):
                     gate = read_buf[i]
                     gate.mark=False
-                    if not gate.scheduled:
-                        calc_delay = self.Global_Clock+(
-                            Global_delay[gate.id] + 
-                            (FanIn_delay[gate.id] * gate.inputlimit) + 
-                            (FanOut_delay[gate.id] * len(gate.hitlist))
-                        )
-                        gate.target_time=calc_delay
-                        heapq.heappush(self.time_queue, Task(gate, calc_delay, gate.location))
-                        gate.scheduled = True
+                    calc_delay = self.Global_Clock+(
+                        Global_delay[gate.id] + 
+                        (FanIn_delay[gate.id] * gate.inputlimit) + 
+                        (FanOut_delay[gate.id] * len(gate.hitlist))
+                    )
+                    gate.target_time=calc_delay
+                    heapq.heappush(self.time_queue, Task(gate, calc_delay, gate.location))
                 if self.runner is None or self.runner.done():
                     self.runner=asyncio.create_task(self.task_manager())
                 return

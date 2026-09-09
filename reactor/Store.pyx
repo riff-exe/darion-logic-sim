@@ -38,7 +38,9 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, list gate_verse):
         return ic
     else:
         gate = Gate(choice,namelist[choice])
-        lim = 1 if choice >= SINGLE_INPUT_ID else 2
+        if choice==VARIABLE_ID: lim=0
+        elif choice>=SINGLE_INPUT_ID: lim=1
+        else: lim=2
         
         old_cap = gate_infolist.capacity()
         new_size = gate_infolist.size() + 1

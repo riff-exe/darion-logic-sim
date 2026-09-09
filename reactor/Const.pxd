@@ -11,6 +11,7 @@ cpdef enum:
     COMPILE = 3
     
     LIMIT = 250_000
+    INFINITE = 255
 
     # Gate Flags
     FLAG_VALUE = 1

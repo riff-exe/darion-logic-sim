@@ -2,6 +2,8 @@ import os
 import glob
 import re
 import sys
+import argparse
+import random
 
 # Add the project root to sys.path so we can import engine/reactor dependencies
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -12,7 +14,7 @@ import Circuit
 import Const
 
 class VerilogRunner:
-    def __init__(self, v_file_path, circuit_cls, const_mod):
+    def __init__(self, v_file_path, circuit_cls, const_mod, randomize_gates=False):
         self.Circuit = circuit_cls
         self.const = const_mod
         self.circuit = self.Circuit()
@@ -27,6 +29,7 @@ class VerilogRunner:
             'not': self.const.NOT_ID, 'buf': self.const.BUFFER_ID
         }
 
+        self.randomize_gates = randomize_gates
         self._parse_verilog(v_file_path)
 
     def _parse_verilog(self, filepath):
@@ -56,6 +59,8 @@ class VerilogRunner:
                 return self.const_0_node
             return None
 
+        gate_statements = []
+
         for stmt in statements:
             if stmt.startswith('input '):
                 ports = stmt.replace('input', '').strip().split(',')
@@ -81,23 +86,29 @@ class VerilogRunner:
             else:
                 match = re.match(r'^([a-zA-Z_]\w*)\s+([a-zA-Z_0-9]+)?\s*\((.*)\)$', stmt)
                 if match:
-                    gate_type = match.group(1).lower()
-                    ports_str = match.group(3)
-                    if gate_type in self.VERILOG_GATE_MAP:
-                        ports = [p.strip() for p in ports_str.split(',')]
-                        out_wire = ports[0]
-                        in_wires = ports[1:]
-                        gate_id = self.VERILOG_GATE_MAP[gate_type]
-                        gate = self.circuit.getcomponent(gate_id)
-                        gate.rename(f"G_{out_wire}")
-                        
-                        for w in in_wires:
-                            get_const_node(w)
+                    gate_statements.append(match)
 
-                        if gate_id < getattr(self.const, 'VARIABLE_ID', 99) and hasattr(self.circuit, 'setlimits'):
-                            self.circuit.setlimits(gate, len(in_wires))
-                        self.nodes[out_wire] = gate
-                        connections.append((out_wire, in_wires))
+        if self.randomize_gates:
+            random.shuffle(gate_statements)
+
+        for match in gate_statements:
+            gate_type = match.group(1).lower()
+            ports_str = match.group(3)
+            if gate_type in self.VERILOG_GATE_MAP:
+                ports = [p.strip() for p in ports_str.split(',')]
+                out_wire = ports[0]
+                in_wires = ports[1:]
+                gate_id = self.VERILOG_GATE_MAP[gate_type]
+                gate = self.circuit.getcomponent(gate_id)
+                gate.rename(f"G_{out_wire}")
+                
+                for w in in_wires:
+                    get_const_node(w)
+
+                if gate_id < getattr(self.const, 'VARIABLE_ID', 99) and hasattr(self.circuit, 'setlimits'):
+                    self.circuit.setlimits(gate, len(in_wires))
+                self.nodes[out_wire] = gate
+                connections.append((out_wire, in_wires))
 
         for target_id, source_ids in connections:
             target_gate = self.nodes.get(target_id)
@@ -117,7 +128,7 @@ def clean_var(v):
     v = v.replace('[', '_').replace(']', '')
     return v
 
-def process_file(in_path, out_path):
+def process_file(in_path, out_path, randomize=False):
     print(f"Parsing {in_path} to {out_path}...")
     with open(in_path, 'r') as f:
         content = f.read()
@@ -240,16 +251,20 @@ def process_file(in_path, out_path):
 
     # Load with VerilogRunner and dump to JSON
     json_path = out_path.replace('.v', '.json')
-    print(f"Loading {out_path} into Reactor and dumping to {json_path}...")
+    print(f"Loading {out_path} into Reactor and dumping to {json_path} {'(RANDOMIZED)' if randomize else ''}...")
     try:
-        runner = VerilogRunner(out_path, Circuit.Circuit, Const)
-        if hasattr(runner.circuit, 'optimize'):
+        runner = VerilogRunner(out_path, Circuit.Circuit, Const, randomize_gates=randomize)
+        if not randomize and hasattr(runner.circuit, 'optimize'):
             runner.circuit.optimize()
         runner.circuit.writetojson(json_path)
     except Exception as e:
         print(f"Failed to dump {json_path}: {e}")
 
 def main():
+    parser = argparse.ArgumentParser(description="Parse EPFL verilog files to JSON format")
+    parser.add_argument('--random', action='store_true', help="Randomize the creation order of gates in the JSON output")
+    args = parser.parse_args()
+
     dirs_to_process = [
         ('EPFL', 'EPFL_parsed'),
         ('EPFL_large', 'EPFL_large_parsed'),
@@ -257,6 +272,9 @@ def main():
     ]
     
     for src_name, tgt_name in dirs_to_process:
+        if args.random:
+            tgt_name = tgt_name.replace('_parsed', '_random_parsed')
+            
         source_dir = os.path.join(_PROJECT_ROOT, 'tests', src_name)
         target_dir = os.path.join(_PROJECT_ROOT, 'tests', tgt_name)
         
@@ -266,9 +284,9 @@ def main():
             for f in files:
                 out_name = os.path.basename(f)
                 out_path = os.path.join(target_dir, out_name)
-                process_file(f, out_path)
+                process_file(f, out_path, args.random)
                 
-    print("Done parsing and dumping EPFL benchmarks.")
+    print(f"Done parsing and dumping EPFL benchmarks to {'randomized' if args.random else 'standard'} directories.")
 
 if __name__ == '__main__':
     main()

@@ -159,7 +159,6 @@ class Gate:
         self.output = UNKNOWN        
         for profile in self.hitlist:
             profile.output = UNKNOWN
-        self.scheduled = False
         self.target_time = -1.0
 
     def hide(self):
@@ -256,10 +255,10 @@ class Gate:
         self.book[time_type]=val
         return True
 
-    def clock(self):
+    def clock(self, enable: bool = True):
         if self.id!=VARIABLE_ID:
             return False
-        self.inputlimit=255
+        self.inputlimit=INFINITE
         return True
 
 class Variable(Gate):
