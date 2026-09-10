@@ -3,11 +3,13 @@ iscas89_sequential_verifier.py
 ==============================
 Sequential State Verification Testbench for ISCAS89 Circuits.
 
-Compares simulation states across 4 execution engines:
+Compares simulation states across execution engines:
   1. Icarus Verilog (base Model via Verilog File I/O)
-  2. Pure Python Engine
-  3. Cython Reactor - Propagate (SIMULATE mode / BFS Wavefront)
-  4. Cython Reactor - Sweep (COMPILE mode / Topological Forward-Pass)
+  2. Verilator C++ (Compiled Cycle-accurate Model)
+  3. Pure Python Engine
+  4. Cython Reactor - Propagate (SIMULATE mode / BFS Wavefront)
+  5. Cython Reactor - Sweep (COMPILE mode / Topological Forward-Pass)
+  6. Cython Reactor - OOP (SIMULATE mode)
 
 Features:
   - 50-cycle warmup sequence (inputs set to 0, clock toggling) to flush DFF states.
@@ -207,7 +209,125 @@ def run_icarus_base(v_file: str, vectors: list) -> list:
 
 
 # ===========================================================================
-# 3. INTERNAL WORKER FOR PYTHON ENGINE & REACTOR
+# 3. VERILATOR base MODEL RUNNER
+# ===========================================================================
+
+def generate_verilator_tb(v_file: str, tb_file: str):
+    """Generates a C++ testbench for Verilator that evaluates vectors and writes outputs to file."""
+    module_name, inputs, outputs = parse_verilog_ports(v_file)
+
+    tb = []
+    tb.append(f'#include "V{module_name}.h"')
+    tb.append('#include "verilated.h"')
+    tb.append('#include <iostream>')
+    tb.append('#include <fstream>')
+    tb.append('#include <string>')
+    tb.append('int main(int argc, char** argv) {')
+    tb.append('    Verilated::commandArgs(argc, argv);')
+    tb.append(f'    V{module_name}* top = new V{module_name};')
+    tb.append('    std::ifstream infile(argv[1]);')
+    tb.append('    std::ofstream outfile(argv[2]);')
+    tb.append('    std::string line;')
+    tb.append('    while (std::getline(infile, line)) {')
+    tb.append('        while (!line.empty() && (line.back() == \'\\r\' || line.back() == \' \')) line.pop_back();')
+    tb.append('        if (line.empty()) continue;')
+    for idx, inp in enumerate(inputs):
+        port = inp.split()[-1]
+        tb.append(f'        top->{port} = line[{idx}] - \'0\';')
+    tb.append('        top->eval();')
+    for outp in outputs:
+        port = outp.split()[-1]
+        tb.append(f'        outfile << (int)(top->{port} & 1);')
+    tb.append('        outfile << "\\n";')
+    tb.append('    }')
+    tb.append('    delete top;')
+    tb.append('    return 0;')
+    tb.append('}')
+
+    with open(tb_file, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(tb) + '\n')
+
+
+def run_verilator_base(v_file: str, vectors: list) -> list:
+    """Runs Verilator C++ harness and returns the normalized 2D list of output states."""
+    base_path = os.path.splitext(v_file)[0]
+    tb_file = base_path + "_verilator_tb.cpp"
+    vec_file = base_path + "_verilator_inputs.txt"
+    out_file = base_path + "_verilator_outputs.txt"
+    obj_dir = base_path + "_verilator_obj_dir"
+    dff_helper_file = base_path + "_dff_helper.v"
+
+    if not shutil.which("verilator") or not shutil.which("make"):
+        raise RuntimeError("verilator or make command not found in system PATH")
+
+    try:
+        module_name, _, _ = parse_verilog_ports(v_file)
+
+        with open(v_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        has_dff_def = re.search(r'\bmodule\s+(?i:dff)\b', content)
+        extra_v_files = []
+        if not has_dff_def:
+            with open(dff_helper_file, 'w', encoding='utf-8') as f:
+                f.write(
+                    "module DFF (input CK, output reg Q, input D);\n"
+                    "    initial Q = 0;\n"
+                    "    always @(posedge CK) Q <= D;\n"
+                    "endmodule\n"
+                    "module dff (input CK, output reg Q, input D);\n"
+                    "    initial Q = 0;\n"
+                    "    always @(posedge CK) Q <= D;\n"
+                    "endmodule\n"
+                )
+            extra_v_files.append(dff_helper_file)
+
+        with open(vec_file, 'w', encoding='utf-8') as f:
+            for vec in vectors:
+                f.write("".join(str(v) for v in vec) + "\n")
+
+        generate_verilator_tb(v_file, tb_file)
+
+        comp_cmd = ["verilator", "-O3", "-Wno-fatal", "--cc", v_file] + extra_v_files + [
+            "--exe", tb_file, "--top-module", module_name, "--Mdir", obj_dir
+        ]
+        comp_res = subprocess.run(comp_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if comp_res.returncode != 0:
+            raise RuntimeError(f"Verilator compile error: {comp_res.stderr.strip()}")
+
+        build_cmd = ["make", "-j", str(os.cpu_count() or 4), "-C", obj_dir, "-f", f"V{module_name}.mk", f"V{module_name}"]
+        build_res = subprocess.run(build_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if build_res.returncode != 0:
+            raise RuntimeError(f"Verilator build error: {build_res.stderr.strip()}")
+
+        exe_path = os.path.join(obj_dir, f"V{module_name}")
+        run_res = subprocess.run([exe_path, vec_file, out_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if run_res.returncode != 0:
+            raise RuntimeError(f"Verilator runtime error: {run_res.stderr.strip()}")
+
+        with open(out_file, 'r', encoding='utf-8') as f:
+            lines = f.read().splitlines()
+
+        normalized_results = []
+        for line in lines:
+            line = line.strip()
+            if not line: continue
+            normalized_results.append([int(b) for b in line])
+
+        return normalized_results
+
+    finally:
+        for p in (tb_file, vec_file, out_file, dff_helper_file):
+            if os.path.exists(p):
+                try: os.remove(p)
+                except OSError: pass
+        if os.path.exists(obj_dir):
+            try: shutil.rmtree(obj_dir)
+            except OSError: pass
+
+
+# ===========================================================================
+# 4. INTERNAL WORKER FOR PYTHON ENGINE & REACTOR
 # ===========================================================================
 
 class VerilogStateRunner:
@@ -531,10 +651,13 @@ def internal_worker_main(filepath: str, exec_mode: str, in_file: str, out_file: 
 
 
 # ===========================================================================
-# 4. EQUIVALENCE VERIFIER & COMPARATOR
+# 5. EQUIVALENCE VERIFIER & COMPARATOR
 # ===========================================================================
 
-def verify_circuit(v_file: str, vector_count: int = 1000, seed: int = 42, use_engine: bool = True, use_rx_prop: bool = True, use_rx_sweep: bool = True, use_rx_oop: bool = True) -> dict:
+def verify_circuit(v_file: str, vector_count: int = 1000, seed: int = 42,
+                   use_icarus: bool = True, use_verilator: bool = True,
+                   use_engine: bool = True, use_rx_prop: bool = True,
+                   use_rx_sweep: bool = True, use_rx_oop: bool = True) -> dict:
     filename = os.path.basename(v_file)
     _, inputs, outputs = parse_verilog_ports(v_file)
 
@@ -571,22 +694,23 @@ def verify_circuit(v_file: str, vector_count: int = 1000, seed: int = 42, use_en
             vec = [rng.randint(0, 1) for _ in range(len(inputs))]
             raw_vectors.append(vec)
 
-    # Base Reference (Icarus Verilog)
-    icarus_states = run_icarus_base(v_file, raw_vectors)
+    # 1. Base Reference (Icarus Verilog)
+    icarus_states = run_icarus_base(v_file, raw_vectors) if use_icarus else [None] * len(raw_vectors)
 
-    # Python Engine
+    # 2. Verilator Reference (Compiled C++)
+    verilator_states = run_verilator_base(v_file, raw_vectors) if use_verilator else [None] * len(raw_vectors)
+
+    # 3. Python Engine
     engine_states = run_worker_process(v_file, 'engine', raw_vectors) if use_engine else [None] * len(raw_vectors)
 
-    # Cython Reactor (SIMULATE mode)
+    # 4. Cython Reactor (SIMULATE mode)
     rx_prop_states = run_worker_process(v_file, 'reactor_prop', raw_vectors) if use_rx_prop else [None] * len(raw_vectors)
     
-    # Cython Reactor (COMPILE mode Sweep)
+    # 5. Cython Reactor (COMPILE mode Sweep)
     rx_sweep_states = run_worker_process(v_file, 'reactor_sweep', raw_vectors) if use_rx_sweep else [None] * len(raw_vectors)
 
-    # Cython Reactor OOP (SIMULATE mode)
+    # 6. Cython Reactor OOP (SIMULATE mode)
     rx_oop_states = run_worker_process(v_file, 'reactor_oop', raw_vectors) if use_rx_oop else [None] * len(raw_vectors)
-
-
 
     mismatches = []
     vector_logs = []
@@ -595,22 +719,44 @@ def verify_circuit(v_file: str, vector_count: int = 1000, seed: int = 42, use_en
 
     for i in range(total_vectors):
         g_out = icarus_states[i]
+        v_out = verilator_states[i]
         e_out = engine_states[i]
         rp_out = rx_prop_states[i]
         rs_out = rx_sweep_states[i]
         ro_out = rx_oop_states[i]
 
-        match_engine   = (e_out == g_out)  if use_engine  else True
-        match_rx_prop  = (rp_out == g_out) if use_rx_prop else True
-        match_rx_sweep = (rs_out == g_out) if use_rx_sweep else True
-        match_rx_oop   = (ro_out == g_out) if use_rx_oop else True
-        all_match = match_engine and match_rx_prop and match_rx_sweep and match_rx_oop
+        ref_state = None
+        ref_name = None
+        if use_icarus:
+            ref_state = g_out; ref_name = "Icarus"
+        elif use_verilator:
+            ref_state = v_out; ref_name = "Verilator"
+        elif use_engine:
+            ref_state = e_out; ref_name = "Engine"
+        elif use_rx_prop:
+            ref_state = rp_out; ref_name = "Rx-Prop"
+        elif use_rx_sweep:
+            ref_state = rs_out; ref_name = "Rx-Sweep"
+        elif use_rx_oop:
+            ref_state = ro_out; ref_name = "Rx-OOP"
+
+        match_icarus    = (g_out == ref_state)  if use_icarus    else True
+        match_verilator = (v_out == ref_state)  if use_verilator else True
+        match_engine    = (e_out == ref_state)  if use_engine    else True
+        match_rx_prop   = (rp_out == ref_state) if use_rx_prop   else True
+        match_rx_sweep  = (rs_out == ref_state) if use_rx_sweep  else True
+        match_rx_oop    = (ro_out == ref_state) if use_rx_oop    else True
+        all_match = (match_icarus and match_verilator and match_engine and
+                     match_rx_prop and match_rx_sweep and match_rx_oop)
         is_warmup = (i < warmup_count)
 
         log_entry = {
             "vector_id": i - warmup_count if not is_warmup else f"W{i}",
             "inputs": raw_vectors[i],
-            "base_icarus": g_out,
+            "expected": ref_state,
+            "ref_source": ref_name,
+            "icarus": g_out if use_icarus else "SKIPPED",
+            "verilator": v_out if use_verilator else "SKIPPED",
             "engine": e_out if use_engine else "SKIPPED",
             "rx_prop": rp_out if use_rx_prop else "SKIPPED",
             "rx_sweep": rs_out if use_rx_sweep else "SKIPPED",
@@ -627,11 +773,14 @@ def verify_circuit(v_file: str, vector_count: int = 1000, seed: int = 42, use_en
                 mismatches.append({
                     "vector_id": i - warmup_count,
                     "inputs": raw_vectors[i],
-                    "expected": g_out,
-                    "engine_actual":   e_out  if not match_engine   else "MATCH" if use_engine   else "SKIPPED",
-                    "rx_prop_actual":  rp_out if not match_rx_prop  else "MATCH" if use_rx_prop  else "SKIPPED",
-                    "rx_sweep_actual": rs_out if not match_rx_sweep else "MATCH" if use_rx_sweep else "SKIPPED",
-                    "rx_oop_actual":   ro_out if not match_rx_oop   else "MATCH" if use_rx_oop   else "SKIPPED",
+                    "expected": ref_state,
+                    "ref_source": ref_name,
+                    "icarus_actual":    g_out  if not match_icarus    else "MATCH" if use_icarus    else "SKIPPED",
+                    "verilator_actual": v_out  if not match_verilator else "MATCH" if use_verilator else "SKIPPED",
+                    "engine_actual":    e_out  if not match_engine    else "MATCH" if use_engine    else "SKIPPED",
+                    "rx_prop_actual":   rp_out if not match_rx_prop   else "MATCH" if use_rx_prop   else "SKIPPED",
+                    "rx_sweep_actual":  rs_out if not match_rx_sweep  else "MATCH" if use_rx_sweep  else "SKIPPED",
+                    "rx_oop_actual":    ro_out if not match_rx_oop    else "MATCH" if use_rx_oop    else "SKIPPED",
                 })
 
     return {
@@ -648,7 +797,7 @@ def verify_circuit(v_file: str, vector_count: int = 1000, seed: int = 42, use_en
 
 
 # ===========================================================================
-# 5. CLI & REPORT RUNNER
+# 6. CLI & REPORT RUNNER
 # ===========================================================================
 
 def get_v_files(target):
@@ -657,7 +806,7 @@ def get_v_files(target):
     v_files = []
     for root, _, files in os.walk(target):
         for f in files:
-            if f.endswith('.v') and not f.endswith('_base_tb.v'):
+            if f.endswith('.v') and not f.endswith('_base_tb.v') and not f.endswith('_tb.v'):
                 v_files.append(os.path.join(root, f))
     return sorted(v_files, key=os.path.getsize)
 
@@ -668,7 +817,7 @@ def main():
             sys.stdout.reconfigure(encoding='utf-8')
         except Exception:
             pass
-    parser = argparse.ArgumentParser(description="Unified Sequential ISCAS89 State Verifier (Python, Rx-Prop & Rx-Sweep vs Icarus)")
+    parser = argparse.ArgumentParser(description="Unified Sequential ISCAS89 State Verifier (Python, Rx-Prop, Rx-Sweep, Verilator vs Icarus)")
     parser.add_argument('target', nargs='?', type=str, help="Path to .v file or directory")
     parser.add_argument('--vectors', type=int, default=1000, help="Number of test vectors per circuit")
     parser.add_argument('--seed', type=int, default=42, help="PRNG Seed")
@@ -684,6 +833,10 @@ def main():
     parser.set_defaults(rx_sweep=True)
     parser.add_argument('--no-reactor-oop', dest='rx_oop', action='store_false', help='Skip Reactor OOP')
     parser.set_defaults(rx_oop=True)
+    parser.add_argument('--no-icarus', dest='icarus', action='store_false', help='Skip Icarus Verilog base model')
+    parser.set_defaults(icarus=True)
+    parser.add_argument('--no-verilator', dest='verilator', action='store_false', help='Skip Verilator C++ model')
+    parser.set_defaults(verilator=True)
 
     parser.add_argument('--internal-worker', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--exec-mode', type=str, help=argparse.SUPPRESS)
@@ -707,8 +860,8 @@ def main():
 
     if not getattr(args, 'json', False):
         print("=" * 115)
-        print("  UNIFIED ISCAS89 SEQUENTIAL STATE VERIFICATION SUITE (PYTHON, RX-PROP, RX-SWEEP)")
-        print(f"  Test Vectors/Circuit : {args.vectors:,} (after 50 warmup cycles) | Base Model: Icarus Verilog")
+        print("  UNIFIED ISCAS89 SEQUENTIAL STATE VERIFICATION SUITE (PYTHON, RX-PROP, RX-SWEEP, VERILATOR)")
+        print(f"  Test Vectors/Circuit : {args.vectors:,} (after 50 warmup cycles) | Base Model: Icarus Verilog / Verilator")
         print("=" * 115)
         print(f"| {'Circuit':<18} | {'Inputs':<8} | {'Outputs':<8} | {'Vectors':<10} | {'Passed':<10} | {'Failed':<8} | {'Status':<8} |")
         print(f"|{'-'*20}|{'-'*10}|{'-'*10}|{'-'*12}|{'-'*12}|{'-'*10}|{'-'*10}|")
@@ -726,6 +879,7 @@ def main():
 
     for v_file in v_files:
         res = verify_circuit(v_file, vector_count=args.vectors, seed=args.seed,
+                             use_icarus=args.icarus, use_verilator=args.verilator,
                              use_engine=args.engine, use_rx_prop=args.rx_prop,
                              use_rx_sweep=args.rx_sweep, use_rx_oop=args.rx_oop)
         all_reports.append(res)
@@ -752,11 +906,13 @@ def main():
                 mm = res['mismatches'][0]
                 print(f"  └─> First mismatch at test vector #{mm['vector_id']}:")
                 print(f"      Inputs applied: {mm['inputs']}")
-                print(f"      Expected (Icarus): {mm['expected']}")
-                print(f"      Engine   : {mm['engine_actual']}")
-                print(f"      Rx-Prop  : {mm['rx_prop_actual']}")
-                print(f"      Rx-Sweep : {mm['rx_sweep_actual']}")
-                print(f"      Rx-OOP   : {mm['rx_oop_actual']}")
+                print(f"      Expected ({mm['ref_source']}): {mm['expected']}")
+                print(f"      Icarus     : {mm['icarus_actual']}")
+                print(f"      Verilator  : {mm['verilator_actual']}")
+                print(f"      Engine     : {mm['engine_actual']}")
+                print(f"      Rx-Prop    : {mm['rx_prop_actual']}")
+                print(f"      Rx-Sweep   : {mm['rx_sweep_actual']}")
+                print(f"      Rx-OOP     : {mm['rx_oop_actual']}")
 
     if getattr(args, 'json', False):
         import json as sys_json

@@ -396,20 +396,234 @@ def run_icarus_harness_89(v_file: str, vectors: int, warmup: int, use_perf: bool
 
 
 # ---------------------------------------------------------------------------
+# Verilator harness runner
+# ---------------------------------------------------------------------------
+
+def generate_verilator_tb_89(v_file: str, tb_file: str, module_name: str, inputs: list, clock_idx: int, use_perf: bool = False):
+    clk_name = inputs[clock_idx].split()[-1] if clock_idx != -1 else ""
+    tb = [
+        f'#include "V{module_name}.h"',
+        '#include "verilated.h"',
+        '#include <iostream>',
+        '#include <fstream>',
+        '#include <vector>',
+        '#include <string>',
+        '#include <chrono>',
+    ]
+    if use_perf:
+        tb.extend(['#include <fcntl.h>', '#include <unistd.h>'])
+
+    tb.append('int main(int argc, char** argv) {')
+    tb.append('    Verilated::commandArgs(argc, argv);')
+    tb.append(f'    V{module_name}* top = new V{module_name};')
+    tb.append('    std::ifstream infile(argv[1]);')
+    tb.append('    std::string line;')
+    tb.append('    std::vector<std::string> vectors;')
+    tb.append('    while(std::getline(infile, line)) {')
+    tb.append('        while (!line.empty() && (line.back() == \'\\r\' || line.back() == \' \')) line.pop_back();')
+    tb.append('        if (!line.empty()) vectors.push_back(line);')
+    tb.append('    }')
+    tb.append('    // Warmup 50 cycles (inputs = 0, alternating clock)')
+    for inp in inputs:
+        p = inp.split()[-1]
+        tb.append(f'    top->{p} = 0;')
+    tb.append('    for (int w = 0; w < 50; ++w) {')
+    if clk_name:
+        tb.append(f'        top->{clk_name} = 0;')
+        tb.append('        top->eval();')
+        tb.append(f'        top->{clk_name} = 1;')
+        tb.append('        top->eval();')
+    else:
+        tb.append('        top->eval();')
+    tb.append('    }')
+    if clk_name:
+        tb.append(f'    top->{clk_name} = 0;')
+        tb.append('    top->eval();')
+
+    if use_perf:
+        tb.append('    int fd = open("/tmp/rx_perf_ctrl", O_WRONLY | O_NONBLOCK);')
+        tb.append('    if (fd >= 0) { write(fd, "enable\\n", 7); close(fd); }')
+
+    tb.append('    auto start = std::chrono::high_resolution_clock::now();')
+    tb.append('    for (size_t i = 0; i < vectors.size(); ++i) {')
+    tb.append('        const std::string& vec = vectors[i];')
+    for idx, inp in enumerate(inputs):
+        p = inp.split()[-1]
+        tb.append(f'        top->{p} = vec[{idx}] - \'0\';')
+    tb.append('        top->eval();')
+    tb.append('    }')
+    tb.append('    auto end = std::chrono::high_resolution_clock::now();')
+
+    if use_perf:
+        tb.append('    fd = open("/tmp/rx_perf_ctrl", O_WRONLY | O_NONBLOCK);')
+        tb.append('    if (fd >= 0) { write(fd, "disable\\n", 8); close(fd); }')
+
+    tb.append('    auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();')
+    tb.append('    std::cout << "$ELAPSED_NS:" << elapsed << std::endl;')
+    tb.append('    delete top;')
+    tb.append('    return 0;')
+    tb.append('}')
+
+    with open(tb_file, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(tb) + '\n')
+
+
+def run_verilator_harness_89(v_file: str, vectors: int, warmup: int, use_perf: bool = False, perf_events: str = "") -> dict:
+    filename    = os.path.basename(v_file)
+    base_path   = os.path.splitext(v_file)[0]
+    tb_file     = base_path + "_verilator_sim_main.cpp"
+    vector_file = base_path + "_verilator_vectors.txt"
+    obj_dir     = base_path + "_verilator_obj_dir"
+    dff_helper  = base_path + "_verilator_dff_helper.v"
+
+    if not shutil.which("verilator") or not shutil.which("make"):
+        return {"engine": "Verilator", "file": filename, "error": "verilator or make command not found in PATH"}
+
+    try:
+        t_start_total = time.perf_counter_ns()
+        module_name, inputs, outputs = parse_verilog_ports_89(v_file)
+        clock_idx = _find_clock_idx(inputs)
+
+        logical_count = max(vectors - warmup, 1)
+        rng = random.Random(42)
+
+        physical_vectors = []
+        for _ in range(logical_count):
+            base_vec = [rng.randint(0, 1) for _ in range(len(inputs))]
+            if clock_idx != -1:
+                setup = list(base_vec)
+                setup[clock_idx] = 0
+                trigger = list(base_vec)
+                trigger[clock_idx] = 1
+                physical_vectors.append(setup)
+                physical_vectors.append(trigger)
+            else:
+                physical_vectors.append(base_vec)
+
+        measured = len(physical_vectors)
+
+        with open(vector_file, 'w', encoding='utf-8') as f:
+            for vec in physical_vectors:
+                f.write("".join(str(v) for v in vec) + "\n")
+
+        with open(v_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        has_dff_def = re.search(r'\bmodule\s+(?i:dff)\b', content)
+        extra_v_files = []
+        if not has_dff_def:
+            with open(dff_helper, 'w', encoding='utf-8') as f:
+                f.write(
+                    "module DFF (input CK, output reg Q, input D);\n"
+                    "    initial Q = 0;\n"
+                    "    always @(posedge CK) Q <= D;\n"
+                    "endmodule\n"
+                    "module dff (input CK, output reg Q, input D);\n"
+                    "    initial Q = 0;\n"
+                    "    always @(posedge CK) Q <= D;\n"
+                    "endmodule\n"
+                )
+            extra_v_files.append(dff_helper)
+
+        generate_verilator_tb_89(v_file, tb_file, module_name, inputs, clock_idx, use_perf=use_perf)
+
+        t_comp_start = time.perf_counter_ns()
+        comp_cmd = ["verilator", "-O3", "-Wno-fatal", "--cc", v_file] + extra_v_files + [
+            "--exe", tb_file, "--top-module", module_name, "--Mdir", obj_dir
+        ]
+        comp_res = subprocess.run(comp_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if comp_res.returncode != 0:
+            return {"engine": "Verilator", "file": filename, "error": f"Verilator parse failure: {comp_res.stderr.strip()}"}
+
+        build_cmd = ["make", "-j", str(os.cpu_count() or 4), "-C", obj_dir, "-f", f"V{module_name}.mk", f"V{module_name}"]
+        build_res = subprocess.run(build_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        t_comp_end = time.perf_counter_ns()
+        compile_ms = (t_comp_end - t_comp_start) / 1_000_000.0
+
+        if build_res.returncode != 0:
+            return {"engine": "Verilator", "file": filename, "error": f"Compile failure: {build_res.stderr.strip()}"}
+
+        exe_path = os.path.join(obj_dir, f"V{module_name}")
+        run_cmd = [exe_path, vector_file]
+
+        perf_data = f"perf_verilator_{filename}.data"
+        perf_txt  = f"perf_verilator_{filename}.txt"
+        if use_perf:
+            fifo_path = "/tmp/rx_perf_ctrl"
+            if not os.path.exists(fifo_path):
+                try: os.mkfifo(fifo_path)
+                except Exception: pass
+            perf_cmd = ["perf", "record", "-D", "-1", "--control=fifo:/tmp/rx_perf_ctrl", "-o", perf_data]
+            if perf_events:
+                perf_cmd.extend(["-e", perf_events])
+            run_cmd = perf_cmd + ["--"] + run_cmd
+
+        t_run_start = time.perf_counter_ns()
+        run_res = subprocess.run(run_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        t_run_end = time.perf_counter_ns()
+        run_ms = (t_run_end - t_run_start) / 1_000_000.0
+
+        if use_perf and os.path.exists(perf_data):
+            with open(perf_txt, "w") as f:
+                subprocess.run(["perf", "report", "-i", perf_data], stdout=f, stderr=subprocess.DEVNULL)
+            try: os.remove(perf_data)
+            except OSError: pass
+
+        if run_res.returncode != 0:
+            return {"engine": "Verilator", "file": filename, "error": f"Run failure: {run_res.stderr.strip()}"}
+
+        sim_ms = None
+        for line in run_res.stdout.splitlines():
+            if line.startswith("$ELAPSED_NS:"):
+                try:
+                    sim_ms = int(line.split(":", 1)[1].strip()) / 1_000_000.0
+                except ValueError: pass
+                break
+
+        return {
+            "engine":           "Verilator",
+            "file":             filename,
+            "compile_ms":       compile_ms,
+            "run_ms":           run_ms,
+            "total_ms":         compile_ms + run_ms,
+            "time_ms":          sim_ms if sim_ms is not None else run_ms,
+            "load_ms":          compile_ms,
+            "logical_vectors":  logical_count,
+            "physical_vectors": measured,
+        }
+    except Exception as e:
+        return {"engine": "Verilator", "file": filename, "error": str(e)}
+    finally:
+        for p in (tb_file, vector_file, dff_helper):
+            if p and os.path.exists(p):
+                try: os.remove(p)
+                except OSError: pass
+        if obj_dir and os.path.exists(obj_dir):
+            try: shutil.rmtree(obj_dir)
+            except OSError: pass
+
+
+# ---------------------------------------------------------------------------
 # CLI (standalone usage)
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import argparse, json
 
     ap = argparse.ArgumentParser(
-        description="Icarus Verilog harness for ISCAS89 sequential circuits"
+        description="ISCAS89 sequential circuit harness (Icarus / Verilator)"
     )
     ap.add_argument("v_file", type=str, help="Path to ISCAS89 .v file")
     ap.add_argument("--vectors", type=int, default=5000,
                     help="Total vectors (warmup + measured logical)")
     ap.add_argument("--warmup",  type=int, default=500,
                     help="Logical warmup vectors (50 extra hardware cycles driven inline)")
+    ap.add_argument("--engine", choices=["icarus", "verilator", "all"], default="all",
+                    help="Engine to benchmark")
     args = ap.parse_args()
 
-    result = run_icarus_harness_89(args.v_file, args.vectors, args.warmup)
-    print(json.dumps(result, indent=2))
+    results = {}
+    if args.engine in ("icarus", "all"):
+        results["icarus"] = run_icarus_harness_89(args.v_file, args.vectors, args.warmup)
+    if args.engine in ("verilator", "all"):
+        results["verilator"] = run_verilator_harness_89(args.v_file, args.vectors, args.warmup)
+    print(json.dumps(results if args.engine == "all" else results[args.engine], indent=2))
