@@ -66,7 +66,9 @@ cdef class Circuit:
 
     cpdef object getcomponent(self, int choice):
         '''Get object from store, put it in objlist and update its code and codename'''
+
         gt = get(choice, self.gate_infolist, self.gate_verse) 
+
         if gt:
             rank = len(self.objlist[choice])
             self.objlist[choice].append(gt)
@@ -159,7 +161,7 @@ cdef class Circuit:
         '''Connect a gate to another gate'''
         cdef CPP_Gate* info = &self.gate_infolist[target.location]
         cdef int prev = info.output
-        self.visual_queue.push_back(&self.gate_infolist[source])
+        self.visual_queue.push_back(source)
         target.connect(source, index)
         if prev != info.output:
             self.propagate(target.location)
@@ -729,9 +731,10 @@ cdef class Circuit:
         self.copydata.clear()
         cdef int i=0,j=0,n
         cdef vector[int] hash_map,in_degree,hidden,serial
-        cdef Profile* profile, 
+        cdef Profile* profile 
         cdef Profile *end
         cdef int degree=0,index=0,active_gates=0
+        cdef Py_ssize_t target_idx
         cdef CPP_Gate* info
         cdef vector[CPP_Gate] new_gate_infolist
         cdef CPP_Gate* gate_infolist=self.gate_infolist.data()
@@ -753,7 +756,8 @@ cdef class Circuit:
             end=profile+info.hitlist.size()
             while profile<end:
                 '''count of how many gates point to the target gate'''
-                in_degree[profile.target - gate_infolist]+=1
+                target_idx = profile.target - gate_infolist
+                in_degree[target_idx]+=1
                 profile+=1
         i=0
         for index in range(n):
@@ -761,12 +765,12 @@ cdef class Circuit:
                 backup.push_back(index)
         cdef int node
         while not backup.empty():
-            node=backup.front()
-            backup.pop_front()
+            node=backup.back()
+            backup.pop_back()
             queue.push_back(node)
             while not queue.empty():
-                node=queue.front()
-                queue.pop_front()
+                node=queue.back()
+                queue.pop_back()
                 info=&gate_infolist[node]
                 hash_map[node]=j
                 serial[j]=node
@@ -786,14 +790,14 @@ cdef class Circuit:
             if in_degree[index]>0:
                 backup.push_back(index)
         while not backup.empty():
-            node=backup.front()
-            backup.pop_front()
+            node=backup.back()
+            backup.pop_back()
             if in_degree[node]>=1:
                 queue.push_back(node)
                 in_degree[node]=0
                 while not queue.empty():
-                    node=queue.front()
-                    queue.pop_front()
+                    node=queue.back()
+                    queue.pop_back()
                     info=&gate_infolist[node]
                     hash_map[node]=j
                     serial[j]=node
@@ -1242,7 +1246,7 @@ cdef class Circuit:
                     with gil:
                         _tracer.record(<Gate>PyList_GET_ITEM(self.gate_verse, origin), self.Global_Clock)
         if not (self_info.flags & FLAG_UPDATE):
-            self.visual_queue.push_back(&gate_infolist[origin])
+            self.visual_queue.push_back(origin)
             self_info.flags |= FLAG_UPDATE
         new_output = self_info.output
         profile = self_info.hitlist.data()
@@ -1313,7 +1317,7 @@ cdef class Circuit:
                 self_info = read_queue[index]
                 self_info.flags &= ~FLAG_MARK
                 if not (self_info.flags & FLAG_UPDATE):
-                    self.visual_queue.push_back(read_queue[index])   # target changed — mark dirty
+                    self.visual_queue.push_back(read_queue[index] - gate_infolist)   # target changed — mark dirty
                     self_info.flags |= FLAG_UPDATE
                 new_output = self_info.output
                 profile = self_info.hitlist.data()
@@ -1374,7 +1378,7 @@ cdef class Circuit:
                 self_info = read_queue[index]
                 self_info.flags &= ~FLAG_MARK
                 if not (self_info.flags & FLAG_UPDATE):
-                    self.visual_queue.push_back(read_queue[index])   # target changed — mark dirty
+                    self.visual_queue.push_back(read_queue[index] - gate_infolist)   # target changed — mark dirty
                     self_info.flags |= FLAG_UPDATE
                 new_output = self_info.output
                 profile = self_info.hitlist.data()
@@ -1421,7 +1425,7 @@ cdef class Circuit:
                 self_info.flags &= ~FLAG_MARK   
                 new_output = self_info.output
                 if not (self_info.flags & FLAG_UPDATE):
-                    self.visual_queue.push_back(self_info)   # target changed — mark dirty
+                    self.visual_queue.push_back(index)   # target changed — mark dirty
                     self_info.flags |= FLAG_UPDATE
                 profile = self_info.hitlist.data()
                 end = profile + self_info.hitlist.size()
@@ -1518,12 +1522,11 @@ cdef class Circuit:
 
     cpdef void visual_queue_clear(self):
         '''Return True when there are no pending dirty gate locations.'''
-        cdef CPP_Gate* ptr 
+        cdef int loc 
         cdef int count = 0
         while not self.visual_queue.empty():
-            ptr = self.visual_queue.front()
-            # print(f"visual_queue_clear: ptr={int(<uintptr_t>ptr)}")
-            ptr.flags &= ~FLAG_UPDATE
+            loc = self.visual_queue.front()
+            self.gate_infolist[loc].flags &= ~FLAG_UPDATE
             self.visual_queue.pop_front()
             count += 1
         # print(f"visual_queue_clear: cleared {count} elements")
@@ -1531,9 +1534,8 @@ cdef class Circuit:
 
     cpdef int pop_visual_queue(self):
         '''Pop and return the next dirty gate location.'''
-        cdef CPP_Gate* ptr = self.visual_queue.front()
-        cdef int loc = ptr - self.gate_infolist.data()
-        ptr.flags &= ~FLAG_UPDATE
+        cdef int loc = self.visual_queue.front()
+        self.gate_infolist[loc].flags &= ~FLAG_UPDATE
         self.visual_queue.pop_front()
         return loc
 

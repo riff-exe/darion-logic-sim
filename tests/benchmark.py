@@ -494,6 +494,7 @@ class VerilogRunner:
         self.outputs = []
 
         self.VERILOG_GATE_MAP = {
+            'buf': self.const.BUFFER_ID,  
             'and': self.const.AND_ID, 'nand': self.const.NAND_ID, 'or': self.const.OR_ID,
             'nor': self.const.NOR_ID, 'xor': self.const.XOR_ID, 'xnor': self.const.XNOR_ID, 'not': self.const.NOT_ID,
         }
@@ -543,10 +544,9 @@ class VerilogRunner:
                     self.nodes["1'b0"] = gate
                 else:
                     self.nodes[name_str] = gate
-            if not self.is_reactor:
-                if self.use_optimize:
-                    self.circuit.optimize()
-                self.circuit.simulate(self.const.COMPILE)
+            if self.use_optimize:
+                self.circuit.optimize()
+            self.circuit.simulate(self.const.COMPILE)
             return
 
         with open(filepath, 'r', encoding='utf-8') as f:
@@ -757,7 +757,7 @@ class VerilogRunner:
             and hasattr(self.const, 'set_MODE')
             and hasattr(self.circuit, 'simulate')
         )
-        if has_sweep and rx_sweep:
+        if use_optimize and has_sweep and rx_sweep:
             try:
                 if use_optimize:
                     if hasattr(self.circuit, 'optimize'):
