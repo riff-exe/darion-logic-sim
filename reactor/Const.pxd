@@ -81,3 +81,7 @@ cpdef void set_DEBUG()
 cdef public double DELAY = 0.01
 cpdef void set_DELAY(double delay)
 cpdef double get_DELAY()
+
+cdef public bint UI_MODE = False
+cpdef void set_UI_MODE(bint mode)
+cpdef bint get_UI_MODE()

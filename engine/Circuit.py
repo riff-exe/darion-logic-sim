@@ -140,7 +140,9 @@ class Circuit:
         """Connect source -> target at pin index."""
         prev = target.output
         target.connect(source, index)
-        self.visual_queue.append(source)
+        if not source.update:
+            self.visual_queue.append(source)
+            source.update=True
         if prev != target.output:
             self.propagate(target)
     
@@ -963,3 +965,9 @@ class Circuit:
     def visual_queue_size(self) -> int:
         """Return the size of the visual queue."""
         return len(self.visual_queue)
+
+    def activate(self):
+        """Activate or deactivate UI mode."""
+        set_UI_MODE(True)
+
+    

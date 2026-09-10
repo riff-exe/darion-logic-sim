@@ -33,10 +33,6 @@ struct Task {
 // ──────────────────────────────────────────────────────────────────────────
 
 // Bitmask Definitions
-enum GateFlags : uint8_t {
- // Bit 3 (Dec: 8)
-    
-};
 
 struct CPP_Gate {
     // ── HOT SCALARS (12 B, all read in the inner propagate/sweep loop) ────────
@@ -65,7 +61,7 @@ struct CPP_Gate {
     uint8_t      reserved; // Keep padding for size alignment
     unsigned int target_time;    // moved before hitlist — stays in hot cacheline
     std::vector<Profile> hitlist; // 24 B; out-of-line data prefetched separately
-
+    // flag is 8 means it's not going to support the ui, 0 means supported
     CPP_Gate() : type(0), output(2), inputlimit(2), flags(0), high(0), low(0), reserved(0), target_time(0), hitlist() {
     }
     CPP_Gate(uint8_t t, uint8_t lim) : type(t), output(2), inputlimit(lim), flags(0), high(0), low(0), reserved(0), target_time(0), hitlist() {

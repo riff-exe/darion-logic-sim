@@ -67,3 +67,13 @@ def set_DELAY(delay):
 
 def get_DELAY():
     return DELAY
+
+UI_MODE = False
+
+def set_UI_MODE(mode: bool):
+    global UI_MODE
+    UI_MODE = mode
+
+def get_UI_MODE() -> bool:
+    return UI_MODE
+

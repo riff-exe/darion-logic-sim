@@ -1,6 +1,7 @@
 
 from Gates import Gate
 from IC import IC
+import Const
 from Const import IC_ID, VARIABLE_ID, DEBUG
 
 namelist = (
@@ -29,6 +30,8 @@ def get(choice: int):
         gate = Gate(choice, namelist[choice] if DEBUG else None)
         gate.location = _loc[0]
         _loc[0] += 1
+        if not Const.UI_MODE:
+            gate.update = True
         return gate
 
 def reset_loc():

@@ -1545,3 +1545,8 @@ cdef class Circuit:
     cpdef int visual_queue_size(self):
         '''Return the number of pending dirty gate locations.'''
         return self.visual_queue.size()
+
+    cpdef void activate(self):
+        '''Alias for activate(mode) similar to simulate / set_mode.'''
+        global UI_MODE
+        UI_MODE = True

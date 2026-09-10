@@ -86,3 +86,4 @@ cdef class Circuit:
     cpdef void visual_queue_clear(self)
     cpdef int pop_visual_queue(self)
     cpdef int visual_queue_size(self)
+    cpdef void activate(self)

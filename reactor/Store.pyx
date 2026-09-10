@@ -72,6 +72,9 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, list gate_verse):
             gate.info.flags |= FLAG_OR
             
         gate.info.flags |= (choice & 1) & (choice != VARIABLE_ID)
+        
+        if not UI_MODE:
+            gate.info.flags |= FLAG_UPDATE
             
         gate.gate_verse = gate_verse
         gate_verse.append(gate)
