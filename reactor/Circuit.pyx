@@ -161,7 +161,10 @@ cdef class Circuit:
         '''Connect a gate to another gate'''
         cdef CPP_Gate* info = &self.gate_infolist[target.location]
         cdef int prev = info.output
-        self.visual_queue.push_back(source)
+        cdef CPP_Gate* src_info=&self.gate_infolist[source]
+        if not src_info.flags & FLAG_UPDATE:
+            self.visual_queue.push_back(source)
+            src_info.flags |= FLAG_UPDATE
         target.connect(source, index)
         if prev != info.output:
             self.propagate(target.location)
