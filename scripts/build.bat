@@ -18,8 +18,13 @@ if "%~1"=="--reactor_oop" (
     shift
     goto arg_loop
 )
+if "%~1"=="--reactor-oop" (
+    set "SOURCE_TARGET=reactor_oop"
+    shift
+    goto arg_loop
+)
 echo [ERROR] Unknown argument: %~1
-echo   Usage: %~nx0 [--reactor ^| --reactor_oop]
+echo   Usage: %~nx0 [--reactor ^| --reactor-oop ^| --reactor_oop]
 exit /b 1
 
 :arg_done

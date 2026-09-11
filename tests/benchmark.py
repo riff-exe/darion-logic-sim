@@ -482,13 +482,14 @@ def run_verilator_harness(v_file: str, vectors: int, warmup: int, use_perf: bool
 # ===========================================================================
 
 class VerilogRunner:
-    def __init__(self, v_file_path, circuit_cls, const_mod, is_reactor=True, use_optimize=True, mode="engine"):
+    def __init__(self, v_file_path, circuit_cls, const_mod, is_reactor=True, is_oop=False, use_optimize=True, mode="engine"):
         self.Circuit = circuit_cls
         self.const = const_mod
         self.use_optimize = use_optimize
         self.circuit = self.Circuit()
         self.circuit.simulate(self.const.DESIGN)
         self.is_reactor = is_reactor
+        self.is_oop = is_oop or (mode == "reactor_oop")
         self.mode = mode
         self.nodes = {}
         self.outputs = []
@@ -503,12 +504,18 @@ class VerilogRunner:
 
         self._parse_verilog(v_file_path)
 
+        self.output_objects = []
+        for p in self.outputs:
+            node = self.nodes.get(p + "_OUTPIN") or self.nodes.get(p)
+            if node is not None:
+                self.output_objects.append(node)
+
     def _parse_verilog(self, filepath):
         json_path = filepath.replace('.v', '.json')
         
         if os.path.exists(json_path) and hasattr(self.circuit, 'readfromjson'):
             self.circuit.readfromjson(json_path)
-            _, inputs, _ = parse_verilog_ports(filepath)
+            _, inputs, outputs = parse_verilog_ports(filepath)
             var_list = self.circuit.get_variables()
             var_dict = {}
             for v in var_list:
@@ -530,12 +537,18 @@ class VerilogRunner:
                     if not found:
                         print(f"Warning: Could not map pin {port_name} from JSON.")
             
+            for outp in outputs:
+                port_name = outp.split()[-1]
+                self.outputs.append(port_name)
+
             for gate in self.circuit.get_components():
                 name_str = getattr(gate, 'custom_name', None) or getattr(gate, 'codename', None) or str(gate)
                 if name_str.startswith("G_"):
                     self.nodes[name_str[2:]] = gate
                 elif name_str.startswith("IN_"):
                     self.nodes[name_str[3:]] = gate
+                elif name_str.startswith("OUT_"):
+                    self.nodes[name_str[4:] + "_OUTPIN"] = gate
                 elif name_str == "CONST_1":
                     self.const_1_node = gate
                     self.nodes["1'b1"] = gate
@@ -544,7 +557,7 @@ class VerilogRunner:
                     self.nodes["1'b0"] = gate
                 else:
                     self.nodes[name_str] = gate
-            if self.use_optimize:
+            if self.use_optimize and hasattr(self.circuit, 'optimize'):
                 self.circuit.optimize()
             self.circuit.simulate(self.const.COMPILE)
             return
@@ -629,6 +642,45 @@ class VerilogRunner:
             self.circuit.optimize()
         self.circuit.simulate(self.const.COMPILE)
 
+    def build_batches(self, raw_vectors):
+        """Adapts raw logical PRNG vectors to the circuit's current pin configuration.
+        
+        This dynamically inspects var_node.location (or var_node for OOP) so that
+        batches strictly reflect the circuit's actual pin locations after any
+        topological sorting / optimization.
+        """
+        batches = []
+        is_oop = self.is_oop or (self.mode == "reactor_oop")
+        for vec in raw_vectors:
+            batch = []
+            for var_node, bit_val in zip(self.input_vars, vec):
+                c_val = self.const.HIGH if bit_val else self.const.LOW
+                batch.append((var_node if is_oop else var_node.location, c_val))
+            if getattr(self, 'const_1_node', None):
+                batch.append((self.const_1_node if is_oop else self.const_1_node.location, self.const.HIGH))
+            if getattr(self, 'const_0_node', None):
+                batch.append((self.const_0_node if is_oop else self.const_0_node.location, self.const.LOW))
+            batches.append(batch)
+        return batches
+
+    def run_vectors(self, raw_vectors: list, target_mode: int = None) -> list:
+        """Simulates all vectors on the circuit created by VerilogRunner and captures output states."""
+        if target_mode is None:
+            target_mode = self.const.SIMULATE
+        self.circuit.simulate(target_mode)
+        self.const.set_MODE(target_mode)
+
+        batches = self.build_batches(raw_vectors)
+        batch_size = len(self.input_vars) + (1 if getattr(self, 'const_1_node', None) else 0) + (1 if getattr(self, 'const_0_node', None) else 0)
+
+        results = []
+        for b in batches:
+            self.circuit.batch_toggle(b, batch_size)
+            results.append([int(g.output) for g in self.output_objects])
+
+        self.const.set_MODE(self.const.SIMULATE)
+        return results
+
     def run_benchmark(self, vectors=10000, warmup=5000, use_optimize=True, rx_prop=True, rx_sweep=True, use_perf=False, perf_events=""):
         """Run the simulation benchmark with symmetric warmup.
 
@@ -636,53 +688,38 @@ class VerilogRunner:
           - propagate_ms  : BFS wavefront (SIMULATE mode), the existing path.
           - sweep_ms      : Linear forward-pass (COMPILE mode) — reactor only.
             sweep() is triggered via simulate(COMPILE) + batch_toggle() when
-            MODE==COMPILE.  Requires a topologically sorted gate_infolist
+            MODE==COMPILE. Requires a topologically sorted gate_infolist
             (i.e. optimize() must have been called first) to be meaningful.
             For the engine, which has no sweep() implementation, sweep_ms is
             omitted from the result dict.
         """
         measured = max(vectors - warmup, 1)
-
-        # temporarily turn off optimize for rx_prop
-        if use_optimize:
-            if hasattr(self.circuit, 'optimize'):
-                self.circuit.optimize()
-
-        # ── Shared vector set (identical across both passes) ─────────────────
         total_needed = warmup + measured
-        _rng = random.Random(42)
-        all_instructions = []
-        for _ in range(total_needed):
-            batch = []
-            for var_node in self.input_vars:
-                val = self.const.HIGH if _rng.randint(0, 1) else self.const.LOW
-                if self.mode == "reactor_oop":
-                    batch.append((var_node, val))
-                else:
-                    batch.append((var_node.location, val))
-            
-            if getattr(self, 'const_1_node', None):
-                if self.mode == "reactor_oop":
-                    batch.append((self.const_1_node, self.const.HIGH))
-                else:
-                    batch.append((self.const_1_node.location, self.const.HIGH))
-            if getattr(self, 'const_0_node', None):
-                if self.mode == "reactor_oop":
-                    batch.append((self.const_0_node, self.const.LOW))
-                else:
-                    batch.append((self.const_0_node.location, self.const.LOW))
-                
-            all_instructions.append(batch)
-        warmup_batches   = all_instructions[:warmup]
-        measured_batches = all_instructions[warmup:]
 
-        flat_warmup_batches = [item for sublist in warmup_batches for item in sublist]
-        flat_measured_batches = [item for sublist in measured_batches for item in sublist]
+        # ── Shared raw logical vector dataset (identical across all engines) ──
+        _rng = random.Random(42)
+        raw_vectors = [
+            [_rng.randint(0, 1) for _ in range(len(self.input_vars))]
+            for _ in range(total_needed)
+        ]
+        warmup_raw   = raw_vectors[:warmup]
+        measured_raw = raw_vectors[warmup:]
         batch_size = len(self.input_vars) + (1 if getattr(self, 'const_1_node', None) else 0) + (1 if getattr(self, 'const_0_node', None) else 0)
+
+        result = {
+            "nodes": len(self.nodes),
+            "measured_vectors": measured,
+        }
 
         if rx_prop:
             # ── PASS 1: propagate (SIMULATE / BFS wavefront) ─────────────────────
             self.circuit.simulate(self.const.SIMULATE)
+
+            # Adapt batches directly to the circuit's current pin configuration
+            prop_warmup_batches = self.build_batches(warmup_raw)
+            prop_measured_batches = self.build_batches(measured_raw)
+            flat_warmup_batches = [item for sublist in prop_warmup_batches for item in sublist]
+            flat_measured_batches = [item for sublist in prop_measured_batches for item in sublist]
 
             if flat_warmup_batches:
                 self.circuit.batch_toggle(flat_warmup_batches, batch_size)
@@ -723,34 +760,21 @@ class VerilogRunner:
                 if propagate_ms > 0 else 0.0
             )
 
-            result = {
-                "nodes":            len(self.nodes),
+            result.update({
                 "time_ms":          propagate_ms,   # canonical field (backward-compat)
                 "propagate_ms":     propagate_ms,
-                "measured_vectors": measured,
                 "total_evals":      propagate_evals,
                 "meps":             propagate_meps,
-            }
+            })
         else:
-            result = {
-                "nodes":            len(self.nodes),
+            result.update({
                 "time_ms":          0.0,
                 "propagate_ms":     0.0,
-                "measured_vectors": measured,
                 "total_evals":      0,
                 "meps":             0.0,
-            }
+            })
 
         # ── PASS 2: sweep (COMPILE mode / linear forward-pass) ───────────────
-        # sweep() exists only on the reactor (cdef nogil method on Circuit.pyx).
-        # batch_toggle() dispatches to sweep() when MODE==COMPILE.
-        #
-        # IMPORTANT: simulate(COMPILE) internally calls set_MODE(SIMULATE), not
-        # set_MODE(COMPILE).  It runs sweep(0) as the *initial* full-pass setup
-        # but leaves MODE=SIMULATE for subsequent calls.  To make batch_toggle()
-        # route to sweep() rather than propagate(), we must call set_MODE(COMPILE)
-        # ourselves before the timed loop, then restore SIMULATE afterwards.
-        # set_MODE is a cpdef exposed on the Const module.
         has_sweep = (
             self.is_reactor
             and hasattr(self.const, 'COMPILE')
@@ -759,19 +783,19 @@ class VerilogRunner:
         )
         if use_optimize and has_sweep and rx_sweep:
             try:
-                if use_optimize:
-                    if hasattr(self.circuit, 'optimize'):
-                        self.circuit.optimize()
-                
                 # Initial full sweep to seed all gate outputs from current values.
-                # After this, MODE == SIMULATE (simulate() always sets it to SIMULATE).
+                # simulate(COMPILE) sets MODE to SIMULATE, so we explicitly set COMPILE.
                 self.circuit.simulate(self.const.COMPILE)
-
-                # Switch to COMPILE so batch_toggle() calls sweep() not propagate().
                 self.const.set_MODE(self.const.COMPILE)
 
-                if flat_warmup_batches:
-                    self.circuit.batch_toggle(flat_warmup_batches, batch_size)
+                # Adapt batches directly to the circuit's current pin configuration
+                sweep_warmup_batches = self.build_batches(warmup_raw)
+                sweep_measured_batches = self.build_batches(measured_raw)
+                flat_sweep_warmup = [item for sublist in sweep_warmup_batches for item in sublist]
+                flat_sweep_measured = [item for sublist in sweep_measured_batches for item in sublist]
+
+                if flat_sweep_warmup:
+                    self.circuit.batch_toggle(flat_sweep_warmup, batch_size)
 
                 gc.collect()
                 self.circuit.eval_count = 0
@@ -792,7 +816,7 @@ class VerilogRunner:
                     perf_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     time.sleep(0.1)
                 
-                sweep_ms = self.circuit.batch_toggle(flat_measured_batches, batch_size, use_perf) if flat_measured_batches else 0.0
+                sweep_ms = self.circuit.batch_toggle(flat_sweep_measured, batch_size, use_perf) if flat_sweep_measured else 0.0
                 
                 if use_perf and perf_proc:
                     perf_proc.terminate()
@@ -940,6 +964,14 @@ def main():
     parser.set_defaults(icarus=True)
     parser.add_argument('--no-verilator', dest='verilator', action='store_false', help='Skip Verilator benchmark')
     parser.set_defaults(verilator=True)
+    parser.add_argument('--bench', dest='bench', action='store_true', default=None,
+                        help="Start benchmarking mode (default if no mode specified)")
+    parser.add_argument('--no-bench', dest='bench', action='store_false',
+                        help="Disable benchmarking mode")
+    parser.add_argument('--verify', dest='verify', action='store_true', default=False,
+                        help="Run connected verifier across backends before benchmarking or standalone")
+    parser.add_argument('--verify-vectors', type=int, default=None,
+                        help="Number of test vectors to verify per circuit (default: min(measured, 1000))")
 
     parser.add_argument('--internal-worker', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--mode',    type=str, choices=['engine', 'reactor', 'reactor_oop'], help=argparse.SUPPRESS)
@@ -953,6 +985,13 @@ def main():
     if not args.target:
         print("[-] Error: No target path specified."); sys.exit(1)
 
+    if args.bench is None:
+        run_bench = not args.verify
+        run_verify = args.verify
+    else:
+        run_bench = args.bench
+        run_verify = args.verify
+
     if getattr(args, 'dump', False) and not hasattr(args, 'json'):
         pass
 
@@ -963,6 +1002,80 @@ def main():
     v_files = get_v_files(args.target)
     if not v_files:
         print("[-] Error: No .v files found."); sys.exit(1)
+
+    # ── Connected Verifier Pass ──────────────────────────────────────────────
+    if run_verify:
+        try:
+            from tests.verifier import verify_circuit
+        except ImportError:
+            from verifier import verify_circuit
+
+        v_count_default = args.verify_vectors if args.verify_vectors is not None else min(max(args.vectors - args.warmup, 1), 1000)
+
+        if not getattr(args, 'json', False):
+            print("=" * 105)
+            print("  UNIFIED ISCAS COMBINATIONAL STATE VERIFICATION SUITE")
+            print(f"  Vectors/Circuit : {args.vectors:,} (verified: {v_count_default:,}) | Seed: 42 | Base Model: Icarus Verilog / Verilator")
+            print("=" * 105)
+            print(f"| {'Circuit':<18} | {'Inputs':<8} | {'Outputs':<8} | {'Vectors':<10} | {'Passed':<10} | {'Failed':<8} | {'Status':<8} |")
+            print(f"|{'-'*20}|{'-'*10}|{'-'*10}|{'-'*12}|{'-'*12}|{'-'*10}|{'-'*10}|")
+            sys.stdout.flush()
+
+        for filepath in v_files:
+            fn = os.path.basename(filepath)
+            _, inputs, outputs = parse_verilog_ports(filepath)
+            curr_v_count = args.verify_vectors if args.verify_vectors is not None else min(max(args.vectors - args.warmup, 1), 1000)
+            rng = random.Random(42)
+            total_needed = args.warmup + curr_v_count
+            all_vecs = [[rng.randint(0, 1) for _ in range(len(inputs))] for _ in range(total_needed)]
+            tb_vecs = all_vecs[args.warmup : args.warmup + curr_v_count]
+
+            v_report = verify_circuit(
+                filepath,
+                vectors=tb_vecs,
+                use_engine=args.engine,
+                use_rx_prop=args.rx_prop,
+                use_rx_sweep=args.rx_sweep,
+                use_reactor_oop=args.rx_oop,
+                use_icarus=args.icarus,
+                use_verilator=getattr(args, 'verilator', True),
+                optimize=args.optimize
+            )
+
+            status_col = f"\033[92mPASS\033[0m{' ' * 4}" if v_report["status"] == "PASS" else f"\033[91mFAIL\033[0m{' ' * 4}"
+            row_str = (
+                f"| {v_report['circuit']:<18} | "
+                f"{v_report['inputs_count']:<8} | "
+                f"{v_report['outputs_count']:<8} | "
+                f"{v_report['total_vectors']:<10,} | "
+                f"{v_report['pass_count']:<10,} | "
+                f"{v_report['fail_count']:<8} | "
+                f"{status_col} |"
+            )
+
+            if not getattr(args, 'json', False):
+                print(row_str)
+                sys.stdout.flush()
+
+            if v_report["status"] != "PASS" or v_report["fail_count"] > 0:
+                if not getattr(args, 'json', False):
+                    mm = v_report['mismatches'][0]
+                    print(f"  └─> First mismatch at vector #{mm['vector_id']}:")
+                    print(f"      Inputs applied: {mm['inputs']}")
+                    print(f"      Expected ({mm.get('ref_source')}): {mm['expected']}")
+                    for be_key in ('icarus_actual', 'verilator_actual', 'engine_actual', 'rx_prop_actual', 'rx_sweep_actual', 'reactor_oop_actual'):
+                        if be_key in mm and mm[be_key] != "SKIPPED":
+                            print(f"      {be_key.replace('_actual', '')}: {mm[be_key]}")
+                    print("[-] Aborting: benchmark execution halted due to verification error.")
+                sys.exit(1)
+
+        if not run_bench:
+            if not getattr(args, 'json', False):
+                print(f"\n[+] Verifier mode completed successfully for {len(v_files)} circuit(s). No benchmarks requested.")
+            sys.exit(0)
+        else:
+            if not getattr(args, 'json', False):
+                print()
 
     W = 175
     cols1 = (

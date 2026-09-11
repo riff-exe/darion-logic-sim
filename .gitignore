@@ -39,5 +39,6 @@ reactor_oop/*.so
 *.data
 *.data.old
 
-harness_build/
+harness_build/*.vpi
+harness_build/*.o
 tests/*/

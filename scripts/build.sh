@@ -13,11 +13,11 @@ SOURCE_TARGET="reactor"   # default
 
 for arg in "$@"; do
     case "$arg" in
-        --reactor)     SOURCE_TARGET="reactor" ;;
-        --reactor_oop) SOURCE_TARGET="reactor_oop" ;;
+        --reactor)                  SOURCE_TARGET="reactor" ;;
+        --reactor_oop|--reactor-oop) SOURCE_TARGET="reactor_oop" ;;
         *)
             echo "[ERROR] Unknown argument: $arg"
-            echo "  Usage: $0 [--reactor | --reactor_oop]"
+            echo "  Usage: $0 [--reactor | --reactor-oop | --reactor_oop]"
             exit 1
             ;;
     esac

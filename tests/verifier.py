@@ -287,215 +287,12 @@ def run_verilator_base(v_file: str, vectors: list) -> list:
 
 
 # ===========================================================================
-# 4. INTERNAL WORKER FOR ENGINE & REACTOR
+# ===========================================================================
+# 4. INTERNAL WORKER FOR ENGINE & REACTOR (DELEGATED TO BENCHMARK.PY)
 # ===========================================================================
 
-class VerilogStateRunner:
-    def __init__(self, v_file_path, circuit_cls, const_mod, is_reactor=False):
-        self.Circuit = circuit_cls
-        self.const = const_mod
-        self.circuit = self.Circuit()
-        self.circuit.simulate(self.const.DESIGN)
-        self.is_reactor = is_reactor
-        self.nodes = {}
-        self.outputs = []
-        self.input_vars = []
-
-        self.VERILOG_GATE_MAP = {
-            'and': self.const.AND_ID, 'nand': self.const.NAND_ID, 'or': self.const.OR_ID,
-            'nor': self.const.NOR_ID, 'xor': self.const.XOR_ID, 'xnor': self.const.XNOR_ID,
-            'not': self.const.NOT_ID, 'buf': self.const.BUFFER_ID
-        }
-
-        self._parse_verilog(v_file_path)
-        
-        # Maintain references to python Gate objects ordered strictly by the verilog outputs list.
-        # Some circuits declare output ports that share a name with an input wire (passthroughs)
-        # or alias an internal wire not directly keyed in self.nodes — skip with a warning.
-        self.output_objects = []
-        for p in self.outputs:
-            node = self.nodes.get(p + "_OUTPIN")
-            if not node:
-                node = self.nodes.get(p)
-            
-            if node is None:
-                print(f"[VerilogStateRunner] Warning: output port '{p}' not found in nodes dict — skipped.")
-            else:
-                self.output_objects.append(node)
-
-    def _parse_verilog(self, filepath):
-        json_path = filepath.replace('.v', '.json')
-        if os.path.exists(json_path) and hasattr(self.circuit, 'readfromjson'):
-            self.circuit.readfromjson(json_path)
-            _, inputs, outputs = parse_verilog_ports(filepath)
-            
-            var_list = self.circuit.get_variables()
-            var_dict = {}
-            for v in var_list:
-                name_str = getattr(v, 'custom_name', None) or getattr(v, 'codename', None) or str(v)
-                var_dict[name_str] = v
-                
-            for inp in inputs:
-                port_name = inp.split()[-1]
-                expected_name = f"IN_{port_name}"
-                if expected_name in var_dict:
-                    self.input_vars.append(var_dict[expected_name])
-                else:
-                    found = False
-                    for k, v in var_dict.items():
-                        if port_name in k:
-                            self.input_vars.append(v)
-                            found = True
-                            break
-                    if not found:
-                        print(f"Warning: Could not map pin {port_name} from JSON.")
-            
-            for outp in outputs:
-                port_name = outp.split()[-1]
-                self.outputs.append(port_name)
-
-            for gate in self.circuit.get_components():
-                name_str = getattr(gate, 'custom_name', None) or getattr(gate, 'codename', None) or str(gate)
-                if name_str.startswith("G_"):
-                    self.nodes[name_str[2:]] = gate
-                elif name_str.startswith("IN_"):
-                    self.nodes[name_str[3:]] = gate
-                elif name_str.startswith("OUT_"):
-                    self.nodes[name_str[4:] + "_OUTPIN"] = gate
-                elif name_str == "CONST_1":
-                    self.const_1_node = gate
-                    self.nodes["1'b1"] = gate
-                elif name_str == "CONST_0":
-                    self.const_0_node = gate
-                    self.nodes["1'b0"] = gate
-                else:
-                    self.nodes[name_str] = gate
-
-            if hasattr(self.circuit, 'optimize'):
-                self.circuit.optimize()
-            self.circuit.simulate(self.const.COMPILE)
-            return
-
-        with open(filepath, 'r', encoding='utf-8') as f:
-            content = f.read()
-
-        content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
-        content = re.sub(r'//.*', '', content)
-        statements = [s.strip() for s in content.split(';') if s.strip()]
-        connections = []
-
-        self.const_1_node = None
-        self.const_0_node = None
-
-        def get_const_node(val_str):
-            if val_str == "1'b1":
-                if not getattr(self, 'const_1_node', None):
-                    self.const_1_node = self.circuit.getcomponent(self.const.VARIABLE_ID)
-                    self.const_1_node.rename("CONST_1")
-                    self.nodes["1'b1"] = self.const_1_node
-                return self.const_1_node
-            elif val_str == "1'b0":
-                if not getattr(self, 'const_0_node', None):
-                    self.const_0_node = self.circuit.getcomponent(self.const.VARIABLE_ID)
-                    self.const_0_node.rename("CONST_0")
-                    self.nodes["1'b0"] = self.const_0_node
-                return self.const_0_node
-            return None
-        connections = []
-
-        for stmt in statements:
-            if stmt.startswith('input '):
-                ports = stmt.replace('input', '').strip().split(',')
-                for p in ports:
-                    p = p.strip()
-                    if p:
-                        var_node = self.circuit.getcomponent(self.const.VARIABLE_ID)
-                        var_node.rename(f"IN_{p}")
-                        self.nodes[p] = var_node
-                        self.input_vars.append(var_node)
-            elif stmt.startswith('output '):
-                ports = stmt.replace('output', '').strip().split(',')
-                for p in ports:
-                    p = p.strip()
-                    if p:
-                        out_node = self.circuit.getcomponent(self.const.IC_OUTPUT_PIN_ID)
-                        out_node.rename(f"OUT_{p}")
-                        self.nodes[p + "_OUTPIN"] = out_node
-                        self.outputs.append(p)
-                        connections.append((p + "_OUTPIN", [p]))
-            elif stmt.startswith(('wire ', 'module ', 'endmodule', 'reg ')):
-                continue
-            else:
-                match = re.match(r'^([a-zA-Z_]\w*)\s+([a-zA-Z_0-9]+)?\s*\((.*)\)$', stmt)
-                if match:
-                    gate_type = match.group(1).lower()
-                    ports_str = match.group(3)
-                    if gate_type in self.VERILOG_GATE_MAP:
-                        ports = [p.strip() for p in ports_str.split(',')]
-                        out_wire = ports[0]
-                        in_wires = ports[1:]
-                        gate_id = self.VERILOG_GATE_MAP[gate_type]
-                        gate = self.circuit.getcomponent(gate_id)
-                        gate.rename(f"G_{out_wire}")
-                        
-                        for w in in_wires:
-                            get_const_node(w)
-
-                        if gate_id < getattr(self.const, 'VARIABLE_ID', 99) and hasattr(self.circuit, 'setlimits'):
-                            self.circuit.setlimits(gate, len(in_wires))
-                        self.nodes[out_wire] = gate
-                        connections.append((out_wire, in_wires))
-
-        for target_id, source_ids in connections:
-            target_gate = self.nodes.get(target_id)
-            if not target_gate: continue
-            for pin_index, source_id in enumerate(source_ids):
-                source_gate = self.nodes.get(source_id)
-                if source_gate:
-                    self.circuit.connect(target_gate, source_gate, pin_index)
-
-        if hasattr(self.circuit, 'optimize'):
-            self.circuit.optimize()
-        self.circuit.simulate(self.const.COMPILE)
-
-    def _get_current_state(self) -> list:
-        """Extracts the state by calling output directly on the python Gate objects."""
-        return [g.output for g in self.output_objects]
-
-    def run_vectors(self, raw_vectors: list, target_mode: int) -> list:
-        """Simulates all vectors via batch toggle and captures output states."""
-        # Initialize the circuit into the targeted execution mode (SIMULATE vs COMPILE)
-        self.circuit.simulate(target_mode)
-        self.const.set_MODE(target_mode)
-
-        batches = []
-        is_oop = getattr(self, 'is_reactor_oop', False)
-        for vec in raw_vectors:
-            batch = []
-            for var_node, val in zip(self.input_vars, vec):
-                c_val = self.const.HIGH if val == 1 else self.const.LOW
-                batch.append((var_node if is_oop else var_node.location, c_val))
-            
-            if getattr(self, 'const_1_node', None):
-                batch.append((self.const_1_node if is_oop else self.const_1_node.location, self.const.HIGH))
-            if getattr(self, 'const_0_node', None):
-                batch.append((self.const_0_node if is_oop else self.const_0_node.location, self.const.LOW))
-                
-            batches.append(batch)
-
-        results = []
-        for b in batches:
-            self.circuit.batch_toggle(b)
-            results.append(self._get_current_state())
-
-        # Safely restore execution context to SIMULATE
-        self.const.set_MODE(self.const.SIMULATE)
-
-        return results
-
-
-def run_worker_process(filepath: str, exec_mode: str, vectors: list) -> list:
-    """Spawns an isolated Python process to evaluate vectors."""
+def run_worker_process(filepath: str, exec_mode: str, vectors: list, optimize: bool = True) -> list:
+    """Spawns an isolated Python process to evaluate vectors using benchmark.py's VerilogRunner."""
     temp_vec_json = filepath + f"_{exec_mode}_in.tmp.json"
     temp_out_json = filepath + f"_{exec_mode}_out.tmp.json"
 
@@ -508,12 +305,13 @@ def run_worker_process(filepath: str, exec_mode: str, vectors: list) -> list:
         "--in-file", temp_vec_json,
         "--out-file", temp_out_json,
     ]
+    if optimize:
+        cmd.append("--optimize")
 
     try:
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if res.returncode != 0:
-            print("RETURNCODE:", res.returncode)
-            raise RuntimeError(f"Worker ({exec_mode}) failed: {res.stderr.strip() or res.stdout.strip()}")
+            raise RuntimeError(f"Worker ({exec_mode}) failed (returncode: {res.returncode}): STDERR:\n{res.stderr}\nSTDOUT:\n{res.stdout}")
 
         return load_json_file(temp_out_json)
 
@@ -524,8 +322,8 @@ def run_worker_process(filepath: str, exec_mode: str, vectors: list) -> list:
                 except OSError: pass
 
 
-def internal_worker_main(filepath: str, exec_mode: str, in_file: str, out_file: str):
-    """Entry point for the isolated subprocess."""
+def internal_worker_main(filepath: str, exec_mode: str, in_file: str, out_file: str, optimize: bool = True):
+    """Entry point for the isolated subprocess — evaluates vectors on benchmark.py's VerilogRunner."""
     if exec_mode == 'reactor_oop':
         pkg_dir = 'reactor_oop'
     else:
@@ -541,17 +339,21 @@ def internal_worker_main(filepath: str, exec_mode: str, in_file: str, out_file: 
     import Circuit
     import Const
 
+    try:
+        from tests.benchmark import VerilogRunner
+    except ImportError:
+        from benchmark import VerilogRunner
+
     vectors = load_json_file(in_file)
 
     is_reactor = 'reactor' in exec_mode
+    is_oop = (exec_mode == 'reactor_oop')
     target_const_mode = Const.COMPILE if 'sweep' in exec_mode else Const.SIMULATE
 
-    runner = VerilogStateRunner(filepath, Circuit.Circuit, Const, is_reactor=is_reactor)
-    runner.is_reactor_oop = (exec_mode == 'reactor_oop')
+    runner = VerilogRunner(filepath, Circuit.Circuit, Const, is_reactor=is_reactor, is_oop=is_oop, use_optimize=optimize, mode=pkg_dir)
     results = runner.run_vectors(vectors, target_mode=target_const_mode)
 
     dump_json_file(out_file, results, indent=False)
-
 
 
 # ===========================================================================
@@ -561,15 +363,20 @@ def internal_worker_main(filepath: str, exec_mode: str, in_file: str, out_file: 
 def verify_circuit(v_file: str, vector_count: int = 1000, seed: int = 42,
                    use_icarus: bool = True, use_verilator: bool = True,
                    use_engine: bool = True, use_rx_prop: bool = True,
-                   use_rx_sweep: bool = True, use_reactor_oop: bool = True) -> dict:
+                   use_rx_sweep: bool = True, use_reactor_oop: bool = True,
+                   vectors: list = None, optimize: bool = True) -> dict:
     filename = os.path.basename(v_file)
     _, inputs, outputs = parse_verilog_ports(v_file)
 
-    rng = random.Random(seed)
-    raw_vectors = [
-        [rng.randint(0, 1) for _ in range(len(inputs))]
-        for _ in range(vector_count)
-    ]
+    if vectors is not None:
+        raw_vectors = list(vectors)
+        vector_count = len(raw_vectors)
+    else:
+        rng = random.Random(seed)
+        raw_vectors = [
+            [rng.randint(0, 1) for _ in range(len(inputs))]
+            for _ in range(vector_count)
+        ]
 
     # 1. base Reference (Icarus Verilog)
     icarus_states = run_icarus_base(v_file, raw_vectors) if use_icarus else [None] * vector_count
@@ -578,16 +385,16 @@ def verify_circuit(v_file: str, vector_count: int = 1000, seed: int = 42,
     verilator_states = run_verilator_base(v_file, raw_vectors) if use_verilator else [None] * vector_count
 
     # 3. Python Engine
-    engine_states = run_worker_process(v_file, 'engine', raw_vectors) if use_engine else [None] * vector_count
+    engine_states = run_worker_process(v_file, 'engine', raw_vectors, optimize=optimize) if use_engine else [None] * vector_count
 
     # 4. Cython Reactor (SIMULATE mode)
-    rx_prop_states = run_worker_process(v_file, 'reactor_prop', raw_vectors) if use_rx_prop else [None] * vector_count
+    rx_prop_states = run_worker_process(v_file, 'reactor_prop', raw_vectors, optimize=optimize) if use_rx_prop else [None] * vector_count
 
     # 5. Cython Reactor (COMPILE mode)
-    rx_sweep_states = run_worker_process(v_file, 'reactor_sweep', raw_vectors) if use_rx_sweep else [None] * vector_count
+    rx_sweep_states = run_worker_process(v_file, 'reactor_sweep', raw_vectors, optimize=optimize) if use_rx_sweep else [None] * vector_count
 
     # 6. Cython Reactor OOP (SIMULATE mode)
-    reactor_oop_states = run_worker_process(v_file, 'reactor_oop', raw_vectors) if use_reactor_oop else [None] * vector_count
+    reactor_oop_states = run_worker_process(v_file, 'reactor_oop', raw_vectors, optimize=optimize) if use_reactor_oop else [None] * vector_count
 
     mismatches = []
     vector_logs = []
@@ -707,6 +514,9 @@ def main():
     parser.add_argument('--no-reactor-oop', dest='reactor_oop', action='store_false', help='Skip Reactor OOP (SIMULATE mode)')
     parser.set_defaults(reactor_oop=True)
 
+    parser.add_argument('--optimize', action='store_true', default=True, help='Enable topological optimization')
+    parser.add_argument('--no-optimize', dest='optimize', action='store_false', help='Disable topological optimization')
+
     parser.add_argument('--internal-worker', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--exec-mode', type=str, help=argparse.SUPPRESS)
     parser.add_argument('--in-file', type=str, help=argparse.SUPPRESS)
@@ -715,7 +525,7 @@ def main():
     args = parser.parse_args()
 
     if args.internal_worker:
-        internal_worker_main(args.target, args.exec_mode, args.in_file, args.out_file)
+        internal_worker_main(args.target, args.exec_mode, args.in_file, args.out_file, optimize=getattr(args, 'optimize', True))
         sys.exit(0)
 
     if not args.target:
@@ -751,7 +561,8 @@ def main():
                              use_icarus=args.icarus, use_verilator=args.verilator,
                              use_engine=args.engine, 
                              use_rx_prop=args.rx_prop, use_rx_sweep=args.rx_sweep,
-                             use_reactor_oop=args.reactor_oop)
+                             use_reactor_oop=args.reactor_oop,
+                             optimize=getattr(args, 'optimize', True))
         all_reports.append(res)
 
         status_str = "\033[92mPASS\033[0m" if res["status"] == "PASS" else "\033[91mFAIL\033[0m"

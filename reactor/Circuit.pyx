@@ -768,8 +768,8 @@ cdef class Circuit:
                 backup.push_back(index)
         cdef int node
         while not backup.empty():
-            node=backup.back()
-            backup.pop_back()
+            node=backup.front()
+            backup.pop_front()
             queue.push_back(node)
             while not queue.empty():
                 node=queue.back()
@@ -789,33 +789,72 @@ cdef class Circuit:
                             queue.push_back(target_loc)
                     profile+=1
                     
-        for index in range(n):
-            if in_degree[index]>0:
-                backup.push_back(index)
-        while not backup.empty():
-            node=backup.back()
-            backup.pop_back()
-            if in_degree[node]>=1:
-                queue.push_back(node)
-                in_degree[node]=0
-                while not queue.empty():
-                    node=queue.back()
-                    queue.pop_back()
-                    info=&gate_infolist[node]
-                    hash_map[node]=j
-                    serial[j]=node
-                    j+=1
-                    profile=info.hitlist.data()
-                    end=profile+info.hitlist.size()
-                    while profile<end:
-                        '''if the target's dependencies are already in to the list push it to the list now'''
-                        target_loc2 = profile.target - gate_infolist
-                        if in_degree[target_loc2]>0:
-                            in_degree[target_loc2]-=1
-                            if in_degree[target_loc2]==0:
-                                queue.push_back(target_loc2)
-                        profile+=1
-
+        cdef int k=0
+        while j<active_gates:
+            for k in range(i,j):
+                info=&gate_infolist[serial[k]]
+                profile=info.hitlist.data()
+                end=profile+info.hitlist.size()
+                while profile<end:
+                    '''count of how many gates point to the target gate'''
+                    target_idx = profile.target - gate_infolist
+                    if in_degree[target_idx]>0:
+                        backup.push_back(target_idx)                    
+                    profile+=1
+            i=j
+            if backup.empty():break
+            while not backup.empty():
+                node=backup.front()
+                backup.pop_front()
+                if in_degree[node]>=1:
+                    queue.push_back(node)
+                    in_degree[node]=0
+                    while not queue.empty():
+                        node=queue.back()
+                        queue.pop_back()
+                        info=&gate_infolist[node]
+                        hash_map[node]=j
+                        serial[j]=node
+                        j+=1
+                        profile=info.hitlist.data()
+                        end=profile+info.hitlist.size()
+                        while profile<end:
+                            '''if the target's dependencies are already in to the list push it to the list now'''
+                            target_loc2 = profile.target - gate_infolist
+                            if in_degree[target_loc2]>0:
+                                in_degree[target_loc2]-=1
+                                if in_degree[target_loc2]==0:
+                                    queue.push_back(target_loc2)
+                            profile+=1
+                        
+               
+        if j<active_gates:
+            for index in range(n):
+                if in_degree[index]>0:
+                    backup.push_back(index)
+            while not backup.empty():
+                node=backup.front()
+                backup.pop_front()
+                if in_degree[node]>=1:
+                    queue.push_back(node)
+                    in_degree[node]=0
+                    while not queue.empty():
+                        node=queue.back()
+                        queue.pop_back()
+                        info=&gate_infolist[node]
+                        hash_map[node]=j
+                        serial[j]=node
+                        j+=1
+                        profile=info.hitlist.data()
+                        end=profile+info.hitlist.size()
+                        while profile<end:
+                            '''if the target's dependencies are already in to the list push it to the list now'''
+                            target_loc2 = profile.target - gate_infolist
+                            if in_degree[target_loc2]>0:
+                                in_degree[target_loc2]-=1
+                                if in_degree[target_loc2]==0:
+                                    queue.push_back(target_loc2)
+                            profile+=1
         
         # i is location of each hidden gate, it will be pushed to the end of queue
         for i in hidden:
@@ -1463,7 +1502,7 @@ cdef class Circuit:
         Extracts the raw memory jump distance for every single connection in the circuit.
         Used for geometry profiling and cache-miss analysis.
         '''
-        self.optimize()
+        # self.optimize()
         cdef int n = self.gate_infolist.size()
         cdef int i, j, target, jump
         cdef list jumps = []
