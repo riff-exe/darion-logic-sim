@@ -93,6 +93,19 @@ cdef class Gate:
         return targets
 
     @property
+    def edge_profiles(self):
+        '''Outgoing connections: list of (target_loc, profile.output, pin_index)'''
+        cdef list res = []
+        cdef CPP_Gate* base = (self.info - self.location)
+        cdef CPP_Gate* info = base + self.location
+        cdef Profile* profile = info.hitlist.data()
+        cdef Profile* end = profile + info.hitlist.size()
+        while profile < end:
+            res.append((profile.target - base, profile.output, profile.index))
+            profile += 1
+        return res
+
+    @property
     def book(self):
         '''Input tally: counts of LOW, HIGH, UNKNOWN sources'''
         cdef CPP_Gate* info = self.info

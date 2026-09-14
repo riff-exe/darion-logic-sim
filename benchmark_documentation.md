@@ -22,18 +22,22 @@
    - [1.7 Benchmark Datasets](#17-benchmark-datasets)
 3. [benchmark.py — Combinational Multi-Engine Benchmark](#2-benchmarkpy--combinational-multi-engine-benchmark)
 4. [benchmark_89.py — Sequential Multi-Engine Benchmark](#3-benchmark_89py--sequential-multi-engine-benchmark)
-5. [load.py — Universal RAM & Memory Footprint Benchmark](#4-loadpy--universal-ram--memory-footprint-benchmark)
-6. [geometry.py — Circuit Geometry & Topological Locality Analyzer](#5-geometrypy--circuit-geometry--topological-locality-analyzer)
-7. [verifier.py — Combinational State & Equivalence Verifier](#6-verifierpy--combinational-state--equivalence-verifier)
-8. [verifier_89.py — Sequential State & Equivalence Verifier](#7-verifier_89py--sequential-state--equivalence-verifier)
-9. [cache_test.py — High-Integrity Cache & Optimization Profiler](#8-cache_testpy--high-integrity-cache--optimization-profiler)
-10. [cache_perf.py — Hardware Cache Profiler (Linux `perf`)](#9-cache_perfpy--hardware-cache-profiler-linux-perf)
-11. [perf.py — Multi-Engine Hardware Event Profiler](#10-perfpy--multi-engine-hardware-event-profiler)
-12. [ic_circuit_benchmark.py — IC Packaging & Serialization Benchmark](#11-ic_circuit_benchmarkpy--ic-packaging--serialization-benchmark)
-13. [integrity_test.py — Master Integrity & Stress Test Suite](#12-integrity_testpy--master-integrity--stress-test-suite)
-14. [iscas89_sequential_harness.py — Sequential Verilog Harness Engine](#13-iscas89_sequential_harnesspy--sequential-verilog-harness-engine)
-15. [bash_test.sh — Automated Pipeline Runner](#14-bash_testsh--automated-pipeline-runner)
-16. [Summary Table & Cheat Sheet](#15-summary-table--cheat-sheet)
+5. [benchmark_iwls.py — IWLS 2005 Multi-Engine Benchmark](#3b-benchmark_iwlspy--iwls-2005-multi-engine-benchmark)
+6. [load.py — Universal RAM & Memory Footprint Benchmark](#4-loadpy--universal-ram--memory-footprint-benchmark)
+7. [geometry.py — Circuit Geometry & Topological Locality Analyzer](#5-geometrypy--circuit-geometry--topological-locality-analyzer)
+8. [verifier.py — Combinational State & Equivalence Verifier](#6-verifierpy--combinational-state--equivalence-verifier)
+9. [verifier_89.py — Sequential State & Equivalence Verifier](#7-verifier_89py--sequential-state--equivalence-verifier)
+10. [verifier_iwls.py — IWLS 2005 Sequential State & Equivalence Verifier](#7b-verifier_iwlspy--iwls-2005-sequential-state--equivalence-verifier)
+11. [cache_test.py — High-Integrity Cache & Optimization Profiler](#8-cache_testpy--high-integrity-cache--optimization-profiler)
+12. [cache_perf.py — Hardware Cache Profiler (Linux `perf`)](#9-cache_perfpy--hardware-cache-profiler-linux-perf)
+13. [perf.py — Multi-Engine Hardware Event Profiler](#10-perfpy--multi-engine-hardware-event-profiler)
+14. [master_test.py — Master Unified 3-in-1 Benchmark Harness](#10b-master_testpy--master-unified-3-in-1-benchmark-harness)
+15. [ic_circuit_benchmark.py — IC Packaging & Serialization Benchmark](#11-ic_circuit_benchmarkpy--ic-packaging--serialization-benchmark)
+16. [integrity_test.py — Master Integrity & Stress Test Suite](#12-integrity_testpy--master-integrity--stress-test-suite)
+17. [iscas89_sequential_harness.py & iwls_sequential_harness.py — Sequential Verilog Harnesses](#13-iscas89_sequential_harnesspy--sequential-verilog-harness-engine)
+18. [run_all_test.sh — Automated Pipeline Runner](#14-run_all_testsh--automated-pipeline-runner)
+19. [Benchmark Netlist Parsers (iscas_parser.py & iwls_parser.py)](#15-benchmark-netlist-parsers-iscas_parserpy--iwls_parserpy)
+20. [Summary Table & Cheat Sheet](#16-summary-table--cheat-sheet)
 
 ---
 
@@ -64,7 +68,7 @@ pip install pyside6 setuptools cython orjson matplotlib psutil numpy aioconsole
 | **`cython`** | Optimizing static compiler translating Cython (`.pyx`) code into native C++ extensions. |
 | **`orjson`** | Ultra-fast JSON library for parsing and dumping large verification reports and benchmark results. |
 | **`matplotlib`** | Plotting engine for generating cache cliff curves, scaling charts, and memory locality histograms (`--plot`). |
-| **`psutil`** | Cross-platform system and process monitoring library used for tracking peak RAM usage (RSS in MB) in [`load.py`](file:///home/farhan/Github/darion-logic-sim/tests/load.py) and [`cache_test.py`](file:///home/farhan/Github/darion-logic-sim/tests/cache_test.py). |
+| **`psutil`** | Cross-platform system and process monitoring library used for tracking peak RAM usage (RSS in MB) in [`load.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/load.py) and [`cache_test.py`](file:///home/farhan/Github/darion-logic-sim/tests/cache_test.py). |
 | **`numpy`** | Vectorized array processing for calculating jump distances, percentiles, and cache locality metrics in [`geometry.py`](file:///home/farhan/Github/darion-logic-sim/tests/geometry.py). |
 | **`aioconsole`** | Non-blocking asynchronous console I/O for interactive terminal menus in [`tests/CLI.py`](file:///home/farhan/Github/darion-logic-sim/tests/CLI.py) and [`integrity_test.py`](file:///home/farhan/Github/darion-logic-sim/tests/integrity_test.py). |
 
@@ -240,7 +244,7 @@ The repository includes standard benchmark suites located in `tests/`:
 ## 2. `benchmark.py` — Combinational Multi-Engine Benchmark
 
 ### 2.1 Purpose & Methodology
-**File:** [`tests/benchmark.py`](file:///home/farhan/Github/darion-logic-sim/tests/benchmark.py)  
+**File:** [`tests/src/benchmark.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/benchmark.py)  
 **Purpose:** Head-to-head simulation throughput benchmark comparing up to 6 execution backends on combinational netlists (ISCAS-85, EPFL standard, large, and mammoth).
 
 **Methodology:**
@@ -298,8 +302,8 @@ python tests/benchmark.py tests/EPFL_mammoth_parsed --optimize --vectors 50 --wa
 ## 3. `benchmark_89.py` — Sequential Multi-Engine Benchmark
 
 ### 3.1 Purpose & Methodology
-**File:** [`tests/benchmark_89.py`](file:///home/farhan/Github/darion-logic-sim/tests/benchmark_89.py)  
-**Purpose:** Multi-engine simulation benchmark on ISCAS-89 sequential circuits containing flip-flops (DFF).
+**File:** [`tests/src/benchmark_89.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/benchmark_89.py)  
+**Purpose:** Clock-driven sequential simulation benchmark measuring throughput and speedup across 30 ISCAS-89 netlists featuring D-type flip-flop (DFF) state feedback.
 
 **Methodology:**
 - **DFF IC Integration:** Automatically loads [`DFF.json`](file:///home/farhan/Github/darion-logic-sim/DFF.json) and wires clock, data, and output pins.
@@ -345,11 +349,69 @@ python tests/benchmark_89.py tests/ISCAS89/s38584.v --optimize --vectors 10000 -
 
 ---
 
+## 3b. `benchmark_iwls.py` — IWLS 2005 Multi-Engine Benchmark
+
+### 3b.1 Purpose & Methodology
+**File:** [`tests/src/benchmark_iwls.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/benchmark_iwls.py)  
+**Purpose:** Industrial standard-cell sequential benchmark measuring simulation throughput and hardware PMU cache profiles on synthesized IWLS 2005 circuits mapped to the Cadence GSCLib 3.0 standard-cell library.
+
+**Methodology:**
+- **Standard-Cell Library Translation:** Directly instantiates 37 standard-cell gate types (`AOI`, `OAI`, `MUX`, `ADD`, `DFFSRX1`, `SDFFSRX1`, etc.) via native Darion primitives.
+- **Clock-Aware Paired Vector Execution:** Generates two-phase transitions (`CLK=0` setup phase, `CLK=1` trigger phase) to faithfully stimulate sequential flip-flops and latches.
+- **50-Cycle Warmup Flush:** Flushes DFF initial state registers using 50 warmup clock toggles.
+- **Subprocess Worker Isolation:** Runs each engine in an isolated subprocess (`--internal-worker`) to prevent Cython memory retention or C-level state interference.
+- **Default Topological Optimization:** Netlists are topologically optimized by default (`rx-prop`), with `--raw` available to benchmark raw unoptimized netlist order.
+- **Hardware PMU Counter Tracing:** Interfaces with Linux `perf` via `--perf` and `--perf-events` to profile cache miss rates, branch mispredictions, and IPC directly at hardware counter level.
+
+### 3b.2 Command-Line Options
+```text
+usage: benchmark_iwls.py [-h] [--vectors VECTORS] [--warmup WARMUP]
+                         [--raw]
+                         [--no-engine] [--no-reactor] [--no-rx-prop]
+                         [--no-rx-sweep] [--no-rx-oop] [--no-icarus]
+                         [--no-verilator] [--dump] [--json]
+                         [--perf] [--perf-events PERF_EVENTS]
+                         [--bench | --no-bench] [--verify]
+                         [--verify-vectors VERIFY_VECTORS]
+                         [target ...]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `target` | Positional | `tests/IWLS2005/itc99/` | Path to one or more IWLS netlist `.v` files or directories. |
+| `--vectors` | Integer | `50000` | Number of logical test vectors. |
+| `--warmup` | Integer | `10` | Number of warmup vectors. |
+| `--optimize` | Flag | `True` | Enable topological circuit optimization and defragmentation. |
+| `--no-optimize` | Flag | `False` | Disable topological circuit optimization. |
+| `--no-engine` | Flag | `False` | Skip Pure Python Engine. |
+| `--no-rx-prop` | Flag | `False` | Skip Reactor BFS wavefront propagate mode. |
+| `--no-rx-sweep` | Flag | `False` | Skip Reactor linear sweep mode. |
+| `--no-rx-oop` | Flag | `False` | Skip Reactor OOP mode. |
+| `--no-icarus` | Flag | `False` | Skip Icarus Verilog sequential harness. |
+| `--no-verilator` | Flag | `False` | Skip Verilator C++ sequential harness. |
+| `--perf` | Flag | `False` | Enable Linux `perf` hardware counter measurement. |
+| `--dump` | Flag | `False` | Save Markdown dump to `tests/test_result/benchmark/`. |
+| `--json` | Flag | `False` | Output JSON summary to stdout. |
+
+### 3b.3 Execution Examples
+```bash
+# Benchmark all ITC99 circuits using Reactor Propagate and OOP
+python tests/benchmark_iwls.py tests/IWLS2005/itc99 --no-engine --no-icarus --no-verilator --dump
+
+# Benchmark a single circuit with 20,000 vectors
+python tests/benchmark_iwls.py tests/IWLS2005/itc99/b14.v --vectors 20000 --dump
+
+# Run hardware PMU profiling on a netlist
+python tests/benchmark_iwls.py tests/IWLS2005/itc99/b14.v --perf --vectors 10000
+```
+
+---
+
 ## 4. `load.py` — Universal RAM & Memory Footprint Benchmark
 
 ### 4.1 Purpose & Methodology
-**File:** [`tests/load.py`](file:///home/farhan/Github/darion-logic-sim/tests/load.py)  
-**Purpose:** Measures the true Resident Set Size (RSS RAM) footprint in megabytes (MB) of loading any circuit (combinational or sequential) across simulation engines.
+**File:** [`tests/src/load.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/load.py)  
+**Purpose:** Measures the exact process resident set size (RSS) in megabytes, net circuit graph RAM, and peak memory overhead (VmHWM) of parsing and loading any digital netlist (combinational or sequential) across simulation engines.
 
 **Methodology:**
 - Uses `psutil.Process().memory_info().rss` in isolated subprocesses to record true baseline vs. post-load memory consumption.
@@ -431,8 +493,8 @@ python tests/geometry.py tests/ISCAS85/c7552.v --plot
 ## 6. `verifier.py` — Combinational State & Equivalence Verifier
 
 ### 6.1 Purpose & Methodology
-**File:** [`tests/verifier.py`](file:///home/farhan/Github/darion-logic-sim/tests/verifier.py)  
-**Purpose:** Formally verifies 100% bit-exact correctness between all simulation backends on combinational netlists (ISCAS-85 / EPFL).
+**File:** [`tests/src/verifier.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/verifier.py)  
+**Purpose:** State verification testbench evaluating 100% bit-exact equivalence between all Darion Logic Sim backends and golden reference models (Icarus Verilog and Verilator C++) across ISCAS-85 and EPFL combinational circuits.
 
 **Engines Compared:**
 1. Icarus Verilog (Golden Reference via Verilog file I/O)
@@ -484,8 +546,8 @@ python tests/verifier.py tests/ISCAS85/c880.v --vectors 500
 ## 7. `verifier_89.py` — Sequential State & Equivalence Verifier
 
 ### 7.1 Purpose & Methodology
-**File:** [`tests/verifier_89.py`](file:///home/farhan/Github/darion-logic-sim/tests/verifier_89.py)  
-**Purpose:** Bit-exact state verification across all engines on sequential ISCAS-89 circuits with internal state registers (DFFs).
+**File:** [`tests/src/verifier_89.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/verifier_89.py)  
+**Purpose:** Sequential state verification testbench verifying bit-exact cycle-by-cycle agreement on ISCAS-89 clocked sequential circuits with DFF feedback loops.
 
 **Methodology:**
 - Synchronizes flip-flop initial states using a 50-cycle alternating clock warmup.
@@ -508,6 +570,39 @@ python tests/verifier_89.py tests/ISCAS89 --vectors 500 --dump
 
 # Verify single sequential circuit
 python tests/verifier_89.py tests/ISCAS89/s27.v --vectors 200
+```
+
+---
+
+## 7b. `verifier_iwls.py` — IWLS 2005 Sequential State & Equivalence Verifier
+
+### 7b.1 Purpose & Methodology
+**File:** [`tests/verifier_iwls.py`](file:///home/farhan/Github/darion-logic-sim/tests/verifier_iwls.py)  
+**Purpose:** Bit-exact cycle-by-cycle state verification across all simulation engines on IWLS 2005 sequential circuits utilizing Cadence GSCLib 3.0 standard cell library primitives.
+
+**Methodology:**
+- **Golden Model Reference:** Simulates netlist against Icarus Verilog or Verilator using standard-cell behavioral models (`GSCLib_3.0.v`).
+- **50-Cycle Hardware Warmup:** Flushes DFF initial state registers using alternating clock cycles with zeroed data inputs before verification begins.
+- **Multi-Bit Bus Normalization:** Transparently unpacks and verifies multi-bit bus vectors (e.g. `[msb:lsb]`) and escaped identifiers.
+- **Engine Cross-Validation:** Compares cycle-by-cycle output states across Icarus, Verilator, Pure Python Engine, Reactor Propagate, Reactor Sweep, and Reactor OOP.
+- **Pinpoint Diagnostic Reports:** In case of discrepancies, reports the exact cycle, mismatched pin, expected bit value, and received bit value.
+
+### 7b.2 Command-Line Options
+```text
+usage: verifier_iwls.py [-h] [--vectors VECTORS] [--seed SEED]
+                        [--output OUTPUT] [--dump] [--json]
+                        [--no-engine] [--no-rx-prop] [--no-rx-sweep]
+                        [--no-rx-oop] [--no-icarus] [--no-verilator]
+                        [target ...]
+```
+
+### 7b.3 Execution Examples
+```bash
+# Verify bit-exact equivalence on an ITC99 circuit across all engines
+python tests/verifier_iwls.py tests/IWLS2005/itc99/b01.v --vectors 1000
+
+# Run quick verification across the entire ITC99 directory
+python tests/verifier_iwls.py tests/IWLS2005/itc99 --vectors 100 --dump
 ```
 
 ---
@@ -592,19 +687,127 @@ python tests/cache_perf.py --and --plot
 ## 10. `perf.py` — Multi-Engine Hardware Event Profiler
 
 ### 10.1 Purpose & Methodology
-**File:** [`tests/perf.py`](file:///home/farhan/Github/darion-logic-sim/tests/perf.py)  
-**Platform:** Linux only.  
-**Purpose:** Multi-engine hardware PMU profiler comparing Engine, Reactor Propagate, Reactor Sweep, Reactor OOP, Icarus Verilog, and Verilator on ISCAS-85 circuits.
+**File:** [`tests/src/perf.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/perf.py)  
+**Platform:** Linux-exclusive (requires Linux kernel PMU performance counters and `/tmp/rx_perf_ctrl` named pipe).  
+**Purpose:** Traces microarchitectural hardware performance counters to quantify CPU efficiency, memory bandwidth bottlenecks, and optimization gains.
 
-Generates comprehensive Markdown tables detailing IPC, branch mispredictions, L1/L2 hit rates, and RAM traffic per circuit.
+**Methodology & Capabilities:**
+- **Suite Target Aliases:** Directly accepts benchmark suite names or file paths:
+  - `iwls` / `itc99`: IWLS 2005 ITC99 circuits (`tests/IWLS2005/itc99`)
+  - `opencores`: IWLS 2005 OpenCores circuits (`tests/IWLS2005/opencores`)
+  - `faraday`: IWLS 2005 Faraday circuits (`tests/IWLS2005/faraday`)
+  - `iscas85`: ISCAS-85 combinational benchmark suite (`tests/ISCAS85`)
+  - `iscas89`: ISCAS-89 sequential benchmark suite (`tests/ISCAS89`)
+  - `epfl` / `epfl_large` / `epfl_mammoth`: EPFL benchmark suites
+  - Custom netlist file paths, directory paths, or glob patterns (e.g. `tests/IWLS2005/itc99/b*.v`).
+- **Dynamic Script Dispatcher:** Automatically detects the circuit architecture and dispatches the execution to the appropriate runner:
+  - IWLS standard-cell circuits -> [`tests/benchmark_iwls.py`](file:///home/farhan/Github/darion-logic-sim/tests/benchmark_iwls.py)
+  - ISCAS-89 sequential circuits -> [`tests/benchmark_89.py`](file:///home/farhan/Github/darion-logic-sim/tests/benchmark_89.py)
+  - Combinational circuits (ISCAS-85, EPFL) -> [`tests/benchmark.py`](file:///home/farhan/Github/darion-logic-sim/tests/benchmark.py)
+- **Topological Optimization Profiling:** Runs two separate passes for Reactor Propagate:
+  - **Unoptimized (`unopt`):** Netlist executed in raw input order without defragmentation (`--no-optimize`), capturing worst-case cache locality.
+  - **Optimized (`opt`):** Netlist topologically sorted and memory-defragmented (`--optimize`).
+- **Low-Overhead FIFO Signaling:** Communicates with `perf` using `/tmp/rx_perf_ctrl` named pipes so hardware counter accumulation starts immediately before the test vector loop and stops immediately after, completely omitting Python bytecode compilation, circuit loading, and testbench setup overhead.
+- **Detailed Hardware Counter Tracking:**
+  - **IPC (Instructions Per Cycle)**
+  - **CPU Cycles & Retired Instructions**
+  - **L1 Data Cache Loads & Hit Rates**
+  - **L2 Cache Misses & Hit Rates**
+  - **L3 / DRAM Bus Traffic (Last-Level Cache Misses)**
+  - **Branch Execution & Misprediction Rates**
+- **Automated Reporting:** Generates side-by-side comparison tables, delta analyses (speedup, instruction reductions, L1 load reductions), and dumps markdown reports directly to `tests/test_result/perf/perf_report_<timestamp>.md`.
 
-### 10.2 Execution Examples
+### 10.2 Command-Line Options
+```text
+usage: perf.py [-h] [--vectors VECTORS] [--filter FILTER] [--limit LIMIT]
+               [--all-engines]
+               [target]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `target` | Positional | `tests/IWLS2005/itc99` | Circuit file, directory path, or suite alias (`iwls`, `itc99`, `opencores`, `faraday`, `iscas85`, `iscas89`, `epfl`, `epfl_large`). |
+| `--vectors` | Integer | `5000` | Number of logical test vectors per circuit. |
+| `--filter` | String | `""` | Filter circuits by substring (e.g. `b01`, `c7552`). |
+| `--limit` | Integer | `None` | Max number of circuits to profile. |
+| `--all-engines` | Flag | `False` | Profile all 6 engines (including Python Engine, Sweep, Icarus, Verilator). |
+
+### 10.3 Execution Examples
 ```bash
-# Profile all ISCAS-85 circuits (5,000 vectors each)
-python tests/perf.py --vectors 5000
+# Profile IWLS 2005 ITC99 circuits (default, 10,000 vectors, 15 circuits)
+python tests/perf.py iwls --vectors 10000 --limit 15
 
-# Profile specific circuit
-python tests/perf.py --vectors 5000 --filter c7552
+# Profile ISCAS-85 combinational suite
+python tests/perf.py iscas85 --vectors 5000
+
+# Profile a specific IWLS circuit
+python tests/perf.py tests/IWLS2005/itc99/b14.v --vectors 10000
+
+# Profile all engines across ISCAS-85
+python tests/perf.py iscas85 --all-engines --vectors 5000
+```
+
+---
+
+## 10b. `master_test.py` — Master Unified 3-in-1 Benchmark Harness
+
+### 10b.1 Purpose & Methodology
+**File:** [`tests/master_test.py`](file:///home/farhan/Github/darion-logic-sim/tests/master_test.py)  
+**Platform:** Linux recommended for hardware PMU counters (graceful cross-platform fallback for software timing).  
+**Purpose:** The master unified benchmark harness executing all three core evaluation dimensions in a single integrated pipeline across ISCAS-85, ISCAS-89, EPFL, and IWLS 2005 suites.
+
+**The Three Integrated Testing Dimensions:**
+1. **Phase 1: Zero-Testbench Load & Memory Footprint:**
+   - Evaluates pure circuit instantiation without testbench scaffolding overhead.
+   - Measures parsing time (`load_ms`), topological optimization time (`opt_ms`), net circuit RAM (`circ_mb`), and peak process memory (`peak_mb`, VmHWM) across Cython Reactor and pure Python Engine (plus Icarus Verilog and Verilator if `--all-engines`).
+2. **Phase 2: Correctness & Bit-Exact Verification:**
+   - Runs cross-engine cycle-by-cycle equivalence checking against golden reference models (Icarus Verilog or Verilator).
+   - Verifies 100% bit-exact agreement across test vectors.
+   - Emits `PASS` / `FAIL` status and mismatch diagnostics before starting high-performance simulation.
+3. **Phase 3: High-Performance Simulation & Hardware PMU Profiling:**
+   - Runs timed simulation loops measuring throughput (vectors/sec) and evaluation rates (MEPS).
+   - Profiles hardware performance counters via Linux `perf` PMU: IPC, CPU cycles, retired instructions, L1/L2 cache hit rates, L3/LLC misses, and branch mispredictions.
+   - Traces performance for `rx-prop` (topologically optimized by default, or raw with `--raw`) and `rx-oop (OOP Engine)`.
+
+### 10b.2 Command-Line Options
+```text
+usage: master_test.py [-h] [--vectors VECTORS]
+                      [--verify-vectors VERIFY_VECTORS]
+                      [--warmup WARMUP] [--filter FILTER]
+                      [--limit LIMIT] [--all-engines] [--skip-load]
+                      [--skip-verify] [--skip-perf] [--raw] [--no-dump]
+                      [--json]
+                      [target]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `target` | Positional | `tests/IWLS2005/itc99` | Suite alias (`iwls`, `itc99`, `opencores`, `faraday`, `iscas85`, `iscas89`, `epfl`, `epfl_large`), file path, or glob. |
+| `--vectors` | Integer | `10000` | Number of test vectors for Phase 3 simulation and PMU profiling. |
+| `--verify-vectors` | Integer | `100` | Number of test vectors for Phase 2 equivalence verification. |
+| `--warmup` | Integer | `10` | Untimed warmup vectors. |
+| `--filter` | String | `""` | Substring filter for circuit names. |
+| `--limit` | Integer | `None` | Max number of circuits to benchmark. |
+| `--all-engines` | Flag | `False` | Benchmark all engines (Engine, Sweep, Icarus, Verilator). |
+| `--skip-load` | Flag | `False` | Skip Phase 1 load & memory benchmark. |
+| `--skip-verify` | Flag | `False` | Skip Phase 2 state verification. |
+| `--skip-perf` | Flag | `False` | Run Phase 3 simulation without hardware PMU counters. |
+| `--no-dump` | Flag | `False` | Disable Markdown and JSON file exports to disk. |
+| `--json` | Flag | `False` | Output final multi-phase results as structured JSON to stdout. |
+
+### 10b.3 Execution Examples
+```bash
+# Full 3-in-1 evaluation of IWLS 2005 ITC99 circuits (first 5 circuits)
+python tests/master_test.py iwls --limit 5
+
+# Full 3-in-1 evaluation of ISCAS-85 combinational suite
+python tests/master_test.py iscas85 --vectors 10000
+
+# Full 3-in-1 evaluation of ISCAS-89 sequential circuits
+python tests/master_test.py iscas89 --limit 5 --vectors 10000
+
+# Single circuit comprehensive evaluation
+python tests/master_test.py tests/IWLS2005/itc99/b14.v --vectors 20000 --verify-vectors 100
 ```
 
 ---
@@ -669,7 +872,7 @@ python tests/integrity_test.py --engine
 ## 13. `iscas89_sequential_harness.py` — Sequential Verilog Harness Engine
 
 ### 13.1 Purpose & Architecture
-**File:** [`tests/iscas89_sequential_harness.py`](file:///home/farhan/Github/darion-logic-sim/tests/iscas89_sequential_harness.py)  
+**File:** [`tests/src/iscas89_sequential_harness.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/iscas89_sequential_harness.py)  
 **Purpose:** Reusable harness module for generating timing-instrumented Icarus Verilog testbenches and Verilator C++ wrappers for sequential circuits.
 
 **Features:**
@@ -687,57 +890,113 @@ result_v = run_verilator_harness_89('tests/ISCAS89/s27.v', vectors=5000, warmup=
 
 ---
 
-## 14. `bash_test.sh` — Automated Pipeline Runner
+## 14. `run_all_test.sh` — Automated Pipeline Runner
 
 ### 14.1 Purpose & Execution
-**File:** [`bash_test.sh`](file:///home/farhan/Github/darion-logic-sim/bash_test.sh)  
+**File:** [`run_all_test.sh`](file:///home/farhan/Github/darion-logic-sim/run_all_test.sh)  
 **Purpose:** Top-level batch script executing the full end-to-end benchmark and profiling pipeline across all combinational and sequential benchmark suites.
 
 **Contents & Pipeline Workflow:**
 ```bash
-# 1. RAM Footprint Tests
-python tests/load.py tests/ISCAS85 --dump 
-python tests/load.py tests/EPFL_parsed --dump
-python tests/load.py tests/EPFL_large_parsed --dump
-python tests/load.py tests/EPFL_mammoth_parsed --dump
+cd tests/
+
+# 1. RAM Footprint Benchmarks
+python load.py ISCAS85 --dump 
+python load.py ISCAS89 --dump 
+python load.py EPFL_parsed --dump
+python load.py EPFL_large_parsed --dump
+python load.py EPFL_mammoth_parsed --dump
+python load.py IWLS2005/itc99 --dump 
+python load.py IWLS2005/opencores --dump 
+python load.py IWLS2005/faraday --dump
 
 # 2. Combinational Simulation Benchmarks
-python tests/benchmark.py tests/ISCAS85 --optimize --vector 50000 --warmup 10 --dump 
-python tests/benchmark.py tests/EPFL_parsed --optimize --vector 50000 --warmup 10 --dump 
-python tests/benchmark.py tests/EPFL_large_parsed --optimize --vector 500 --warmup 10 --no-engine --dump 
-python tests/benchmark.py tests/EPFL_mammoth_parsed --optimize --vector 50 --warmup 10 --no-engine --dump 
+python benchmark.py ISCAS85 --optimize --vector 50000 --warmup 10 --dump 
+python benchmark.py EPFL_parsed --optimize --vector 50000 --warmup 10 --dump 
+python benchmark.py EPFL_large_parsed --optimize --vector 500 --warmup 10 --no-engine --dump 
+python benchmark.py EPFL_mammoth_parsed --optimize --vector 50 --warmup 10 --no-engine --dump 
 
 # 3. Sequential Simulation Benchmarks
-python tests/benchmark_89.py tests/ISCAS89 --optimize --vector 50000 --warmup 10 --dump 
+python benchmark_89.py ISCAS89 --optimize --no-engine --vector 50000 --warmup 10 --dump 
+python benchmark_iwls.py IWLS2005/itc99 --optimize --no-engine --no-rx-oop --no-rx-sweep --vector 50000 --warmup 10 --dump 
+python benchmark_iwls.py IWLS2005/opencores --optimize --no-engine --no-rx-oop --no-rx-sweep --vector 50000 --warmup 10 --dump 
+python benchmark_iwls.py IWLS2005/faraday --optimize --no-engine --no-rx-oop --no-rx-sweep --vector 50000 --warmup 10 --dump 
 
 # 4. Topological Geometry Analysis
-python tests/geometry.py tests/ISCAS85 --dump
-python tests/geometry.py tests/ISCAS89 --dump
-python tests/geometry.py tests/EPFL_parsed --dump
-python tests/geometry.py tests/EPFL_large_parsed --dump
-python tests/geometry.py tests/EPFL_mammoth_parsed --dump
+python geometry.py ISCAS85 --dump
+python geometry.py ISCAS89 --dump
+python geometry.py EPFL_parsed --dump
+python geometry.py EPFL_large_parsed --dump
+python geometry.py EPFL_mammoth_parsed --dump
+python geometry.py IWLS2005/itc99/ --dump
+python geometry.py IWLS2005/opencores/ --dump
+python geometry.py IWLS2005/faraday/ --dump
 ```
 
 To run the full suite:
 ```bash
-bash bash_test.sh
+bash run_all_test.sh
 ```
 
 ---
 
-## 15. Summary Table & Cheat Sheet
+## 15. Benchmark Netlist Parsers (`iscas_parser.py` & `iwls_parser.py`)
+
+### 15.1 Purpose & Role
+**Files:**
+- [`scripts/iscas_parser.py`](file:///home/farhan/Github/darion-logic-sim/scripts/iscas_parser.py)
+- [`scripts/iwls_parser.py`](file:///home/farhan/Github/darion-logic-sim/scripts/iwls_parser.py)
+
+**Purpose:** Translates raw Verilog netlists (`.v`) into native Darion Circuit JSON files (`.json`). Pre-parsing netlists eliminates text parsing and regex overhead during benchmark startup, accelerating load benchmarks and simulation setup by up to 50x.
+
+### 15.2 Features & Capabilities
+- **ISCAS Parser (`iscas_parser.py`):**
+  - Parses ISCAS-85 combinational and ISCAS-89 sequential netlists.
+  - Generates `c*.json` and `s*.json` files.
+  - Instantiates flip-flops via `DFF.json`.
+- **IWLS 2005 Parser (`iwls_parser.py`):**
+  - Full Cadence GSCLib 3.0 standard cell library support (37 cell types, AOI, OAI, MUX, adders, buffers, etc.).
+  - Handles sequential flip-flops (`DFFSRX1`, `DFFX1`, `SDFFSRX1` scan multiplexing, `TLATX1` transparent latches).
+  - Resolves multi-bit bus vectors (`input [15:0]`) and escaped identifiers (`\stato[0] `).
+  - Resolves continuous assignments (`assign a = b`).
+  - Supports gate order randomization (`--random`) and topological graph optimization (`--optimize`).
+  - Automatically targets `itc99`, `opencores`, and `faraday` subdirectories.
+
+### 15.3 CLI Usage
+```bash
+# Parse a single IWLS netlist
+python scripts/iwls_parser.py tests/IWLS2005/itc99/b01.v
+
+# Parse an entire directory
+python scripts/iwls_parser.py tests/IWLS2005/itc99
+
+# Parse with gate randomization and topological optimization
+python scripts/iwls_parser.py tests/IWLS2005/itc99/b06.v --random --optimize
+
+# Batch convert all IWLS 2005 benchmark directories (skipping files > 5MB)
+python scripts/iwls_parser.py --max-size-mb 5 --skip-existing
+```
+
+---
+
+## 16. Summary Table & Cheat Sheet
 
 | Script | Primary Question / Goal | Backends Evaluated | Datasets Supported | Key Flags |
 |---|---|---|---|---|
-| [`benchmark.py`](file:///home/farhan/Github/darion-logic-sim/tests/benchmark.py) | How fast is raw combinational simulation vs. Icarus & Verilator? | Engine, Rx-Prop, Rx-Sweep, Rx-OOP, Icarus, Verilator | ISCAS-85, EPFL (std/large/mammoth) | `--optimize`, `--vectors`, `--warmup`, `--dump`, `--no-engine` |
-| [`benchmark_89.py`](file:///home/farhan/Github/darion-logic-sim/tests/benchmark_89.py) | How fast is clocked sequential simulation with DFF feedback? | Engine, Rx-Prop, Rx-Sweep, Rx-OOP, Icarus, Verilator | ISCAS-89 (`.v`, `.json`) | `--optimize`, `--vectors`, `--warmup`, `--dump` |
-| [`load.py`](file:///home/farhan/Github/darion-logic-sim/tests/load.py) | What is the true RAM footprint (RSS in MB) of loading circuits? | Engine, Reactor, Icarus, Verilator | Any `.v` or `.json` (Comb & Seq) | `--dump`, `--json`, `--no-engine` |
+| [`benchmark.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/benchmark.py) | How fast is raw combinational simulation vs. Icarus & Verilator? | Engine, Rx-Prop, Rx-Sweep, Rx-OOP, Icarus, Verilator | ISCAS-85, EPFL (std/large/mammoth) | `--optimize`, `--vectors`, `--warmup`, `--dump`, `--no-engine` |
+| [`benchmark_89.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/benchmark_89.py) | How fast is clocked sequential simulation with DFF feedback? | Engine, Rx-Prop, Rx-Sweep, Rx-OOP, Icarus, Verilator | ISCAS-89 (`.v`, `.json`) | `--optimize`, `--vectors`, `--warmup`, `--dump` |
+| [`benchmark_iwls.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/benchmark_iwls.py) | How fast is clocked sequential simulation on complex standard-cell designs? | Engine, Rx-Prop, Rx-Sweep, Rx-OOP, Icarus, Verilator | IWLS 2005 (`itc99`, `opencores`, `faraday`) | `--vectors`, `--warmup`, `--perf`, `--no-engine` |
+| [`iscas_parser.py`](file:///home/farhan/Github/darion-logic-sim/scripts/iscas_parser.py) | How do we pre-serialize ISCAS Verilog netlists into JSON? | N/A (Utility) | ISCAS-85, ISCAS-89 (`.v` -> `.json`) | `--random`, `path` |
+| [`iwls_parser.py`](file:///home/farhan/Github/darion-logic-sim/scripts/iwls_parser.py) | How do we pre-serialize standard-cell IWLS Verilog netlists into JSON? | N/A (Utility) | IWLS 2005 (`itc99`, `opencores`, `faraday`) | `--random`, `--optimize`, `--max-size-mb`, `--skip-existing` |
+| [`load.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/load.py) | What is the true RAM footprint (RSS in MB) of loading circuits? | Engine, Reactor, Icarus, Verilator | Any `.v` or `.json` (Comb & Seq) | `--dump`, `--json`, `--no-engine` |
 | [`geometry.py`](file:///home/farhan/Github/darion-logic-sim/tests/geometry.py) | What are the physical memory hop distances & cache locality profiles? | Cython Reactor | Any `.v` or `.json` (Comb & Seq) | `--dump`, `--plot` |
-| [`verifier.py`](file:///home/farhan/Github/darion-logic-sim/tests/verifier.py) | Do combinational outputs match bit-for-bit across all engines? | 6 backends | ISCAS-85, EPFL (`.v`) | `--vectors`, `--seed`, `--output`, `--dump` |
-| [`verifier_89.py`](file:///home/farhan/Github/darion-logic-sim/tests/verifier_89.py) | Do sequential DFF outputs match bit-for-bit across all engines? | 6 backends | ISCAS-89 (`.v`, `.json`) | `--vectors`, `--seed`, `--output`, `--dump` |
+| [`verifier.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/verifier.py) | Do combinational outputs match bit-for-bit across all engines? | 6 backends | ISCAS-85, EPFL (`.v`) | `--vectors`, `--seed`, `--output`, `--dump` |
+| [`verifier_89.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/verifier_89.py) | Do sequential DFF outputs match bit-for-bit across all engines? | 6 backends | ISCAS-89 (`.v`, `.json`) | `--vectors`, `--seed`, `--output`, `--dump` |
+| [`verifier_iwls.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/verifier_iwls.py) | Do sequential DFF outputs match bit-for-bit on IWLS standard-cell circuits? | 6 backends | IWLS 2005 (`itc99`, `opencores`, `faraday`) | `--vectors`, `--seed`, `--output`, `--dump` |
 | [`cache_test.py`](file:///home/farhan/Github/darion-logic-sim/tests/cache_test.py) | Where are the CPU cache cliffs (L1/L2/L3), and how much does `optimize()` help? | Reactor, Engine, Rx-OOP | Synthetic chains (100–2M gates) | `--chaotic`, `--realistic`, `--and`, `--plot`, `--dump` |
 | [`cache_perf.py`](file:///home/farhan/Github/darion-logic-sim/tests/cache_perf.py) | What are the hardware PMU cache miss rates & IPC across circuit scales? | OOP, Unopt, Opt, Sweep | Synthetic chains | `--chaotic`, `--realistic`, `--plot` (Linux only) |
-| [`perf.py`](file:///home/farhan/Github/darion-logic-sim/tests/perf.py) | What are the hardware PMU cache miss rates & IPC on real circuits? | 6 backends | ISCAS-85 | `--vectors`, `--filter`, `--limit` (Linux only) |
+| [`perf.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/perf.py) | What are the hardware PMU cache miss rates, IPC & speedups vs OOP? | Rx-Prop, Rx-OOP, 6 backends | IWLS 2005, ISCAS-85, ISCAS-89, EPFL | `target`, `--vectors`, `--raw`, `--filter`, `--limit`, `--all-engines` (Linux only) |
+| [`master_test.py`](file:///home/farhan/Github/darion-logic-sim/tests/master_test.py) | How do we benchmark memory footprint, verification, and hardware perf all at once? | Rx-Prop, Rx-OOP, Engine, Icarus, Verilator | IWLS 2005, ISCAS-85, ISCAS-89, EPFL | `target`, `--vectors`, `--verify-vectors`, `--raw`, `--limit`, `--dump` |
 | [`ic_circuit_benchmark.py`](file:///home/farhan/Github/darion-logic-sim/tests/ic_circuit_benchmark.py) | Does IC packaging and JSON serialization scale to deep hierarchies? | Engine, Reactor | Synthetic ICs & nested chains | Standalone script |
 | [`integrity_test.py`](file:///home/farhan/Github/darion-logic-sim/tests/integrity_test.py) | Is every single engine feature, gate, undo/redo, and truth table 100% correct? | Engine, Reactor | Full unit/functional test suite | `--engine`, `--optimize` |
-| [`bash_test.sh`](file:///home/farhan/Github/darion-logic-sim/bash_test.sh) | How do I run all RAM, simulation, and geometry benchmarks in batch? | Orchestrator | All benchmark suites | Standalone shell script |
+| [`run_all_test.sh`](file:///home/farhan/Github/darion-logic-sim/run_all_test.sh) | How do I run all RAM, simulation, and geometry benchmarks in batch? | Orchestrator | All benchmark suites | Standalone shell script |

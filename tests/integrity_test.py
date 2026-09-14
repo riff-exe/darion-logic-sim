@@ -33,7 +33,8 @@ LOG_FILE = "master_test_results.txt"
 import argparse
 parser = argparse.ArgumentParser(description='Run Master Integrity Tests')
 parser.add_argument('--engine', action='store_true', help='Use Python engine backend (default: Reactor/Cython)')
-parser.add_argument('--optimize', action='store_true', help='Call c.optimize() on circuits before benchmarking')
+parser.add_argument('--optimize', action='store_true', default=None, help='Call c.optimize() on circuits (default: enabled)')
+parser.add_argument('--raw', action='store_true', help='Disable topological optimization (use raw netlist order)')
 args, unknown = parser.parse_known_args()
 
 base_dir = os.getcwd()
@@ -68,7 +69,7 @@ from IC import IC
 from Control import Add, AddIC, Delete, Connect, Disconnect, Paste, Toggle, SetLimits, Rename
 
 Const.LIMIT = 100_000
-USE_OPTIMIZE = args.optimize
+USE_OPTIMIZE = False if args.raw else True
 USE_COUNTER=not use_reactor
 
 class AggressiveTestSuite:

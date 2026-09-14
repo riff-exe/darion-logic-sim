@@ -38,9 +38,12 @@ import math
 from pathlib import Path
 
 _SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
-_PROJECT_ROOT = os.path.dirname(_SCRIPT_DIR)
+_TESTS_DIR    = os.path.dirname(_SCRIPT_DIR)
+_PROJECT_ROOT = os.path.dirname(_TESTS_DIR)
 
 sys.path.insert(0, _SCRIPT_DIR)
+sys.path.insert(0, _TESTS_DIR)
+sys.path.insert(0, _PROJECT_ROOT)
 
 def send_perf_ctrl(cmd):
     try:
@@ -65,7 +68,7 @@ try:
     )
 except ImportError:
     try:
-        from tests.iscas89_sequential_harness import (
+        from tests.src.iscas89_sequential_harness import (
             run_icarus_harness_89,
             run_verilator_harness_89,
             parse_verilog_ports_89,
@@ -74,12 +77,22 @@ except ImportError:
             _VPI_TIMER_VPI,
         )
     except ImportError:
-        run_icarus_harness_89    = None
-        run_verilator_harness_89 = None
-        parse_verilog_ports_89   = None
-        _find_clock_idx          = None
-        _VPI_DIR                 = ""
-        _VPI_TIMER_VPI           = ""
+        try:
+            from tests.iscas89_sequential_harness import (
+                run_icarus_harness_89,
+                run_verilator_harness_89,
+                parse_verilog_ports_89,
+                _find_clock_idx,
+                _VPI_DIR,
+                _VPI_TIMER_VPI,
+            )
+        except ImportError:
+            run_icarus_harness_89    = None
+            run_verilator_harness_89 = None
+            parse_verilog_ports_89   = None
+            _find_clock_idx          = None
+            _VPI_DIR                 = ""
+            _VPI_TIMER_VPI           = ""
 
 
 # ===========================================================================
@@ -96,7 +109,7 @@ class SequentialVerilogRunner:
     generation ensures DFF capture semantics are correctly exercised.
     """
 
-    def __init__(self, v_file_path, circuit_cls, const_mod, is_reactor=True, is_oop=False, mode="engine", use_optimize=True):
+    def __init__(self, v_file_path, circuit_cls, const_mod, is_reactor=True, is_oop=False, mode="engine", use_optimize=True, dff_file=None):
         self.filepath = v_file_path
         self.mode = mode
         self.Circuit = circuit_cls
@@ -114,16 +127,29 @@ class SequentialVerilogRunner:
         self.input_vars = []
         self.dff_connections = []
         self.dff_crct = None
+        self.dff_path_loaded = None
 
-        # Load DFF.json from common locations
-        for p in [
+        # Load DFF.json or DFFSR.json from common locations
+        candidates = []
+        if dff_file:
+            candidates.append(dff_file)
+        candidates.extend([
             os.path.join(_SCRIPT_DIR, "DFF.json"),
+            os.path.join(_TESTS_DIR, "DFF.json"),
+            os.path.join(_PROJECT_ROOT, "tests", "src", "DFF.json"),
             os.path.join(_PROJECT_ROOT, "DFF.json"),
             "DFF.json",
-        ]:
-            if os.path.exists(p):
+            os.path.join(_SCRIPT_DIR, "DFFSR.json"),
+            os.path.join(_TESTS_DIR, "DFFSR.json"),
+            os.path.join(_PROJECT_ROOT, "tests", "src", "DFFSR.json"),
+            os.path.join(_PROJECT_ROOT, "DFFSR.json"),
+            "DFFSR.json",
+        ])
+        for p in candidates:
+            if p and os.path.exists(p):
                 try:
                     self.dff_crct = self.circuit.get_ic(p)
+                    self.dff_path_loaded = p
                     break
                 except Exception:
                     pass
@@ -146,6 +172,17 @@ class SequentialVerilogRunner:
             if node is not None:
                 self.output_objects.append(node)
 
+        if getattr(self, 'const_1_node', None) is not None:
+            self.const_1_node.value = self.const.HIGH
+            if hasattr(self.circuit, 'toggle'):
+                target = self.const_1_node if (self.is_oop or not self.is_reactor) else self.const_1_node.location
+                self.circuit.toggle(target, self.const.HIGH)
+        if getattr(self, 'const_0_node', None) is not None:
+            self.const_0_node.value = self.const.LOW
+            if hasattr(self.circuit, 'toggle'):
+                target = self.const_0_node if (self.is_oop or not self.is_reactor) else self.const_0_node.location
+                self.circuit.toggle(target, self.const.LOW)
+
     def _find_clock_var(self):
         """Return the clock variable node, prioritizing standard clock names."""
         for var in self.input_vars:
@@ -165,6 +202,81 @@ class SequentialVerilogRunner:
         return None
 
     def _parse_verilog(self, filepath):
+        json_path = filepath if filepath.endswith('.json') else filepath.replace('.v', '.json')
+        if os.path.exists(json_path) and hasattr(self.circuit, 'readfromjson'):
+            self.circuit.readfromjson(json_path)
+            v_path = filepath if filepath.endswith('.v') else filepath.replace('.json', '.v')
+            if os.path.exists(v_path) and parse_verilog_ports_89:
+                _, inputs, outputs = parse_verilog_ports_89(v_path)
+            else:
+                inputs, outputs = [], []
+
+            var_list = self.circuit.get_variables() if hasattr(self.circuit, 'get_variables') else []
+            var_dict = {}
+            for v in var_list:
+                name_str = getattr(v, 'custom_name', None) or getattr(v, 'codename', None) or str(v)
+                if isinstance(name_str, bytes):
+                    name_str = name_str.decode('utf-8', errors='ignore')
+                var_dict[name_str] = v
+
+            if inputs:
+                for inp in inputs:
+                    port_name = inp.split()[-1]
+                    expected_name = f"IN_{port_name}"
+                    if expected_name in var_dict:
+                        self.input_vars.append(var_dict[expected_name])
+                    else:
+                        for k, v in var_dict.items():
+                            if port_name in k:
+                                self.input_vars.append(v)
+                                break
+            else:
+                for name_str, v in sorted(var_dict.items()):
+                    if name_str.startswith("IN_"):
+                        self.input_vars.append(v)
+
+            if outputs:
+                for outp in outputs:
+                    port_name = outp.split()[-1]
+                    self.outputs.append(port_name)
+            else:
+                for comp in (self.circuit.get_components() if hasattr(self.circuit, 'get_components') else []):
+                    name_str = getattr(comp, 'custom_name', None) or getattr(comp, 'codename', None) or str(comp)
+                    if isinstance(name_str, bytes):
+                        name_str = name_str.decode('utf-8', errors='ignore')
+                    if name_str.startswith("OUT_"):
+                        p_name = name_str[4:].replace("_OUTPIN", "")
+                        if p_name not in self.outputs:
+                            self.outputs.append(p_name)
+
+            for comp in (self.circuit.get_components() if hasattr(self.circuit, 'get_components') else []):
+                name_str = getattr(comp, 'custom_name', None) or getattr(comp, 'codename', None) or str(comp)
+                if isinstance(name_str, bytes):
+                    name_str = name_str.decode('utf-8', errors='ignore')
+                if name_str.startswith("G_"):
+                    self.nodes[name_str[2:]] = comp
+                elif name_str.startswith("IN_"):
+                    self.nodes[name_str[3:]] = comp
+                elif name_str.startswith("OUT_"):
+                    clean = name_str[4:]
+                    if clean.endswith("_OUTPIN"):
+                        clean = clean[:-7]
+                    self.nodes[clean] = comp
+                    self.nodes[clean + "_OUTPIN"] = comp
+                elif name_str == "CONST_1":
+                    self.const_1_node = comp
+                    self.nodes["1'b1"] = comp
+                elif name_str == "CONST_0":
+                    self.const_0_node = comp
+                    self.nodes["1'b0"] = comp
+                else:
+                    self.nodes[name_str] = comp
+
+            if self.use_optimize and hasattr(self.circuit, 'optimize'):
+                self.circuit.optimize()
+            self.circuit.simulate(self.const.COMPILE if not self.is_reactor else self.const.SIMULATE)
+            return
+
         with open(filepath, 'r', encoding='utf-8') as f:
             content = f.read()
 
@@ -185,12 +297,14 @@ class SequentialVerilogRunner:
                 if not getattr(self, 'const_1_node', None):
                     self.const_1_node = self.circuit.getcomponent(self.const.VARIABLE_ID)
                     self.const_1_node.rename("CONST_1")
+                    self.const_1_node.value = self.const.HIGH
                     self.nodes["1'b1"] = self.const_1_node
                 return self.const_1_node
             elif val_str == "1'b0":
                 if not getattr(self, 'const_0_node', None):
                     self.const_0_node = self.circuit.getcomponent(self.const.VARIABLE_ID)
                     self.const_0_node.rename("CONST_0")
+                    self.const_0_node.value = self.const.LOW
                     self.nodes["1'b0"] = self.const_0_node
                 return self.const_0_node
             return None
@@ -229,13 +343,15 @@ class SequentialVerilogRunner:
                 gate_type = match.group(1).lower()
                 ports_str = match.group(3)
 
-                if gate_type.startswith('dff'):
+                if gate_type.startswith('dff') or gate_type.startswith('sdff'):
                     if not self.dff_crct:
                         raise RuntimeError(
-                            "DFF.json is required for ISCAS89 sequential circuits "
+                            "DFF.json or DFFSR.json is required for ISCAS89 sequential circuits "
                             "but was not found.")
 
                     wires = {}
+                    rn_wire = None
+                    sn_wire = None
                     if '.' in ports_str:
                         for pm in re.finditer(
                                 r'\.\s*([a-zA-Z0-9_]+)\s*\(\s*([a-zA-Z0-9_]+)\s*\)',
@@ -244,12 +360,18 @@ class SequentialVerilogRunner:
                         d_wire   = wires.get('D')
                         clk_wire = wires.get('CK', wires.get('CLK', wires.get('C')))
                         q_wire   = wires.get('Q')
+                        qn_wire  = wires.get('QN', wires.get("Q'"))
+                        rn_wire  = wires.get('RN', wires.get('RESET_N', wires.get('RST_N', wires.get('CLR_N'))))
+                        sn_wire  = wires.get('SN', wires.get('SET_N', wires.get('PRE_N')))
                     else:
                         pts = [p.strip() for p in ports_str.split(',')]
-                        # Positional: (CK, Q, D)
+                        # Positional: (CK, Q, D) or (CK, Q, D, RN, SN)
                         clk_wire = pts[0] if len(pts) > 0 else None
                         q_wire   = pts[1] if len(pts) > 1 else None
                         d_wire   = pts[2] if len(pts) > 2 else None
+                        qn_wire  = None
+                        rn_wire  = pts[3] if len(pts) > 3 else None
+                        sn_wire  = pts[4] if len(pts) > 4 else None
 
                     dff_inst  = self.circuit.load_ic(self.dff_crct)
                     inst_name = match.group(2) or f"inst_{len(self.dff_connections)}"
@@ -258,10 +380,12 @@ class SequentialVerilogRunner:
                     else:
                         dff_inst.custom_name = f"DFF_{inst_name}"
 
-                    if q_wire:
+                    if q_wire and len(dff_inst.outputs) > 0:
                         self.nodes[q_wire] = dff_inst.outputs[0]
+                    if qn_wire and len(dff_inst.outputs) > 1:
+                        self.nodes[qn_wire] = dff_inst.outputs[1]
 
-                    self.dff_connections.append((dff_inst, d_wire, clk_wire))
+                    self.dff_connections.append((dff_inst, d_wire, clk_wire, rn_wire, sn_wire))
                     continue
 
                 if gate_type in self.VERILOG_GATE_MAP:
@@ -290,15 +414,35 @@ class SequentialVerilogRunner:
 
         # Wire DFF connections
         # DFF.json layout: inputs[0] = CLK, inputs[1] = D
-        for dff_inst, d_wire, clk_wire in self.dff_connections:
-            if clk_wire:
+        # DFFSR.json layout: inputs[0] = CLK, inputs[1] = D, inputs[2] = RN, inputs[3] = SN
+        for dff_info in self.dff_connections:
+            dff_inst = dff_info[0]
+            d_wire   = dff_info[1]
+            clk_wire = dff_info[2]
+            rn_wire  = dff_info[3] if len(dff_info) > 3 else None
+            sn_wire  = dff_info[4] if len(dff_info) > 4 else None
+
+            if clk_wire and len(dff_inst.inputs) > 0:
                 clk_gate = self.nodes.get(clk_wire)
-                if clk_gate and len(dff_inst.inputs) > 0:
+                if clk_gate:
                     self.circuit.connect(dff_inst.inputs[0], clk_gate, 0)
-            if d_wire:
+            if d_wire and len(dff_inst.inputs) > 1:
                 d_gate = self.nodes.get(d_wire)
-                if d_gate and len(dff_inst.inputs) > 1:
+                if d_gate:
                     self.circuit.connect(dff_inst.inputs[1], d_gate, 0)
+
+            # Active-low Reset (RN) and Set (SN) for DFFSR: tie to constant HIGH (1'b1) if unassigned
+            if len(dff_inst.inputs) > 2:
+                rn_gate = self.nodes.get(rn_wire) if rn_wire else None
+                if rn_gate is None:
+                    rn_gate = get_const_node("1'b1")
+                self.circuit.connect(dff_inst.inputs[2], rn_gate, 0)
+
+            if len(dff_inst.inputs) > 3:
+                sn_gate = self.nodes.get(sn_wire) if sn_wire else None
+                if sn_gate is None:
+                    sn_gate = get_const_node("1'b1")
+                self.circuit.connect(dff_inst.inputs[3], sn_gate, 0)
 
         if self.use_optimize and hasattr(self.circuit, 'optimize'):
             self.circuit.optimize()
@@ -410,17 +554,31 @@ class SequentialVerilogRunner:
 
         result = {
             "nodes": len(self.nodes),
-            "measured_vectors": total_physical_measured,
+            "logical_vectors": logical_count,
+            "physical_vectors": total_physical_measured,
+            "measured_vectors": logical_count,
         }
 
         # ──────────────────────────────────────────────────────────────────────
         # PASS 1: propagate (SIMULATE / BFS wavefront)
         # ──────────────────────────────────────────────────────────────────────
         if rx_prop:
+            if getattr(self, 'const_1_node', None) is not None:
+                self.const_1_node.value = self.const.HIGH
+                if hasattr(self.circuit, 'toggle'):
+                    target = self.const_1_node if (self.is_oop or not self.is_reactor) else self.const_1_node.location
+                    self.circuit.toggle(target, self.const.HIGH)
+            if getattr(self, 'const_0_node', None) is not None:
+                self.const_0_node.value = self.const.LOW
+                if hasattr(self.circuit, 'toggle'):
+                    target = self.const_0_node if (self.is_oop or not self.is_reactor) else self.const_0_node.location
+                    self.circuit.toggle(target, self.const.LOW)
+
             self.circuit.simulate(self.const.SIMULATE)
             self.const.set_MODE(self.const.SIMULATE)
 
-            reset_batches = self.build_reset_batches(50)
+            reset_cnt = 2 if self.mode == 'engine' else 50
+            reset_batches = self.build_reset_batches(reset_cnt)
             prop_warmup_batches = self.build_batches(warmup_raw)
             prop_measured_batches = self.build_batches(measured_raw)
 
@@ -448,11 +606,11 @@ class SequentialVerilogRunner:
                     except Exception: pass
                 perf_data = f"perf_{self.mode}_prop_{os.path.basename(self.filepath)}.data"
                 perf_txt = f"perf_{self.mode}_prop_{os.path.basename(self.filepath)}.txt"
-                cmd = ["perf", "record", "-D", "-1", "--control=fifo:/tmp/rx_perf_ctrl", "-p", str(os.getpid()), "-o", perf_data]
+                cmd = ["perf", "record", "-D", "-1", "-m", "32", "--control=fifo:/tmp/rx_perf_ctrl", "-p", str(os.getpid()), "-o", perf_data]
                 if perf_events:
                     cmd.extend(["-e", perf_events])
                 perf_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                await asyncio.sleep(0.5)
+                time.sleep(0.1)
 
             send_perf_ctrl("enable")
             propagate_ms = self.circuit.batch_toggle(flat_measured_batches, batch_size) if flat_measured_batches else 0.0
@@ -463,8 +621,10 @@ class SequentialVerilogRunner:
                 perf_proc.wait()
                 with open(perf_txt, "w") as f:
                     subprocess.run(["perf", "report", "-i", perf_data], stdout=f, stderr=subprocess.DEVNULL)
-                if os.path.exists(perf_data):
-                    os.remove(perf_data)
+                for p in (perf_data, perf_data + ".old"):
+                    if os.path.exists(p):
+                        try: os.remove(p)
+                        except Exception: pass
 
             gc.enable()
             propagate_evals = getattr(self.circuit, 'eval_count',
@@ -494,6 +654,7 @@ class SequentialVerilogRunner:
         # ──────────────────────────────────────────────────────────────────────
         has_sweep = (
             self.is_reactor
+            and not self.is_oop
             and hasattr(self.const, 'COMPILE')
             and hasattr(self.const, 'set_MODE')
             and hasattr(self.circuit, 'simulate')
@@ -531,11 +692,11 @@ class SequentialVerilogRunner:
                         except Exception: pass
                     perf_data = f"perf_{self.mode}_sweep_{os.path.basename(self.filepath)}.data"
                     perf_txt = f"perf_{self.mode}_sweep_{os.path.basename(self.filepath)}.txt"
-                    cmd = ["perf", "record", "-D", "-1", "--control=fifo:/tmp/rx_perf_ctrl", "-p", str(os.getpid()), "-o", perf_data]
+                    cmd = ["perf", "record", "-D", "-1", "-m", "32", "--control=fifo:/tmp/rx_perf_ctrl", "-p", str(os.getpid()), "-o", perf_data]
                     if perf_events:
                         cmd.extend(["-e", perf_events])
                     perf_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    await asyncio.sleep(0.5)
+                    time.sleep(0.1)
 
                 send_perf_ctrl("enable")
                 sweep_ms = self.circuit.batch_toggle(flat_measured_batches, batch_size) if flat_measured_batches else 0.0
@@ -546,14 +707,17 @@ class SequentialVerilogRunner:
                     perf_proc.wait()
                     with open(perf_txt, "w") as f:
                         subprocess.run(["perf", "report", "-i", perf_data], stdout=f, stderr=subprocess.DEVNULL)
-                    if os.path.exists(perf_data):
-                        os.remove(perf_data)
+                    for p in (perf_data, perf_data + ".old"):
+                        if os.path.exists(p):
+                            try: os.remove(p)
+                            except Exception: pass
 
                 gc.enable()
 
-                self.const.set_MODE(self.const.SIMULATE)
                 sweep_evals = getattr(self.circuit, 'eval_count',
                                       len(flat_measured_batches) // batch_size * len(self.nodes))
+                self.circuit.simulate(self.const.SIMULATE)
+                self.const.set_MODE(self.const.SIMULATE)
                 sweep_meps  = (
                     (sweep_evals / (sweep_ms / 1000.0)) / 1_000_000.0
                     if sweep_ms > 0 else 0.0
@@ -562,6 +726,7 @@ class SequentialVerilogRunner:
                 result["sweep_evals"] = sweep_evals
                 result["sweep_meps"]  = sweep_meps
             except Exception as exc:
+                self.circuit.simulate(self.const.SIMULATE)
                 self.const.set_MODE(self.const.SIMULATE)
                 result["sweep_error"] = str(exc)
 
@@ -598,6 +763,15 @@ class SequentialVerilogRunner:
         if hasattr(self.circuit, 'optimize') and self.use_optimize:
             self.circuit.optimize()
 
+        if getattr(self, 'const_1_node', None) is not None:
+            self.const_1_node.value = self.const.HIGH
+            if hasattr(self.circuit, 'toggle'):
+                self.circuit.toggle(self.const_1_node if self.is_oop else self.const_1_node.location, self.const.HIGH)
+        if getattr(self, 'const_0_node', None) is not None:
+            self.const_0_node.value = self.const.LOW
+            if hasattr(self.circuit, 'toggle'):
+                self.circuit.toggle(self.const_0_node if self.is_oop else self.const_0_node.location, self.const.LOW)
+
         self.circuit.simulate(target_mode)
         self.const.set_MODE(target_mode)
 
@@ -625,7 +799,8 @@ class SequentialVerilogRunner:
 def run_python_backend_process_89(filepath: str, mode: str,
                                    vectors: int, warmup: int,
                                    optimize: bool, rx_prop: bool = True, rx_sweep: bool = True,
-                                   use_perf: bool = False, perf_events: str = "") -> dict:
+                                   use_perf: bool = False, perf_events: str = "",
+                                   dff_file: str = None) -> dict:
     """
     Run SequentialVerilogRunner in an isolated subprocess to prevent module
     state pollution between Engine and Reactor passes.
@@ -639,10 +814,14 @@ def run_python_backend_process_89(filepath: str, mode: str,
     ]
     if optimize:
         cmd.append("--optimize")
+    else:
+        cmd.append("--raw")
     if not rx_prop:
         cmd.append("--no-rx-prop")
     if not rx_sweep:
         cmd.append("--no-rx-sweep")
+    if dff_file:
+        cmd.extend(["--dff", dff_file])
     if use_perf:
         cmd.append("--perf")
         if perf_events:
@@ -671,14 +850,13 @@ def run_python_backend_process_89(filepath: str, mode: str,
 
 def internal_worker_main(filepath: str, mode: str, vectors: int,
                           warmup: int, optimize: bool, rx_prop: bool = True, rx_sweep: bool = True,
-                          use_perf: bool = False, perf_events: str = ""):
-    script_dir   = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
-    target_path  = os.path.join(script_dir, mode)
+                          use_perf: bool = False, perf_events: str = "",
+                          dff_file: str = None):
+    target_path  = os.path.join(_SCRIPT_DIR, mode)
     if not os.path.exists(target_path):
-        target_path = os.path.join(project_root, mode)
+        target_path = os.path.join(_PROJECT_ROOT, mode)
 
-    sys.path.insert(0, project_root)
+    sys.path.insert(0, _PROJECT_ROOT)
     sys.path.insert(0, target_path)
     import Circuit
     import Const
@@ -688,7 +866,8 @@ def internal_worker_main(filepath: str, mode: str, vectors: int,
     try:
         t0 = time.perf_counter_ns()
         runner = SequentialVerilogRunner(
-            filepath, Circuit.Circuit, Const, is_reactor=is_reactor, is_oop=is_oop, mode=mode, use_optimize=optimize
+            filepath, Circuit.Circuit, Const, is_reactor=is_reactor, is_oop=is_oop,
+            mode=mode, use_optimize=optimize, dff_file=dff_file
         )
         t1 = time.perf_counter_ns()
         stats = runner.run_benchmark(
@@ -706,12 +885,17 @@ def internal_worker_main(filepath: str, mode: str, vectors: int,
 # ===========================================================================
 
 def get_v_files(target):
-    if os.path.isfile(target) and target.endswith('.v'):
+    if not os.path.exists(target):
+        if os.path.exists(os.path.join(_TESTS_DIR, target)):
+            target = os.path.join(_TESTS_DIR, target)
+        elif os.path.exists(os.path.join(_PROJECT_ROOT, target)):
+            target = os.path.join(_PROJECT_ROOT, target)
+    if os.path.isfile(target) and (target.endswith('.v') or target.endswith('.json')):
         return [target]
     v_files = []
     for root, _, files in os.walk(target):
         for f in files:
-            if f.endswith('.v') and not f.endswith('_base_tb.v') and not f.endswith('_89bench_tb.v'):
+            if f.endswith('.v') and not f.endswith('_base_tb.v') and not f.endswith('_89bench_tb.v') and not f.endswith('_tb.v'):
                 v_files.append(os.path.join(root, f))
     return sorted(v_files, key=os.path.getsize)
 
@@ -1129,8 +1313,10 @@ def main():
                         help="Total logical vectors per circuit (warmup + measured)")
     parser.add_argument('--warmup',  type=int, default=5000,
                         help="Untimed warmup logical vectors")
-    parser.add_argument('--optimize', action='store_true',
-                        help="Enable topological optimization in Engine/Reactor")
+    parser.add_argument('--optimize', action='store_true', default=None,
+                        help="Enable topological optimization in Engine/Reactor (default: enabled)")
+    parser.add_argument('--raw', action='store_true',
+                        help="Disable topological optimization (use raw netlist order)")
     parser.add_argument('--output',  type=str, default="iscas89_results",
                         help="Base path for output files")
     parser.add_argument('--dump', action='store_true',
@@ -1149,8 +1335,8 @@ def main():
     parser.add_argument('--no-rx-sweep', dest='rx_sweep', action='store_false',
                         help='Skip Reactor sweep (COMPILE mode) benchmark')
     parser.set_defaults(rx_sweep=True)
-    parser.add_argument('--no-reactor-oop', dest='rx_oop', action='store_false',
-                        help='Skip Reactor OOP benchmark')
+    parser.add_argument('--no-reactor-oop', '--no-rx-oop', dest='rx_oop', action='store_false',
+                        help='Skip Reactor OOP (graph traversal) benchmark')
     parser.set_defaults(rx_oop=True)
     parser.add_argument('--no-icarus', dest='icarus', action='store_false',
                         help='Skip Icarus Verilog benchmark')
@@ -1172,17 +1358,21 @@ def main():
     parser.add_argument('--verify-vectors', type=int, default=None,
                         help="Number of test vectors to verify per circuit (default: min(measured, 1000))")
 
+    parser.add_argument('--dff-file', '--dff', dest='dff_file', type=str, default=None,
+                        help="Path to DFF.json or DFFSR.json IC file (default: auto-detect)")
     parser.add_argument('--internal-worker', action='store_true',
                         help=argparse.SUPPRESS)
     parser.add_argument('--mode', type=str, choices=['engine', 'reactor', 'reactor_oop'],
                         help=argparse.SUPPRESS)
 
     args = parser.parse_args()
+    optimize = False if args.raw else True
 
     if args.internal_worker:
         internal_worker_main(
-            args.target, args.mode, args.vectors, args.warmup, args.optimize, args.rx_prop, args.rx_sweep,
-            getattr(args, 'perf', False), getattr(args, 'perf_events', '')
+            args.target, args.mode, args.vectors, args.warmup, optimize, args.rx_prop, args.rx_sweep,
+            getattr(args, 'perf', False), getattr(args, 'perf_events', ''),
+            dff_file=getattr(args, 'dff_file', None)
         )
         sys.exit(0)
 
@@ -1190,12 +1380,8 @@ def main():
         print("[-] Error: No target path specified.")
         sys.exit(1)
 
-    if args.bench is None:
-        run_bench = not args.verify
-        run_verify = args.verify
-    else:
-        run_bench = args.bench
-        run_verify = args.verify
+    run_bench = True if args.bench is None else args.bench
+    run_verify = args.verify
 
     if getattr(args, 'dump', False):
         dump_dir = os.path.join(
@@ -1221,9 +1407,12 @@ def main():
     # ── Connected Verifier Pass ──────────────────────────────────────────────
     if run_verify:
         try:
-            from tests.verifier_89 import verify_circuit as verify_circuit_89
-        except ImportError:
             from verifier_89 import verify_circuit as verify_circuit_89
+        except ImportError:
+            try:
+                from tests.src.verifier_89 import verify_circuit as verify_circuit_89
+            except ImportError:
+                from tests.verifier_89 import verify_circuit as verify_circuit_89
 
         v_count_default = args.verify_vectors if args.verify_vectors is not None else min(max(args.vectors - args.warmup, 1), 1000)
 
@@ -1275,7 +1464,7 @@ def main():
                 use_rx_oop=getattr(args, 'rx_oop', True),
                 use_icarus=args.icarus,
                 use_verilator=getattr(args, 'verilator', True),
-                optimize=args.optimize
+                optimize=optimize
             )
 
             status_col = f"\033[92mPASS\033[0m{' ' * 4}" if v_report["status"] == "PASS" else f"\033[91mFAIL\033[0m{' ' * 4}"
@@ -1327,7 +1516,7 @@ def main():
     print(f"  Circuits       : {len(v_files)}")
     print(f"  Icarus VPI     : {vpi_status}")
     print("  Reactor modes  : propagate (BFS wavefront, SIMULATE) | sweep (linear fwd-pass, COMPILE)")
-    print("  DFF support    : DFF.json IC")
+    print("  DFF support    : DFF.json / DFFSR.json IC (auto-detect)")
     cols1 = (
         f"| {'Circuit':<16} "
         f"| {'Engine':^10} "
@@ -1371,32 +1560,27 @@ def main():
     for filepath in v_files:
         filename = os.path.basename(filepath)
 
-        # Run Engine and Reactor in isolated subprocesses
-        if args.engine:
-            e_res = run_python_backend_process_89(
-                filepath, 'engine',  args.vectors, args.warmup, args.optimize, args.rx_prop, args.rx_sweep,
-                getattr(args, 'perf', False), getattr(args, 'perf_events', '')
-            )
-        else:
-            e_res = {"engine": "Engine", "file": filename, "error": "disabled"}
-            
+        # 1. Reactor Propagate / Sweep
         if args.rx_prop or args.rx_sweep:
             r_res = run_python_backend_process_89(
-                filepath, 'reactor', args.vectors, args.warmup, args.optimize, args.rx_prop, args.rx_sweep,
-                getattr(args, 'perf', False), getattr(args, 'perf_events', '')
+                filepath, 'reactor', args.vectors, args.warmup, optimize, args.rx_prop, args.rx_sweep,
+                getattr(args, 'perf', False), getattr(args, 'perf_events', ''),
+                dff_file=getattr(args, 'dff_file', None)
             )
         else:
             r_res = {"engine": "Reactor", "file": filename, "error": "disabled"}
 
-        if getattr(args, 'rx_oop', True):
+        # 2. Reactor OOP
+        if getattr(args, 'rx_oop', True) and getattr(args, 'rx_prop', True):
             ro_res = run_python_backend_process_89(
-                filepath, 'reactor_oop', args.vectors, args.warmup, args.optimize, True, False,
-                getattr(args, 'perf', False), getattr(args, 'perf_events', '')
+                filepath, 'reactor_oop', args.vectors, args.warmup, optimize, True, False,
+                getattr(args, 'perf', False), getattr(args, 'perf_events', ''),
+                dff_file=getattr(args, 'dff_file', None)
             )
         else:
             ro_res = {"engine": "ReactorOOP", "file": filename, "error": "disabled"}
             
-        # Run Icarus harness
+        # 3. Icarus harness
         if args.icarus:
             i_res = run_icarus_harness_89(
                 filepath, args.vectors, args.warmup,
@@ -1405,7 +1589,7 @@ def main():
         else:
             i_res = {"engine": "Icarus", "file": filename, "error": "disabled"}
 
-        # Run Verilator harness
+        # 4. Verilator harness
         if getattr(args, 'verilator', True):
             v_res = run_verilator_harness_89(
                 filepath, args.vectors, args.warmup,
@@ -1413,6 +1597,40 @@ def main():
             )
         else:
             v_res = {"engine": "Verilator", "file": filename, "error": "disabled"}
+
+        # 5. Engine (Pure Python - adaptive vectors for large netlists)
+        if args.engine:
+            size_kb = os.path.getsize(filepath) / 1024.0
+            if size_kb > 4000:
+                eng_vecs = min(args.vectors, 10)
+                eng_warm = min(args.warmup, 2)
+            elif size_kb > 1000:
+                eng_vecs = min(args.vectors, 50)
+                eng_warm = min(args.warmup, 5)
+            elif size_kb > 100:
+                eng_vecs = min(args.vectors, 100)
+                eng_warm = min(args.warmup, 5)
+            else:
+                eng_vecs = min(args.vectors, 500)
+                eng_warm = min(args.warmup, 10)
+
+            e_res = run_python_backend_process_89(
+                filepath, 'engine', eng_vecs, eng_warm, optimize, args.rx_prop, args.rx_sweep,
+                getattr(args, 'perf', False), getattr(args, 'perf_events', ''),
+                dff_file=getattr(args, 'dff_file', None)
+            )
+            if "error" not in e_res and e_res.get("time_ms", 0) > 0:
+                e_meas = max(eng_vecs - eng_warm, 1)
+                tgt_meas = max(args.vectors - args.warmup, 1)
+                if e_meas != tgt_meas:
+                    e_res["raw_time_ms"] = e_res["time_ms"]
+                    e_res["raw_vectors"] = e_meas
+                    e_res["time_ms"] = (e_res["time_ms"] / e_meas) * tgt_meas
+                    e_res["measured_vectors"] = tgt_meas
+                    if "total_evals" in e_res:
+                        e_res["total_evals"] = int((e_res["total_evals"] / e_meas) * tgt_meas)
+        else:
+            e_res = {"engine": "Engine", "file": filename, "error": "disabled"}
 
         e_is_dis  = (not getattr(args, 'engine', True)) or (not getattr(args, 'rx_prop', True)) or (e_res.get('error') == 'disabled')
         r_is_dis  = (not getattr(args, 'rx_prop', True)) or (r_res.get('error') == 'disabled')
@@ -1456,9 +1674,14 @@ def main():
 
     if getattr(args, 'json', False):
         ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        circuits_data = [{"circuit": fn, "engine": e, "reactor": r, "reactor_oop": ro, "icarus": i, "verilator": v} for fn, e, r, ro, i, v in all_results]
+        circuits_data = [
+            {
+                "circuit": fn, "engine": e, "reactor": r, "reactor_oop": ro, "icarus": i, "verilator": v,
+            }
+            for fn, e, r, ro, i, v in all_results
+        ]
         payload = {
-            "meta": {"timestamp": ts, "target": args.target, "total_vectors": args.vectors, "warmup_vectors": args.warmup, "measured_vectors": measured, "optimize": args.optimize},
+            "meta": {"timestamp": ts, "target": args.target, "total_vectors": args.vectors, "warmup_vectors": args.warmup, "measured_vectors": measured, "optimize": optimize},
             "circuits": circuits_data
         }
         print(json.dumps(payload, indent=4), file=sys.__stdout__)
@@ -1475,8 +1698,7 @@ def main():
         _save_results_89(all_results, args)
 
     if getattr(args, 'dump', False):
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        dump_dir = os.path.join(script_dir, 'test_result', 'benchmark_89')
+        dump_dir = os.path.join(_TESTS_DIR, 'test_result', 'benchmark_89')
         os.makedirs(dump_dir, exist_ok=True)
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         dump_path = os.path.join(dump_dir, f"unified_iscas_benchmark_89_{timestamp}.md")

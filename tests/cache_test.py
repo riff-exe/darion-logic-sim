@@ -348,6 +348,7 @@ async def run_profiler_suite(mode_name):
             hasattr(Const, 'COMPILE')
             and hasattr(Const, 'set_MODE')
             and hasattr(c, 'simulate')
+            and not use_reactor_oop
         )
         if has_sweep:
             if args.perf_pass in [None, 'sweep']:
@@ -485,6 +486,7 @@ async def run_homogeneous_suite(gate_type):
             hasattr(Const, 'COMPILE')
             and hasattr(Const, 'set_MODE')
             and hasattr(c, 'simulate')
+            and not use_reactor_oop
         )
         if has_sweep:
             c.simulate(Const.COMPILE)

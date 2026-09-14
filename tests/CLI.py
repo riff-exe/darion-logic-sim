@@ -6,7 +6,8 @@ import aioconsole
 
 parser = argparse.ArgumentParser(description='Run CLI')
 parser.add_argument('--engine', action='store_true', help='Use Python engine backend (default: Reactor/Cython)')
-parser.add_argument('--optimize', action='store_true', help='Reserved: call c.optimize() for future CLI use')
+parser.add_argument('--optimize', action='store_true', default=None, help='Reserved: call c.optimize() for future CLI use')
+parser.add_argument('--raw', action='store_true', help='Disable topological optimization (use raw netlist order)')
 args, unknown = parser.parse_known_args()
 
 # Support Pyinstaller, Nuitka, and direct Python script relative paths

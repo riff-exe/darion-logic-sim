@@ -48,9 +48,12 @@ except ImportError:
             return json.load(f)
 
 _SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
-_PROJECT_ROOT = os.path.dirname(_SCRIPT_DIR)
+_TESTS_DIR    = os.path.dirname(_SCRIPT_DIR)
+_PROJECT_ROOT = os.path.dirname(_TESTS_DIR)
 
 sys.path.insert(0, _SCRIPT_DIR)
+sys.path.insert(0, _TESTS_DIR)
+sys.path.insert(0, _PROJECT_ROOT)
 _HARNESS_DIR  = os.path.join(_PROJECT_ROOT, 'harness_build')
 
 
@@ -307,6 +310,8 @@ def run_worker_process(filepath: str, exec_mode: str, vectors: list, optimize: b
     ]
     if optimize:
         cmd.append("--optimize")
+    else:
+        cmd.append("--raw")
 
     try:
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -340,9 +345,12 @@ def internal_worker_main(filepath: str, exec_mode: str, in_file: str, out_file: 
     import Const
 
     try:
-        from tests.benchmark import VerilogRunner
+        from tests.src.benchmark import VerilogRunner
     except ImportError:
-        from benchmark import VerilogRunner
+        try:
+            from tests.benchmark import VerilogRunner
+        except ImportError:
+            from benchmark import VerilogRunner
 
     vectors = load_json_file(in_file)
 
@@ -477,6 +485,11 @@ def verify_circuit(v_file: str, vector_count: int = 1000, seed: int = 42,
 # ===========================================================================
 
 def get_v_files(target):
+    if not os.path.exists(target):
+        if os.path.exists(os.path.join(_TESTS_DIR, target)):
+            target = os.path.join(_TESTS_DIR, target)
+        elif os.path.exists(os.path.join(_PROJECT_ROOT, target)):
+            target = os.path.join(_PROJECT_ROOT, target)
     if os.path.isfile(target) and target.endswith('.v'):
         return [target]
     v_files = []
@@ -497,7 +510,8 @@ def main():
     parser.add_argument('target', nargs='?', type=str, help="Path to .v file or directory")
     parser.add_argument('--vectors', type=int, default=1000, help="Number of test vectors per circuit")
     parser.add_argument('--seed', type=int, default=42, help="PRNG Seed")
-    parser.add_argument('--output', type=str, default="verification_report", help="JSON output file prefix")
+    parser.add_argument('--output', type=str, default=None, help="JSON output file prefix")
+    parser.add_argument('--dump-json', action='store_true', help="Save verification report JSON to disk")
     parser.add_argument('--dump', action='store_true', help='Only generate final data to stdout')
     parser.add_argument('--json', action='store_true', help='Only generate JSON to stdout')
     
@@ -511,11 +525,12 @@ def main():
     parser.set_defaults(icarus=True)
     parser.add_argument('--no-verilator', dest='verilator', action='store_false', help='Skip Verilator C++ model')
     parser.set_defaults(verilator=True)
-    parser.add_argument('--no-reactor-oop', dest='reactor_oop', action='store_false', help='Skip Reactor OOP (SIMULATE mode)')
+    parser.add_argument('--no-reactor-oop', '--no-rx-oop', dest='reactor_oop', action='store_false', help='Skip Reactor OOP (SIMULATE mode)')
     parser.set_defaults(reactor_oop=True)
 
     parser.add_argument('--optimize', action='store_true', default=True, help='Enable topological optimization')
     parser.add_argument('--no-optimize', dest='optimize', action='store_false', help='Disable topological optimization')
+    parser.add_argument('--raw', dest='optimize', action='store_false', help='Disable topological optimization (use raw netlist order)')
 
     parser.add_argument('--internal-worker', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--exec-mode', type=str, help=argparse.SUPPRESS)
@@ -601,8 +616,7 @@ def main():
         
     if getattr(args, 'dump', False):
         import datetime, os
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        dump_dir = os.path.join(script_dir, 'test_result', 'verifier')
+        dump_dir = os.path.join(_TESTS_DIR, 'test_result', 'verifier')
         os.makedirs(dump_dir, exist_ok=True)
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         dump_path = os.path.join(dump_dir, f"unified_iscas_verifier_{timestamp}.md")
@@ -610,9 +624,10 @@ def main():
             f.write("\n".join(md_lines) + "\n")
         print(f"\n[+] Markdown dump saved to -> {dump_path}")
 
-    if not getattr(args, 'json', False):
+    if getattr(args, 'dump_json', False) or getattr(args, 'output', None):
         print("=" * 105)
-        json_path = args.output if args.output.endswith('.json') else args.output + '.json'
+        out_base = args.output if args.output else "verification_report"
+        json_path = out_base if out_base.endswith('.json') else out_base + '.json'
         dump_json_file(json_path, all_reports, indent=True)
         print(f"\n[+] Full JSON verification artifact generated -> {json_path}")
         

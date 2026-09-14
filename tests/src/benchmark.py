@@ -37,9 +37,12 @@ import shutil
 from pathlib import Path
 
 _SCRIPT_DIR    = os.path.dirname(os.path.abspath(__file__))
-_PROJECT_ROOT  = os.path.dirname(_SCRIPT_DIR)
+_TESTS_DIR     = os.path.dirname(_SCRIPT_DIR)
+_PROJECT_ROOT  = os.path.dirname(_TESTS_DIR)
 
 sys.path.insert(0, _SCRIPT_DIR)
+sys.path.insert(0, _TESTS_DIR)
+sys.path.insert(0, _PROJECT_ROOT)
 
 def send_perf_ctrl(cmd):
     try:
@@ -249,7 +252,7 @@ def run_icarus_harness(v_file: str, vectors: int, warmup: int, use_perf: bool = 
             if not os.path.exists(fifo_path):
                 try: os.mkfifo(fifo_path)
                 except Exception: pass
-            perf_cmd = ["perf", "record", "-D", "-1", "--control=fifo:/tmp/rx_perf_ctrl", "-o", perf_data]
+            perf_cmd = ["perf", "record", "-D", "-1", "-m", "32", "--control=fifo:/tmp/rx_perf_ctrl", "-o", perf_data]
             if perf_events:
                 perf_cmd.extend(["-e", perf_events])
             run_cmd = perf_cmd + ["--"] + run_cmd
@@ -265,7 +268,10 @@ def run_icarus_harness(v_file: str, vectors: int, warmup: int, use_perf: bool = 
         if use_perf and use_vpi and os.path.exists(perf_data):
             with open(perf_txt, "w") as f:
                 subprocess.run(["perf", "report", "-i", perf_data], stdout=f, stderr=subprocess.DEVNULL)
-            os.remove(perf_data)
+            for p in (perf_data, perf_data + ".old"):
+                if os.path.exists(p):
+                    try: os.remove(p)
+                    except Exception: pass
 
         if run_res.returncode != 0:
             return {"engine": "Icarus", "file": filename,
@@ -392,15 +398,6 @@ def run_verilator_harness(v_file: str, vectors: int, warmup: int, use_perf: bool
 
         with open(vector_file, 'w', encoding='utf-8') as f:
             for vec in measured_vecs:
-                bin_str = "".join(str(v) for v in reversed(vec))
-                f.write(bin_str + "\n")
-
-        # Notice how I use reversed(vec) ? That means the bit at index 0 of the string corresponds to inputs[-1]
-        # BUT I wrote my tb generator as vec[{idx}]. If string is reversed, vec[0] is actually inputs[-1].
-        # So I need to reverse the order of string mapping, or just NOT reverse the string here.
-        # Let's write the string NOT reversed so vec[0] is inputs[0].
-        with open(vector_file, 'w', encoding='utf-8') as f:
-            for vec in measured_vecs:
                 bin_str = "".join(str(v) for v in vec)
                 f.write(bin_str + "\n")
 
@@ -430,7 +427,7 @@ def run_verilator_harness(v_file: str, vectors: int, warmup: int, use_perf: bool
             if not os.path.exists(fifo_path):
                 try: os.mkfifo(fifo_path)
                 except Exception: pass
-            perf_cmd = ["perf", "record", "-D", "-1", "--control=fifo:/tmp/rx_perf_ctrl", "-o", perf_data]
+            perf_cmd = ["perf", "record", "-D", "-1", "-m", "32", "--control=fifo:/tmp/rx_perf_ctrl", "-o", perf_data]
             if perf_events:
                 perf_cmd.extend(["-e", perf_events])
             run_cmd = perf_cmd + ["--"] + run_cmd
@@ -443,7 +440,10 @@ def run_verilator_harness(v_file: str, vectors: int, warmup: int, use_perf: bool
         if use_perf and os.path.exists(perf_data):
             with open(perf_txt, "w") as f:
                 subprocess.run(["perf", "report", "-i", perf_data], stdout=f, stderr=subprocess.DEVNULL)
-            os.remove(perf_data)
+            for p in (perf_data, perf_data + ".old"):
+                if os.path.exists(p):
+                    try: os.remove(p)
+                    except Exception: pass
 
         if run_res.returncode != 0:
             return {"engine": "Verilator", "file": filename, "error": f"Run failure: {run_res.stderr.strip()}"}
@@ -559,7 +559,8 @@ class VerilogRunner:
                     self.nodes[name_str] = gate
             if self.use_optimize and hasattr(self.circuit, 'optimize'):
                 self.circuit.optimize()
-            self.circuit.simulate(self.const.COMPILE)
+            self.circuit.simulate(self.const.SIMULATE)
+            self.const.set_MODE(self.const.SIMULATE)
             return
 
         with open(filepath, 'r', encoding='utf-8') as f:
@@ -640,7 +641,8 @@ class VerilogRunner:
                     self.circuit.connect(target_gate, source_gate, pin_index)
         if self.use_optimize:
             self.circuit.optimize()
-        self.circuit.simulate(self.const.COMPILE)
+        self.circuit.simulate(self.const.SIMULATE)
+        self.const.set_MODE(self.const.SIMULATE)
 
     def build_batches(self, raw_vectors):
         """Adapts raw logical PRNG vectors to the circuit's current pin configuration.
@@ -678,10 +680,11 @@ class VerilogRunner:
             self.circuit.batch_toggle(b, batch_size)
             results.append([int(g.output) for g in self.output_objects])
 
+        self.circuit.simulate(self.const.SIMULATE)
         self.const.set_MODE(self.const.SIMULATE)
         return results
 
-    def run_benchmark(self, vectors=10000, warmup=5000, use_optimize=True, rx_prop=True, rx_sweep=True, use_perf=False, perf_events=""):
+    def run_benchmark(self, vectors=10000, warmup=5000, use_optimize=True, rx_prop=True, rx_sweep=True, use_perf=False, perf_events="", perf_tag=""):
         """Run the simulation benchmark with symmetric warmup.
 
         Measures two paths for reactor, one for engine:
@@ -690,8 +693,6 @@ class VerilogRunner:
             sweep() is triggered via simulate(COMPILE) + batch_toggle() when
             MODE==COMPILE. Requires a topologically sorted gate_infolist
             (i.e. optimize() must have been called first) to be meaningful.
-            For the engine, which has no sweep() implementation, sweep_ms is
-            omitted from the result dict.
         """
         measured = max(vectors - warmup, 1)
         total_needed = warmup + measured
@@ -703,17 +704,21 @@ class VerilogRunner:
             for _ in range(total_needed)
         ]
         warmup_raw   = raw_vectors[:warmup]
-        measured_raw = raw_vectors[warmup:]
-        batch_size = len(self.input_vars) + (1 if getattr(self, 'const_1_node', None) else 0) + (1 if getattr(self, 'const_0_node', None) else 0)
+        measured_raw = raw_vectors[warmup:total_needed]
 
+        batch_size = len(self.input_vars) + (1 if getattr(self, 'const_1_node', None) else 0) + (1 if getattr(self, 'const_0_node', None) else 0)
         result = {
+            "engine": self.mode.capitalize(),
             "nodes": len(self.nodes),
             "measured_vectors": measured,
+            "warmup_vectors": warmup,
+            "optimize": use_optimize,
         }
 
+        # ── PASS 1: propagate (SIMULATE mode / BFS wavefront) ─────────────────
         if rx_prop:
-            # ── PASS 1: propagate (SIMULATE / BFS wavefront) ─────────────────────
             self.circuit.simulate(self.const.SIMULATE)
+            self.const.set_MODE(self.const.SIMULATE)
 
             # Adapt batches directly to the circuit's current pin configuration
             prop_warmup_batches = self.build_batches(warmup_raw)
@@ -727,64 +732,58 @@ class VerilogRunner:
             gc.collect()
             self.circuit.eval_count = 0
             gc.disable()
-            
+
             perf_proc = None
             perf_data = f"perf_{self.mode}_prop_{os.path.basename(getattr(self, 'filepath', 'unknown'))}.data"
             perf_txt = f"perf_{self.mode}_prop_{os.path.basename(getattr(self, 'filepath', 'unknown'))}.txt"
-            
+
             if use_perf:
                 fifo_path = "/tmp/rx_perf_ctrl"
                 if not os.path.exists(fifo_path):
                     try: os.mkfifo(fifo_path)
                     except Exception: pass
-                cmd = ["perf", "record", "-D", "-1", "--control=fifo:/tmp/rx_perf_ctrl", "-p", str(os.getpid()), "-o", perf_data]
+                cmd = ["perf", "record", "-D", "-1", "-m", "32", "--control=fifo:/tmp/rx_perf_ctrl", "-p", str(os.getpid()), "-o", perf_data]
                 if perf_events:
                     cmd.extend(["-e", perf_events])
                 perf_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 time.sleep(0.1)
 
+            send_perf_ctrl("enable")
             propagate_ms = self.circuit.batch_toggle(flat_measured_batches, batch_size, use_perf) if flat_measured_batches else 0.0
-            
+            send_perf_ctrl("disable")
+
             if use_perf and perf_proc:
                 perf_proc.terminate()
                 perf_proc.wait()
                 with open(perf_txt, "w") as f:
                     subprocess.run(["perf", "report", "-i", perf_data], stdout=f, stderr=subprocess.DEVNULL)
-                if os.path.exists(perf_data):
-                    os.remove(perf_data)
+                for p in (perf_data, perf_data + ".old"):
+                    if os.path.exists(p):
+                        try: os.remove(p)
+                        except Exception: pass
 
             gc.enable()
-            propagate_evals = getattr(self.circuit, 'eval_count', measured * len(self.nodes))
-            propagate_meps  = (
-                (propagate_evals / (propagate_ms / 1000.0)) / 1_000_000.0
-                if propagate_ms > 0 else 0.0
-            )
 
-            result.update({
-                "time_ms":          propagate_ms,   # canonical field (backward-compat)
-                "propagate_ms":     propagate_ms,
-                "total_evals":      propagate_evals,
-                "meps":             propagate_meps,
-            })
+            evals = getattr(self.circuit, 'eval_count', measured * len(self.nodes))
+            meps  = (evals / (propagate_ms / 1000.0)) / 1_000_000.0 if propagate_ms > 0 else 0.0
+            result["time_ms"]     = propagate_ms
+            result["total_evals"] = evals
+            result["meps"]        = meps
         else:
-            result.update({
-                "time_ms":          0.0,
-                "propagate_ms":     0.0,
-                "total_evals":      0,
-                "meps":             0.0,
-            })
+            result["time_ms"]     = 0.0
+            result["total_evals"] = 0
+            result["meps"]        = 0.0
 
-        # ── PASS 2: sweep (COMPILE mode / linear forward-pass) ───────────────
+        # ── PASS 2: sweep (COMPILE mode / linear forward-pass) ─────────────────
         has_sweep = (
             self.is_reactor
+            and not self.is_oop
             and hasattr(self.const, 'COMPILE')
             and hasattr(self.const, 'set_MODE')
             and hasattr(self.circuit, 'simulate')
         )
         if use_optimize and has_sweep and rx_sweep:
             try:
-                # Initial full sweep to seed all gate outputs from current values.
-                # simulate(COMPILE) sets MODE to SIMULATE, so we explicitly set COMPILE.
                 self.circuit.simulate(self.const.COMPILE)
                 self.const.set_MODE(self.const.COMPILE)
 
@@ -800,37 +799,42 @@ class VerilogRunner:
                 gc.collect()
                 self.circuit.eval_count = 0
                 gc.disable()
-                
+
                 perf_proc = None
                 perf_data = f"perf_{self.mode}_sweep_{os.path.basename(getattr(self, 'filepath', 'unknown'))}.data"
                 perf_txt = f"perf_{self.mode}_sweep_{os.path.basename(getattr(self, 'filepath', 'unknown'))}.txt"
-                
+
                 if use_perf:
                     fifo_path = "/tmp/rx_perf_ctrl"
                     if not os.path.exists(fifo_path):
                         try: os.mkfifo(fifo_path)
                         except Exception: pass
-                    cmd = ["perf", "record", "-D", "-1", "--control=fifo:/tmp/rx_perf_ctrl", "-p", str(os.getpid()), "-o", perf_data]
+                    cmd = ["perf", "record", "-D", "-1", "-m", "32", "--control=fifo:/tmp/rx_perf_ctrl", "-p", str(os.getpid()), "-o", perf_data]
                     if perf_events:
                         cmd.extend(["-e", perf_events])
                     perf_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     time.sleep(0.1)
-                
+
+                send_perf_ctrl("enable")
                 sweep_ms = self.circuit.batch_toggle(flat_sweep_measured, batch_size, use_perf) if flat_sweep_measured else 0.0
-                
+                send_perf_ctrl("disable")
+
                 if use_perf and perf_proc:
                     perf_proc.terminate()
                     perf_proc.wait()
                     with open(perf_txt, "w") as f:
                         subprocess.run(["perf", "report", "-i", perf_data], stdout=f, stderr=subprocess.DEVNULL)
-                    if os.path.exists(perf_data):
-                        os.remove(perf_data)
+                    for p in (perf_data, perf_data + ".old"):
+                        if os.path.exists(p):
+                            try: os.remove(p)
+                            except Exception: pass
 
                 gc.enable()
 
-                # Restore SIMULATE mode so the circuit is in a sane state.
-                self.const.set_MODE(self.const.SIMULATE)
                 sweep_evals = getattr(self.circuit, 'eval_count', measured * len(self.nodes))
+                # Restore SIMULATE mode so subsequent passes aren't affected.
+                self.circuit.simulate(self.const.SIMULATE)
+                self.const.set_MODE(self.const.SIMULATE)
                 sweep_meps  = (
                     (sweep_evals / (sweep_ms / 1000.0)) / 1_000_000.0
                     if sweep_ms > 0 else 0.0
@@ -839,12 +843,14 @@ class VerilogRunner:
                 result["sweep_evals"] = sweep_evals
                 result["sweep_meps"]  = sweep_meps
             except Exception as exc:
+                self.circuit.simulate(self.const.SIMULATE)
+                self.const.set_MODE(self.const.SIMULATE)
                 result["sweep_error"] = str(exc)
 
         return result
 
 
-def run_python_backend_process(filepath: str, mode: str, vectors: int, warmup: int, optimize: bool, rx_prop: bool, rx_sweep: bool, use_perf: bool = False, perf_events: str = "") -> dict:
+def run_python_backend_process(filepath: str, mode: str, vectors: int, warmup: int, optimize: bool, rx_prop: bool, rx_sweep: bool, use_perf: bool = False, perf_events: str = "", perf_tag: str = "") -> dict:
     cmd = [
         sys.executable, os.path.abspath(__file__),
         "--internal-worker", filepath,
@@ -854,6 +860,8 @@ def run_python_backend_process(filepath: str, mode: str, vectors: int, warmup: i
     ]
     if optimize:
         cmd.append("--optimize")
+    else:
+        cmd.append("--raw")
     if not rx_prop:
         cmd.append("--no-rx-prop")
     if not rx_sweep:
@@ -863,6 +871,8 @@ def run_python_backend_process(filepath: str, mode: str, vectors: int, warmup: i
         cmd.append("--perf")
         if perf_events:
             cmd.extend(["--perf-events", perf_events])
+        if perf_tag:
+            cmd.extend(["--perf-tag", perf_tag])
 
     try:
         t0 = time.perf_counter_ns()
@@ -877,7 +887,7 @@ def run_python_backend_process(filepath: str, mode: str, vectors: int, warmup: i
                     try:
                         data = json.loads(line)
                         break
-                    except:
+                    except Exception:
                         pass
             if data is None:
                 try:
@@ -892,14 +902,12 @@ def run_python_backend_process(filepath: str, mode: str, vectors: int, warmup: i
     except Exception as e:
         return {"error": str(e)}
 
-def internal_worker_main(filepath: str, mode: str, vectors: int, warmup: int, optimize: bool, rx_prop: bool, rx_sweep: bool, use_perf: bool = False, perf_events: str = ""):
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
-    target_path = os.path.join(script_dir, mode)
+def internal_worker_main(filepath: str, mode: str, vectors: int, warmup: int, optimize: bool, rx_prop: bool, rx_sweep: bool, use_perf: bool = False, perf_events: str = "", perf_tag: str = ""):
+    target_path = os.path.join(_SCRIPT_DIR, mode)
     if not os.path.exists(target_path):
-        target_path = os.path.join(project_root, mode)
+        target_path = os.path.join(_PROJECT_ROOT, mode)
 
-    sys.path.insert(0, project_root)
+    sys.path.insert(0, _PROJECT_ROOT)
     sys.path.insert(0, target_path)
     import Circuit
     import Const
@@ -911,7 +919,7 @@ def internal_worker_main(filepath: str, mode: str, vectors: int, warmup: int, op
         runner.filepath = filepath
         t1 = time.perf_counter_ns()
         
-        stats = runner.run_benchmark(vectors=vectors, warmup=warmup, use_optimize=optimize, rx_prop=rx_prop, rx_sweep=rx_sweep, use_perf=use_perf, perf_events=perf_events)
+        stats = runner.run_benchmark(vectors=vectors, warmup=warmup, use_optimize=optimize, rx_prop=rx_prop, rx_sweep=rx_sweep, use_perf=use_perf, perf_events=perf_events, perf_tag=perf_tag)
         stats['parse_ms'] = (t1 - t0) / 1_000_000.0
         print(json.dumps(stats))
     except Exception as e:
@@ -923,12 +931,17 @@ def internal_worker_main(filepath: str, mode: str, vectors: int, warmup: int, op
 # ===========================================================================
 
 def get_v_files(target):
+    if not os.path.exists(target):
+        if os.path.exists(os.path.join(_TESTS_DIR, target)):
+            target = os.path.join(_TESTS_DIR, target)
+        elif os.path.exists(os.path.join(_PROJECT_ROOT, target)):
+            target = os.path.join(_PROJECT_ROOT, target)
     if os.path.isfile(target) and target.endswith('.v'):
         return [target]
     v_files = []
     for root, _, files in os.walk(target):
         for f in files:
-            if f.endswith('.v'):
+            if f.endswith('.v') and not f.endswith('_base_tb.v') and not f.endswith('_tb.v'):
                 v_files.append(os.path.join(root, f))
     return sorted(v_files, key=os.path.getsize)
 
@@ -940,7 +953,8 @@ def main():
     parser.add_argument('target', nargs='?', type=str, help="Path to .v file or directory")
     parser.add_argument('--vectors', type=int, default=50000, help="Total vectors per circuit (warmup + measured)")
     parser.add_argument('--warmup',  type=int, default=5000,  help="Untimed warmup vectors (same for all engines)")
-    parser.add_argument('--optimize', action='store_true', help="Enable topological optimization in Engine/Reactor")
+    parser.add_argument('--optimize', action='store_true', default=None, help="Enable topological optimization in Engine/Reactor (default: enabled)")
+    parser.add_argument('--raw', action='store_true', help="Disable topological optimization (use raw netlist order)")
     parser.add_argument('--output',  type=str, default="iscas_results", help="Base path for output files")
     parser.add_argument('--dump', action='store_true', help='Only generate final data to stdout')
     parser.add_argument('--json', action='store_true', help='Only generate JSON to stdout')
@@ -956,7 +970,7 @@ def main():
     parser.add_argument('--no-rx-sweep', dest='rx_sweep', action='store_false',
                         help='Skip Reactor sweep (COMPILE mode) benchmark')
     parser.set_defaults(rx_sweep=True)
-    parser.add_argument('--no-rx-oop', dest='rx_oop', action='store_false',
+    parser.add_argument('--no-rx-oop', '--no-reactor-oop', dest='rx_oop', action='store_false',
                         help='Skip ReactorOOP benchmark')
     parser.set_defaults(rx_oop=True)
     parser.add_argument('--no-icarus', dest='icarus', action='store_false',
@@ -975,22 +989,20 @@ def main():
 
     parser.add_argument('--internal-worker', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--mode',    type=str, choices=['engine', 'reactor', 'reactor_oop'], help=argparse.SUPPRESS)
+    parser.add_argument('--perf-tag', type=str, default="", help=argparse.SUPPRESS)
 
     args = parser.parse_args()
+    optimize = False if args.raw else True
 
     if args.internal_worker:
-        internal_worker_main(args.target, args.mode, args.vectors, args.warmup, args.optimize, args.rx_prop, args.rx_sweep, args.perf, args.perf_events)
+        internal_worker_main(args.target, args.mode, args.vectors, args.warmup, optimize, args.rx_prop, args.rx_sweep, args.perf, args.perf_events, getattr(args, 'perf_tag', ''))
         sys.exit(0)
 
     if not args.target:
         print("[-] Error: No target path specified."); sys.exit(1)
 
-    if args.bench is None:
-        run_bench = not args.verify
-        run_verify = args.verify
-    else:
-        run_bench = args.bench
-        run_verify = args.verify
+    run_bench = True if args.bench is None else args.bench
+    run_verify = args.verify
 
     if getattr(args, 'dump', False) and not hasattr(args, 'json'):
         pass
@@ -1006,9 +1018,12 @@ def main():
     # ── Connected Verifier Pass ──────────────────────────────────────────────
     if run_verify:
         try:
-            from tests.verifier import verify_circuit
+            from tests.src.verifier import verify_circuit
         except ImportError:
-            from verifier import verify_circuit
+            try:
+                from tests.verifier import verify_circuit
+            except ImportError:
+                from verifier import verify_circuit
 
         v_count_default = args.verify_vectors if args.verify_vectors is not None else min(max(args.vectors - args.warmup, 1), 1000)
 
@@ -1039,7 +1054,7 @@ def main():
                 use_reactor_oop=args.rx_oop,
                 use_icarus=args.icarus,
                 use_verilator=getattr(args, 'verilator', True),
-                optimize=args.optimize
+                optimize=optimize
             )
 
             status_col = f"\033[92mPASS\033[0m{' ' * 4}" if v_report["status"] == "PASS" else f"\033[91mFAIL\033[0m{' ' * 4}"
@@ -1077,11 +1092,11 @@ def main():
             if not getattr(args, 'json', False):
                 print()
 
-    W = 175
+    W = 180
     cols1 = (
         f"| {'Circuit':<16} "
         f"| {'Engine':^10} "
-        f"| {'Reactor':^11} | {'':<12} "
+        f"| {'Reactor':^26} "
         f"| {'ReactorOOP':^14} |"
         f" {'Icarus':^14} |"
         f" {'Verilator':^14} |"
@@ -1127,27 +1142,59 @@ def main():
     for filepath in v_files:
         filename = os.path.basename(filepath)
 
-        if args.engine:
-            e_res = run_python_backend_process(filepath, 'engine',  args.vectors, args.warmup, args.optimize, args.rx_prop, args.rx_sweep, args.perf, args.perf_events)
-        else:
-            e_res = {"engine": "Engine", "file": filename, "error": "disabled"}
+        # 1. Reactor Propagate / Sweep
         if args.rx_prop or args.rx_sweep:
-            r_res = run_python_backend_process(filepath, 'reactor', args.vectors, args.warmup, args.optimize, args.rx_prop, args.rx_sweep, args.perf, args.perf_events)
+            r_res = run_python_backend_process(filepath, 'reactor', args.vectors, args.warmup, optimize, args.rx_prop, args.rx_sweep, args.perf, args.perf_events)
         else:
             r_res = {"engine": "Reactor", "file": filename, "error": "disabled"}
-        if args.rx_oop:
-            ro_res = run_python_backend_process(filepath, 'reactor_oop', args.vectors, args.warmup, args.optimize, True, False, args.perf, args.perf_events)
+
+        # 2. Reactor OOP
+        if args.rx_oop and args.rx_prop:
+            ro_res = run_python_backend_process(filepath, 'reactor_oop', args.vectors, args.warmup, optimize, True, False, args.perf, args.perf_events)
         else:
             ro_res = {"engine": "ReactorOOP", "file": filename, "error": "disabled"}
+
+        # 3. Icarus Verilog
         if args.icarus:
             i_res = run_icarus_harness(filepath, args.vectors, args.warmup, args.perf, args.perf_events)
         else:
             i_res = {"engine": "Icarus", "file": filename, "error": "disabled"}
 
+        # 4. Verilator C++
         if getattr(args, 'verilator', True):
             v_res = run_verilator_harness(filepath, args.vectors, args.warmup, args.perf, args.perf_events)
         else:
             v_res = {"engine": "Verilator", "file": filename, "error": "disabled"}
+
+        # 5. Engine (Pure Python - with adaptive vectors for large netlists)
+        if args.engine:
+            size_kb = os.path.getsize(filepath) / 1024.0
+            if size_kb > 4000:
+                eng_vecs = min(args.vectors, 10)
+                eng_warm = min(args.warmup, 2)
+            elif size_kb > 1000:
+                eng_vecs = min(args.vectors, 50)
+                eng_warm = min(args.warmup, 5)
+            elif size_kb > 100:
+                eng_vecs = min(args.vectors, 100)
+                eng_warm = min(args.warmup, 5)
+            else:
+                eng_vecs = min(args.vectors, 500)
+                eng_warm = min(args.warmup, 10)
+
+            e_res = run_python_backend_process(filepath, 'engine', eng_vecs, eng_warm, optimize, args.rx_prop, args.rx_sweep, args.perf, args.perf_events)
+            if "error" not in e_res and e_res.get("time_ms", 0) > 0:
+                e_meas = max(eng_vecs - eng_warm, 1)
+                tgt_meas = max(args.vectors - args.warmup, 1)
+                if e_meas != tgt_meas:
+                    e_res["raw_time_ms"] = e_res["time_ms"]
+                    e_res["raw_vectors"] = e_meas
+                    e_res["time_ms"] = (e_res["time_ms"] / e_meas) * tgt_meas
+                    e_res["measured_vectors"] = tgt_meas
+                    if "total_evals" in e_res:
+                        e_res["total_evals"] = int((e_res["total_evals"] / e_meas) * tgt_meas)
+        else:
+            e_res = {"engine": "Engine", "file": filename, "error": "disabled"}
 
         e_str      = f"{e_res['time_ms']:.1f}"       if 'error' not in e_res else "N/A"
         r_str      = f"{r_res['time_ms']:.1f}"       if 'error' not in r_res else "N/A"
@@ -1184,7 +1231,17 @@ def main():
 
     if getattr(args, 'json', False):
         ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        circuits_data = [{"circuit": fn, "engine": e, "reactor": r, "reactor_oop": ro, "icarus": i, "verilator": v} for fn, e, r, ro, i, v in all_results]
+        circuits_data = [
+            {
+                "circuit": item[0],
+                "engine": item[1],
+                "reactor": item[2],
+                "reactor_oop": item[3],
+                "icarus": item[4],
+                "verilator": item[5]
+            }
+            for item in all_results
+        ]
         payload = {
             "meta": {"timestamp": ts, "target": args.target, "total_vectors": args.vectors, "warmup_vectors": args.warmup, "measured_vectors": measured, "optimize": args.optimize, "harness": getattr(args, 'harness', None), "jar": getattr(args, 'jar', None)},
             "circuits": circuits_data
@@ -1202,8 +1259,7 @@ def main():
         _print_speedup_report(all_results, md_lines)
 
     if getattr(args, 'dump', False):
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        dump_dir = os.path.join(script_dir, 'test_result', 'benchmark')
+        dump_dir = os.path.join(_TESTS_DIR, 'test_result', 'benchmark')
         os.makedirs(dump_dir, exist_ok=True)
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         dump_path = os.path.join(dump_dir, f"unified_iscas_benchmark_{timestamp}.md")
@@ -1218,7 +1274,7 @@ def main():
 def _print_speedup_report(all_results: list, md_lines: list = None):
     import math
 
-    W = 175
+    W = 180
     print()
     if md_lines is not None:
         md_lines.append("")
@@ -1255,7 +1311,7 @@ def _print_speedup_report(all_results: list, md_lines: list = None):
     reactor_oop_speedups   = []
     verilator_speedups     = []
 
-    for filename, e_res, r_res, ro_res, i_res, v_res in all_results:
+    for filename, e_res, r_res, ro_res, i_res, v_res, *extra in all_results:
         i_ms  = i_res.get('time_ms', None)
         e_ms  = e_res.get('time_ms', None)
         r_ms  = r_res.get('time_ms', None)
@@ -1340,6 +1396,10 @@ def _print_speedup_report(all_results: list, md_lines: list = None):
             )
             md_lines.append(md_summary)
 
+
+
+
+
 def _save_results(all_results: list, args):
     import math
     import datetime
@@ -1352,25 +1412,25 @@ def _save_results(all_results: list, args):
     ts       = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     circuits_data = []
-    for filename, e_res, r_res, ro_res, i_res, v_res in all_results:
+    for item in all_results:
         circuits_data.append({
-            "circuit":  filename,
-            "engine":   e_res,
-            "reactor":  r_res,
-            "reactor_oop": ro_res,
-            "icarus":   i_res,
-            "verilator": v_res,
+            "circuit":  item[0],
+            "engine":   item[1],
+            "reactor":  item[2],
+            "reactor_oop": item[3],
+            "icarus":   item[4],
+            "verilator": item[5],
         })
 
     valid = all_results
     speedup_summary = None
     if valid:
         geo_mean   = lambda xs: math.exp(sum(math.log(x) for x in xs) / len(xs))
-        e_spds  = [i.get('time_ms') / e.get('time_ms')  for _, e, r, ro, i, v in valid if i.get('time_ms') and e.get('time_ms') and e.get('time_ms') > 0]
-        r_spds  = [i.get('time_ms') / r.get('time_ms')  for _, e, r, ro, i, v in valid if i.get('time_ms') and r.get('time_ms') and r.get('time_ms') > 0]
-        rs_spds = [i.get('time_ms') / r.get('sweep_ms') for _, e, r, ro, i, v in valid if i.get('time_ms') and r.get('sweep_ms') and r.get('sweep_ms') > 0]
-        ro_spds = [i.get('time_ms') / ro.get('time_ms') for _, e, r, ro, i, v in valid if i.get('time_ms') and ro.get('time_ms') and ro.get('time_ms') > 0]
-        v_spds  = [i.get('time_ms') / v.get('time_ms')  for _, e, r, ro, i, v in valid if i.get('time_ms') and v.get('time_ms') and v.get('time_ms') > 0]
+        e_spds  = [i.get('time_ms') / e.get('time_ms')  for _, e, r, ro, i, v, *extra in valid if i.get('time_ms') and e.get('time_ms') and e.get('time_ms') > 0]
+        r_spds  = [i.get('time_ms') / r.get('time_ms')  for _, e, r, ro, i, v, *extra in valid if i.get('time_ms') and r.get('time_ms') and r.get('time_ms') > 0]
+        rs_spds = [i.get('time_ms') / r.get('sweep_ms') for _, e, r, ro, i, v, *extra in valid if i.get('time_ms') and r.get('sweep_ms') and r.get('sweep_ms') > 0]
+        ro_spds = [i.get('time_ms') / ro.get('time_ms') for _, e, r, ro, i, v, *extra in valid if i.get('time_ms') and ro.get('time_ms') and ro.get('time_ms') > 0]
+        v_spds  = [i.get('time_ms') / v.get('time_ms')  for _, e, r, ro, i, v, *extra in valid if i.get('time_ms') and v.get('time_ms') and v.get('time_ms') > 0]
 
         speedup_summary = {
             "valid_circuits":                    len(valid),
@@ -1400,7 +1460,7 @@ def _save_results(all_results: list, args):
     #     json.dump(payload, f, indent=2)
     # print(f"\n[+] Full results saved -> {json_path}")
 
-    W = 175
+    W = 180
     lines = []
     lines.append("=" * W)
     lines.append("  UNIFIED LOGIC SIMULATOR BENCHMARK")
@@ -1422,7 +1482,7 @@ def _save_results(all_results: list, args):
     )
     lines.append(hdr)
     lines.append("-" * W)
-    for filename, e_res, r_res, ro_res, i_res, v_res in all_results:
+    for filename, e_res, r_res, ro_res, i_res, v_res, *extra in all_results:
         e_str   = f"{e_res['time_ms']:.1f}"     if 'error' not in e_res else "N/A"
         r_str   = f"{r_res['time_ms']:.1f}"     if 'error' not in r_res else "N/A"
         rs_str  = (f"{r_res['sweep_ms']:.1f}"   if 'sweep_ms' in r_res
@@ -1460,7 +1520,7 @@ def _save_results(all_results: list, args):
         g_ro_spds = []
         g_v_spds  = []
 
-        for fn, e, r, ro, i, v in valid:
+        for fn, e, r, ro, i, v, *extra in valid:
             i_ms  = i.get('time_ms', None)
             e_ms  = e.get('time_ms', None)
             r_ms  = r.get('time_ms', None)
@@ -1522,13 +1582,12 @@ def _save_results(all_results: list, args):
         )
         lines.append("=" * W)
 
-    meps_valid = [(fn, e, r, ro, i, v) for fn, e, r, ro, i, v in all_results if 'error' not in e and 'error' not in r]
+    meps_valid = [(item[0], item[1], item[2], item[3], item[4], item[5]) for item in all_results if 'error' not in item[1] and 'error' not in item[2]]
     if meps_valid:
         lines.append("")
         lines.append("=" * W)
         lines.append("  THROUGHPUT & EVALUATION COUNTS  (MEPS = Mega Gate-Evaluations Per Second)")
         lines.append("=" * W)
-        # Header: Circuit | Engine evals | Engine MEPS | Rx-prop evals | Rx-prop MEPS | Rx-sweep evals | Rx-sweep MEPS | RxOOP evals | RxOOP MEPS
         meps_hdr = (
             f"{'Circuit':<16} | "
             f"{'Eng-evals':<16} | {'Eng-MEPS':<9} | "
@@ -1563,11 +1622,11 @@ def _save_results(all_results: list, args):
     lines.append("  BENCHMARK SUMMARY")
     lines.append("=" * W)
     total_circuits = len(all_results)
-    ok_e  = sum(1 for _, e, r, ro, i, v in all_results if 'error' not in e)
-    ok_r  = sum(1 for _, e, r, ro, i, v in all_results if 'error' not in r)
-    ok_ro = sum(1 for _, e, r, ro, i, v in all_results if 'error' not in ro)
-    ok_i  = sum(1 for _, e, r, ro, i, v in all_results if 'error' not in i)
-    ok_rs = sum(1 for _, e, r, ro, i, v in all_results if 'sweep_ms' in r)
+    ok_e  = sum(1 for item in all_results if 'error' not in item[1])
+    ok_r  = sum(1 for item in all_results if 'error' not in item[2])
+    ok_ro = sum(1 for item in all_results if 'error' not in item[3])
+    ok_i  = sum(1 for item in all_results if 'error' not in item[4])
+    ok_rs = sum(1 for item in all_results if 'sweep_ms' in item[2])
     lines.append(f"  Circuits tested       : {total_circuits}")
     lines.append(f"  Engine results OK     : {ok_e}/{total_circuits}")
     lines.append(f"  Reactor (prop) OK     : {ok_r}/{total_circuits}")
@@ -1580,12 +1639,15 @@ def _save_results(all_results: list, args):
         e_geo  = ss.get('engine_geo_mean_speedup')
         rp_geo = ss.get('reactor_propagate_geo_mean_speedup')
         rs_geo = ss.get('reactor_sweep_geo_mean_speedup')
+        r_opt_geo = ss.get('reactor_prop_optimization_geo_mean_speedup')
         lines.append("  Geo-mean speedup over Icarus baseline:")
         lines.append(f"    Engine (propagate)   : {e_geo:.2f}x"  if e_geo  else "    Engine              : N/A")
         lines.append(f"    Reactor (propagate)  : {rp_geo:.2f}x" if rp_geo else "    Reactor (propagate) : N/A")
         lines.append(f"    Reactor (sweep)      : {rs_geo:.2f}x" if rs_geo else "    Reactor (sweep)     : N/A")
         ro_geo = ss.get('reactor_oop_geo_mean_speedup')
         lines.append(f"    ReactorOOP           : {ro_geo:.2f}x" if ro_geo else "    ReactorOOP          : N/A")
+        if r_opt_geo:
+            lines.append(f"    Reactor propagate opt speedup ratio      : {r_opt_geo:.2f}x  (optimized vs unoptimized)")
         lines.append("")
         if rp_geo and rs_geo:
             ratio = rs_geo / rp_geo

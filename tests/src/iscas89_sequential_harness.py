@@ -27,12 +27,17 @@ import shutil
 import subprocess
 
 _SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
-_PROJECT_ROOT = os.path.dirname(_SCRIPT_DIR)
+_TESTS_DIR    = os.path.dirname(_SCRIPT_DIR)
+_PROJECT_ROOT = os.path.dirname(_TESTS_DIR)
+
+sys.path.insert(0, _SCRIPT_DIR)
+sys.path.insert(0, _TESTS_DIR)
+sys.path.insert(0, _PROJECT_ROOT)
 
 # VPI timer paths (shared with the combinational benchmark)
-_VPI_DIR       = (os.path.join(_SCRIPT_DIR, "harness_build")
-                  if os.path.exists(os.path.join(_SCRIPT_DIR, "harness_build"))
-                  else os.path.join(_PROJECT_ROOT, "harness_build"))
+_VPI_DIR       = (os.path.join(_PROJECT_ROOT, "harness_build")
+                  if os.path.exists(os.path.join(_PROJECT_ROOT, "harness_build"))
+                  else os.path.join(_SCRIPT_DIR, "harness_build"))
 _VPI_TIMER_C   = os.path.join(_VPI_DIR, "vpi_timer.c")
 _VPI_TIMER_VPI = os.path.join(_VPI_DIR, "vpi_timer.vpi")
 
@@ -329,7 +334,7 @@ def run_icarus_harness_89(v_file: str, vectors: int, warmup: int, use_perf: bool
             if not os.path.exists(fifo_path):
                 try: os.mkfifo(fifo_path)
                 except Exception: pass
-            perf_cmd = ["perf", "record", "-D", "-1", "--control=fifo:/tmp/rx_perf_ctrl", "-o", perf_data]
+            perf_cmd = ["perf", "record", "-D", "-1", "-m", "32", "--control=fifo:/tmp/rx_perf_ctrl", "-o", perf_data]
             if perf_events:
                 perf_cmd.extend(["-e", perf_events])
             run_cmd = perf_cmd + ["--"] + run_cmd
@@ -347,7 +352,10 @@ def run_icarus_harness_89(v_file: str, vectors: int, warmup: int, use_perf: bool
         if use_perf and use_vpi and os.path.exists(perf_data):
             with open(perf_txt, "w") as f:
                 subprocess.run(["perf", "report", "-i", perf_data], stdout=f, stderr=subprocess.DEVNULL)
-            os.remove(perf_data)
+            for p in (perf_data, perf_data + ".old"):
+                if os.path.exists(p):
+                    try: os.remove(p)
+                    except Exception: pass
 
         if run_res.returncode != 0:
             return {"engine": "Icarus", "file": filename,
@@ -553,7 +561,7 @@ def run_verilator_harness_89(v_file: str, vectors: int, warmup: int, use_perf: b
             if not os.path.exists(fifo_path):
                 try: os.mkfifo(fifo_path)
                 except Exception: pass
-            perf_cmd = ["perf", "record", "-D", "-1", "--control=fifo:/tmp/rx_perf_ctrl", "-o", perf_data]
+            perf_cmd = ["perf", "record", "-D", "-1", "-m", "32", "--control=fifo:/tmp/rx_perf_ctrl", "-o", perf_data]
             if perf_events:
                 perf_cmd.extend(["-e", perf_events])
             run_cmd = perf_cmd + ["--"] + run_cmd
@@ -566,8 +574,10 @@ def run_verilator_harness_89(v_file: str, vectors: int, warmup: int, use_perf: b
         if use_perf and os.path.exists(perf_data):
             with open(perf_txt, "w") as f:
                 subprocess.run(["perf", "report", "-i", perf_data], stdout=f, stderr=subprocess.DEVNULL)
-            try: os.remove(perf_data)
-            except OSError: pass
+            for p in (perf_data, perf_data + ".old"):
+                if os.path.exists(p):
+                    try: os.remove(p)
+                    except Exception: pass
 
         if run_res.returncode != 0:
             return {"engine": "Verilator", "file": filename, "error": f"Run failure: {run_res.stderr.strip()}"}

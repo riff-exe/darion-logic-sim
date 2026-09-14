@@ -17,6 +17,7 @@ cdef class IC:
     cdef vector[CPP_Gate]* gate_infolist_ptr
     cpdef object getcomponent(self, int choice)
     cpdef void addgate(self, object source)
+    cpdef int get_gate_count(self)
     cpdef void configure(self, list dictionary)
     cpdef void load_components(self, list dictionary, dict pseudo)
     cpdef list full_data(self)

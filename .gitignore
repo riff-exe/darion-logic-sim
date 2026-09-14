@@ -15,6 +15,7 @@ __pycache__
 *.json
 !demos/projects/*.json
 !demos/ICs/*.json
+!tests/src/DFF*.json
 
 file.json/
 temp.json/
@@ -42,3 +43,4 @@ reactor_oop/*.so
 harness_build/*.vpi
 harness_build/*.o
 tests/*/
+!tests/src/

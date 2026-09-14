@@ -20,9 +20,50 @@ except ImportError:
     sys.exit(1)
 
 _SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
-_PROJECT_ROOT = os.path.dirname(_SCRIPT_DIR)
+_TESTS_DIR    = os.path.dirname(_SCRIPT_DIR)
+_PROJECT_ROOT = os.path.dirname(_TESTS_DIR)
 
 sys.path.insert(0, _SCRIPT_DIR)
+sys.path.insert(0, _TESTS_DIR)
+sys.path.insert(0, _PROJECT_ROOT)
+
+def find_gsclib_path(start_path: str = "") -> str:
+    """Locate GSCLib_3.0.v in the repository."""
+    candidates = [
+        os.path.join(_TESTS_DIR, "IWLS2005", "library", "GSCLib_3.0.v"),
+        os.path.join(_SCRIPT_DIR, "IWLS2005", "library", "GSCLib_3.0.v"),
+        os.path.join(_PROJECT_ROOT, "tests", "IWLS2005", "library", "GSCLib_3.0.v"),
+        os.path.join(_PROJECT_ROOT, "IWLS2005", "library", "GSCLib_3.0.v"),
+    ]
+    if start_path:
+        d = os.path.dirname(os.path.abspath(start_path))
+        while len(d) > 3:
+            cand = os.path.join(d, "library", "GSCLib_3.0.v")
+            if os.path.exists(cand):
+                return os.path.abspath(cand)
+            cand_sub = os.path.join(d, "IWLS2005", "library", "GSCLib_3.0.v")
+            if os.path.exists(cand_sub):
+                return os.path.abspath(cand_sub)
+            parent = os.path.dirname(d)
+            if parent == d:
+                break
+            d = parent
+    for c in candidates:
+        if os.path.exists(c):
+            return os.path.abspath(c)
+    return ""
+
+def is_iwls_netlist(filepath: str, content: str = "") -> bool:
+    """Check if file is an IWLS 2005 netlist or contains GSCLib standard cells."""
+    if "IWLS" in filepath or "gsclib" in filepath.lower():
+        return True
+    if not content and os.path.isfile(filepath):
+        try:
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read(4096)
+        except Exception:
+            return False
+    return bool(re.search(r'\b(AND2X1|INVX1|BUFX1|DFFSRX1|DFFX1|NOR2X1|NAND2X1|AOI21X1|OAI21X1|MX2X1)\b', content))
 
 # ===========================================================================
 # 1. ENGINE / REACTOR RAM LOADER (Universal: Combo + Seq)
@@ -39,7 +80,7 @@ class UniversalLoader:
         self.dff_crct = None
 
         # Try to locate DFF.json just in case this is a sequential circuit
-        for p in [os.path.join(_SCRIPT_DIR, "DFF.json"), os.path.join(_PROJECT_ROOT, "DFF.json"), "DFF.json"]:
+        for p in [os.path.join(_TESTS_DIR, "DFF.json"), os.path.join(_SCRIPT_DIR, "DFF.json"), os.path.join(_PROJECT_ROOT, "DFF.json"), "DFF.json"]:
             if os.path.exists(p):
                 try:
                     self.dff_crct = self.circuit.get_ic(p)
@@ -61,6 +102,28 @@ class UniversalLoader:
             # Use get_components to avoid direct list access differences between Python and Cython
             self.nodes = {str(i): c for i, c in enumerate(self.circuit.get_components())}
             return
+
+        # Check if IWLS circuit (synthesized with GSCLib standard cells)
+        if is_iwls_netlist(filepath):
+            IWLSVerilogRunner = None
+            try:
+                from scripts.iwls_parser import IWLSVerilogRunner
+            except ImportError:
+                try:
+                    from tests.src.benchmark_iwls import IWLSVerilogRunner
+                except ImportError:
+                    try:
+                        from benchmark_iwls import IWLSVerilogRunner
+                    except ImportError:
+                        try:
+                            from tests.benchmark_iwls import IWLSVerilogRunner
+                        except ImportError:
+                            pass
+            if IWLSVerilogRunner:
+                runner = IWLSVerilogRunner(filepath, self.Circuit, self.const)
+                self.circuit = runner.circuit
+                self.nodes = runner.nodes
+                return
 
         with open(filepath, 'r', encoding='utf-8') as f: content = f.read()
         
@@ -153,12 +216,10 @@ class UniversalLoader:
 
 def internal_worker_main(filepath: str, mode: str):
     import gc
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
-    target_path = os.path.join(script_dir, mode)
-    if not os.path.exists(target_path): target_path = os.path.join(project_root, mode)
+    target_path = os.path.join(_SCRIPT_DIR, mode)
+    if not os.path.exists(target_path): target_path = os.path.join(_PROJECT_ROOT, mode)
 
-    sys.path.insert(0, project_root)
+    sys.path.insert(0, _PROJECT_ROOT)
     sys.path.insert(0, target_path)
     import Circuit
     import Const
@@ -223,7 +284,7 @@ def internal_worker_main(filepath: str, mode: str):
 def measure_icarus_ram(v_file: str) -> dict:
     if not shutil.which("iverilog"): return {"error": "iverilog not found"}
 
-    harness_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness_build")
+    harness_dir = os.path.join(_PROJECT_ROOT, "harness_build")
     wait_tb = os.path.join(harness_dir, "icarus_memory_wait.v")
     dff_stub = os.path.join(harness_dir, "icarus_dff_stub.v")
 
@@ -241,9 +302,12 @@ def measure_icarus_ram(v_file: str) -> dict:
         p_empty.kill()
 
         # 2. Compile and Measure Full Circuit
-        with open(v_file, 'r', encoding='utf-8') as f: content = f.read()
+        with open(v_file, 'r', encoding='utf-8', errors='ignore') as f: content = f.read()
         cmd = ["iverilog", "-o", vvp_file, v_file, wait_tb]
-        if re.search(r'\bdff', content, re.IGNORECASE) and not re.search(r'\bmodule\s+dff\b', content, re.IGNORECASE):
+        gsclib = find_gsclib_path(v_file)
+        if is_iwls_netlist(v_file, content) and gsclib:
+            cmd.append(gsclib)
+        elif re.search(r'\bdff', content, re.IGNORECASE) and not re.search(r'\bmodule\s+dff\b', content, re.IGNORECASE):
             cmd.append(dff_stub)
             
         import time
@@ -302,7 +366,8 @@ def measure_verilator_ram(v_file: str) -> dict:
     
     module_name = "unknown"
     for m in re.finditer(r'\bmodule\s+([a-zA-Z0-9_]+)', v_content):
-        if m.group(1).lower() != 'dff':
+        m_name = m.group(1).lower()
+        if m_name not in ('dff', 'dffsrx1', 'dffx1', 'sdffsrx1', 'invx1', 'bufx1', 'udp_tlat', 'udp_dff'):
             module_name = m.group(1)
             break
             
@@ -329,7 +394,11 @@ def measure_verilator_ram(v_file: str) -> dict:
         import time
         t_start = time.perf_counter_ns()
         
-        comp_cmd = ["verilator", "-O3", "-Wno-fatal", "--cc", v_file, "--exe", tb_file, "--top-module", module_name, "--Mdir", obj_dir]
+        comp_cmd = ["verilator", "-O3", "-Wno-fatal", "--cc", v_file]
+        gsclib = find_gsclib_path(v_file)
+        if is_iwls_netlist(v_file, v_content) and gsclib:
+            comp_cmd.append(gsclib)
+        comp_cmd.extend(["--exe", tb_file, "--top-module", module_name, "--Mdir", obj_dir])
         comp_res = subprocess.run(comp_cmd, capture_output=True, text=True)
         if comp_res.returncode != 0: return {"error": "Parse N/A"}
 
@@ -389,8 +458,18 @@ def measure_verilator_ram(v_file: str) -> dict:
 
 
 def get_v_files(target):
+    if not os.path.exists(target):
+        if os.path.exists(os.path.join(_TESTS_DIR, target)):
+            target = os.path.join(_TESTS_DIR, target)
+        elif os.path.exists(os.path.join(_PROJECT_ROOT, target)):
+            target = os.path.join(_PROJECT_ROOT, target)
     if os.path.isfile(target) and target.endswith('.v'): return [target]
-    return sorted([os.path.join(r, f) for r, _, fs in os.walk(target) for f in fs if f.endswith('.v') and not f.endswith('_tb.v')], key=os.path.getsize)
+    v_files = []
+    for r, _, fs in os.walk(target):
+        for f in fs:
+            if f.endswith('.v') and not f.endswith('_tb.v') and not f.endswith('_helper.v') and f != 'GSCLib_3.0.v':
+                v_files.append(os.path.join(r, f))
+    return sorted(v_files, key=os.path.getsize)
 
 def _parse_mem(res):
     if res.returncode == 0:
@@ -408,6 +487,8 @@ def main():
     parser.set_defaults(rx_prop=True)
     parser.add_argument('--no-rx-sweep', dest='rx_sweep', action='store_false', help='Skip Reactor memory benchmark (compatibility)')
     parser.set_defaults(rx_sweep=True)
+    parser.add_argument('--no-rx-oop', '--no-reactor-oop', dest='rx_oop', action='store_false', help='Compatibility flag')
+    parser.set_defaults(rx_oop=True)
 
     parser.add_argument('--no-icarus', dest='icarus', action='store_false', help='Skip Icarus Verilog benchmark')
     parser.set_defaults(icarus=True)
@@ -535,8 +616,7 @@ def main():
     
     if args.dump:
         import datetime
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        dump_dir = os.path.join(script_dir, 'test_result', 'load')
+        dump_dir = os.path.join(_TESTS_DIR, 'test_result', 'load')
         os.makedirs(dump_dir, exist_ok=True)
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         dump_path = os.path.join(dump_dir, f"unified_load_{timestamp}.md")

@@ -153,7 +153,8 @@ cdef class Circuit:
         cdef int prev = info.output
         if gate.setlimits(size):
             if prev != info.output:
-                self.propagate(gate.location)
+                self.queue[0][0] = info
+                self.propagate(1)
             return True
         return False
 
@@ -167,7 +168,8 @@ cdef class Circuit:
             src_info.flags |= FLAG_UPDATE
         target.connect(source, index)
         if prev != info.output:
-            self.propagate(target.location)
+            self.queue[0][0] = info
+            self.propagate(1)
 
     cpdef void toggle(self, int target, int value):
         '''Toggle a variable's value and output, then propagate'''
@@ -179,7 +181,8 @@ cdef class Circuit:
             info.flags = (info.flags&~FLAG_VALUE)|value
             info.output = value if MODE != DESIGN else UNKNOWN
             if MODE!=COMPILE:
-                self.propagate(target)
+                self.queue[0][0] = info
+                self.propagate(1)
             else:
                 self.sweep(target)
 
@@ -211,7 +214,7 @@ cdef class Circuit:
         cdef int origin = self.gate_infolist.size()
         cdef vector[int] targets
         cdef vector[uint8_t] values
-        cdef int i, j, n
+        cdef int i, j, n, end_point = 0
         cdef double start, end
         cdef int fd
         
@@ -237,16 +240,7 @@ cdef class Circuit:
 
         start = time.perf_counter_ns()
         
-        if MODE != COMPILE:
-            for i in range(0, n):
-                target = targets[i]
-                value = values[i]
-                info = &self.gate_infolist[target]
-                if value != info.output:
-                    info.flags = (info.flags & ~FLAG_VALUE) | value
-                    info.output = value if MODE != DESIGN else UNKNOWN
-                    self.propagate(target)
-        else:
+        if MODE == COMPILE:
             for i in range(0, n, batch_size):
                 origin = self.gate_infolist.size()
                 for j in range(batch_size):
@@ -262,6 +256,22 @@ cdef class Circuit:
                         if origin > target:
                             origin = target
                 self.sweep(origin)
+        else:
+            for i in range(0, n, batch_size):
+                end_point = 0
+                for j in range(batch_size):
+                    if i + j >= n:
+                        break
+                    target = targets[i+j]
+                    value = values[i+j]
+                    info = &self.gate_infolist[target]
+                    if value != info.output:
+                        info.flags = (info.flags & ~FLAG_VALUE) | value
+                        info.output = value if MODE != DESIGN else UNKNOWN
+                        self.queue[0][end_point] = info
+                        end_point += 1
+                if end_point > 0:
+                    self.propagate(end_point)
                 
         end = time.perf_counter_ns()
 
@@ -283,12 +293,14 @@ cdef class Circuit:
         cdef int prev = info.output
         target.disconnect(index)
         if prev != info.output:
-            self.propagate(target.location)
+            self.queue[0][0] = info
+            self.propagate(1)
 
     cpdef void hide(self, list gatelist):
         '''Hide a list of gates'''
         cdef Gate pin
         cdef IC ic
+        cdef Py_ssize_t end_point = 0
         for gate in gatelist:
             if gate.id == IC_ID:
                 ic = <IC>gate
@@ -304,14 +316,19 @@ cdef class Circuit:
             if gate.id == IC_ID:
                 ic = <IC>gate
                 for pin in ic.outputs:
-                    self.propagate(pin.location)
+                    self.queue[0][end_point] = &self.gate_infolist[pin.location]
+                    end_point += 1
             else:
-                self.propagate((<Gate>gate).location)
+                self.queue[0][end_point] = &self.gate_infolist[(<Gate>gate).location]
+                end_point += 1
+        if end_point > 0:
+            self.propagate(end_point)
 
     cpdef void reveal(self, list gatelist):
         '''Reveal a list of gates'''
         cdef Gate pin
         cdef IC ic
+        cdef Py_ssize_t end_point = 0
         for gate in reversed(gatelist):
             '''Renew the gates first. reverse order is cruical for proper retrieval'''
             self.renewobj(gate)
@@ -327,10 +344,14 @@ cdef class Circuit:
                 ic = <IC>gate
                 for pin in ic.outputs:
                     if self.gate_infolist[pin.location].output != UNKNOWN:
-                        self.propagate(pin.location)
+                        self.queue[0][end_point] = &self.gate_infolist[pin.location]
+                        end_point += 1
             else:
                 if self.gate_infolist[(<Gate>gate).location].output != UNKNOWN:
-                    self.propagate((<Gate>gate).location)
+                    self.queue[0][end_point] = (<Gate>gate).info
+                    end_point += 1
+        if end_point > 0:
+            self.propagate(end_point)
 
     # Result
     cpdef void output(self, Gate gate):
@@ -380,12 +401,17 @@ cdef class Circuit:
                 j = (var_size - 1) - changed_bit
                 bit = 1 if (gray & mask) else 0
                 gate_infolist[var[j]].output = bit
-                self.propagate(var[j])
+                self.queue[0][0] = &gate_infolist[var[j]]
+                self.propagate(1)
             else:
+                end_point = 0
                 for j in range(var_size):
                     if gate_infolist[var[j]].output != 0:
                         gate_infolist[var[j]].output = 0
-                        self.propagate(var[j])
+                        self.queue[0][end_point] = &gate_infolist[var[j]]
+                        end_point += 1
+                if end_point > 0:
+                    self.propagate(end_point)
 
             # Fast C-level list creation instead of .append()
             offset=col*gray
@@ -1042,7 +1068,8 @@ cdef class Circuit:
                 info = &self.gate_infolist[gate.location] # update cpp_gate
                 info.type = id
                 gate.process() # process the gate
-                self.propagate(gate.location) # propagate the changes
+                self.queue[0][0] = info
+                self.propagate(1) # propagate the changes
 
     cpdef void reorder(self, object gate, int index):
         # shift the position of same types of gates in objlist
@@ -1205,6 +1232,7 @@ cdef class Circuit:
         '''simulate the circuit'''
         cdef Gate variable
         cdef CPP_Gate* info
+        cdef Py_ssize_t end_point = 0
         set_MODE(Mod)
         self.visual_queue_clear()
         self.eval_count = 0
@@ -1221,21 +1249,27 @@ cdef class Circuit:
         else:
             for variable in self.objlist[VARIABLE_ID]:
                 if variable is not None:
-                    # set output of variable to its value
-                    # run the propagation from variable
                     info = &self.gate_infolist[variable.location]
                     info.output = info.flags & FLAG_VALUE
-                    self.propagate(variable.location)
+                    self.queue[0][end_point] = info
+                    end_point += 1
+            if end_point > 0:
+                self.propagate(end_point)
 
     cpdef void custom_simulate(self, list varlist):
         '''simulate the circuit'''
         cdef CPP_Gate* info
-        for variable in varlist:
-            # set output of variable to its value
-            # run the propagation from variable
-            info = &self.gate_infolist[variable]
-            info.output = (info.flags & FLAG_VALUE)
-            self.propagate(variable)
+        cdef Py_ssize_t end_point = 0
+        if MODE !=COMPILE:
+            for variable in varlist:
+                info = &self.gate_infolist[variable]
+                info.output = (info.flags & FLAG_VALUE)
+                self.queue[0][end_point] = info
+                end_point += 1
+            if end_point > 0:
+                self.propagate(end_point)
+        else:
+            self.sweep(0)
 
     cpdef void reset(self):
         '''reset the circuit's items to unknown value'''
@@ -1319,40 +1353,33 @@ cdef class Circuit:
             self.time_queue.push(Task(origin, next_time, origin))
             self.time_limit.push(next_time + (self.FanOut_delay[self_info.type] * self_info.hitlist.size()))
 
-    cdef void propagate(self, int origin) noexcept nogil:
+    cdef void propagate(self, Py_ssize_t end_point) noexcept nogil:
         '''propagate the output of a gate to its targets'''
         cdef Profile* profile
         cdef Profile* end
-        cdef Py_ssize_t gate_loc
-        cdef Py_ssize_t realsource, high, low,limit,gate_type,flags
+        cdef int gate_loc
+        cdef Py_ssize_t realsource, high, low, limit, gate_type, flags
         cdef Py_ssize_t new_output, profile_output, target_output
-        cdef Py_ssize_t index = 0, end_point = 1, size = 0
+        cdef Py_ssize_t index = 0, size = 0
         cdef Py_ssize_t eval = 0
         cdef CPP_Gate** read_queue = self.queue[0]
         cdef CPP_Gate** write_queue = self.queue[1]
         cdef CPP_Gate* self_info
         cdef CPP_Gate* target_info
-        cdef int next_time
-        cdef CPP_Gate* gate_infolist = self.gate_infolist.data()
-        self_info = &gate_infolist[origin]
-            
-        read_queue[0] = &gate_infolist[origin]
-        # if not (self_info.flags & FLAG_UPDATE):
-        #     self_info.flags |= FLAG_UPDATE
-        #     self.visual_queue.push_back(&gate_infolist[origin])    
-        cdef Py_ssize_t wave_limit=self.gate_infolist.size()-self.hidden
+
+        cdef CPP_Gate* gate_infolist = self.gate_infolist.data()            
+        cdef Py_ssize_t wave_limit = self.gate_infolist.size() - self.hidden
         while end_point > 0:
-            if unlikely(wave_limit<0):
+            if unlikely(wave_limit < 0):
                 self.eval_count += eval
                 for i in range(end_point):
                     self_info = read_queue[i]
                     self_info.flags &= ~FLAG_MARK
-                    # self_info.flags |= FLAG_SCHEDULED
                     self_info.target_time = self.Global_Clock + self.Global_delay[self_info.type] + (self.FanIn_delay[self_info.type] * self_info.inputlimit) + (self.FanOut_delay[self_info.type] * self_info.hitlist.size())
                     self.time_queue.push(Task(read_queue[i] - gate_infolist, self_info.target_time, read_queue[i] - gate_infolist))
                 with gil:
                     if self.runner is None or self.runner.done():
-                        self.runner=asyncio.create_task(self.task_manager())
+                        self.runner = asyncio.create_task(self.task_manager())
                     return
             wave_limit -= 1
             for index in range(end_point):
@@ -1371,74 +1398,13 @@ cdef class Circuit:
                     flags = target_info.flags
                     target_info.high += (new_output == HIGH) - (profile_output == HIGH)
                     target_info.low += (new_output == LOW) - (profile_output == LOW)
-                    if (new_output==UNKNOWN) or target_info.inputlimit: target_output=UNKNOWN
-                    elif flags & FLAG_AND: target_output= (target_info.low==0)^(flags&1)
-                    elif flags & FLAG_OR: target_output= (target_info.high>0)^(flags&1)
-                    else: target_output= (target_info.high&1)^(flags&1)
+                    if (new_output == UNKNOWN) or target_info.inputlimit: target_output = UNKNOWN
+                    elif flags & FLAG_AND: target_output = (target_info.low == 0) ^ (flags & 1)
+                    elif flags & FLAG_OR: target_output = (target_info.high > 0) ^ (flags & 1)
+                    else: target_output = (target_info.high & 1) ^ (flags & 1)
                     write_queue[size] = profile.target
-                    size += ( ((target_info.flags & FLAG_MARK)==0 )& (target_output!=target_info.output))
-                    target_info.flags |= FLAG_MARK * (target_output!=target_info.output)
-                    target_info.output = target_output
-                    profile.output = new_output
-                    profile += 1
-            # size is actually the growing size of write_queue
-            end_point, size = size, 0
-            # buffer switching, read->write and write->read
-            read_queue, write_queue = write_queue, read_queue
-        self.eval_count += eval
-
-    cdef void batch_propagate(self,Py_ssize_t end_point) noexcept nogil:
-        '''propagate the output of a gate to its targets'''
-        cdef Profile* profile
-        cdef Profile* end
-        cdef int gate_loc
-        cdef Py_ssize_t realsource, high, low,limit,gate_type
-        cdef Py_ssize_t new_output, profile_output, target_output
-        cdef Py_ssize_t index = 0, size = 0
-        cdef Py_ssize_t eval = 0
-        cdef CPP_Gate** read_queue = self.queue[0]
-        cdef CPP_Gate** write_queue = self.queue[1]
-        cdef CPP_Gate* self_info
-        cdef CPP_Gate* target_info
-
-        cdef CPP_Gate* gate_infolist = self.gate_infolist.data()            
-        cdef Py_ssize_t wave_limit=self.gate_infolist.size()-self.hidden
-        while end_point > 0:
-            if unlikely(wave_limit<0):
-                self.eval_count += eval
-                for i in range(end_point):
-                    self_info = read_queue[i]
-                    self_info.flags &= ~FLAG_MARK
-                    self_info.target_time = self.Global_Clock + self.Global_delay[self_info.type] + (self.FanIn_delay[self_info.type] * self_info.inputlimit) + (self.FanOut_delay[self_info.type] * self_info.hitlist.size())
-                    self.time_queue.push(Task(read_queue[i] - gate_infolist, self_info.target_time, read_queue[i] - gate_infolist))
-                with gil:
-                    if self.runner is None or self.runner.done():
-                        self.runner=asyncio.create_task(self.task_manager())
-                    return
-            wave_limit -= 1
-            for index in range(end_point):
-                self_info = read_queue[index]
-                self_info.flags &= ~FLAG_MARK
-                if not (self_info.flags & FLAG_UPDATE):
-                    self.visual_queue.push_back(read_queue[index] - gate_infolist)   # target changed — mark dirty
-                    self_info.flags |= FLAG_UPDATE
-                new_output = self_info.output
-                profile = self_info.hitlist.data()
-                end = profile + self_info.hitlist.size()
-                eval += self_info.hitlist.size()
-                while profile != end:
-                    profile_output = profile.output
-                    target_info = profile.target
-                    gate_type = target_info.type
-                    target_info.high += (new_output == HIGH) - (profile_output == HIGH)
-                    target_info.low += (new_output == LOW) - (profile_output == LOW)
-                    if (new_output==UNKNOWN) or target_info.inputlimit: target_output=UNKNOWN
-                    elif gate_type<OR_ID: target_output= (target_info.low==0)^(gate_type&1)
-                    elif gate_type <XOR_ID: target_output= (target_info.high>0)^(gate_type&1)
-                    else: target_output= (target_info.high&1)^(gate_type&1)
-                    write_queue[size] = profile.target
-                    size += ( ((target_info.flags & FLAG_MARK)==0 )& (target_output!=target_info.output))
-                    target_info.flags |= FLAG_MARK * (target_output!=target_info.output)
+                    size += (((target_info.flags & FLAG_MARK) == 0) & (target_output != target_info.output))
+                    target_info.flags |= FLAG_MARK * (target_output != target_info.output)
                     target_info.output = target_output
                     profile.output = new_output
                     profile += 1
@@ -1495,7 +1461,7 @@ cdef class Circuit:
         # size is actually the growing size of write_queue
         self.eval_count += eval
         if end_point:
-            self.batch_propagate(end_point)
+            self.propagate(end_point)
 
     cpdef list geometry(self):
         '''

@@ -47,6 +47,16 @@ cdef class IC:
             gt.code = (choice, rank, self.code)
         return gt
 
+    cpdef int get_gate_count(self):
+        cdef int count = len(self.inputs) + len(self.outputs)
+        cdef object comp
+        for comp in self.internal:
+            if comp.id == IC_ID:
+                count += (<IC>comp).get_gate_count() + 1
+            else:
+                count += 1
+        return count
+
     cpdef void addgate(self, object source):
         if source.id==IC_INPUT_PIN_ID:
             rank = len(self.inputs)
@@ -59,6 +69,10 @@ cdef class IC:
             self.internal.append(source)
         source.codename = source.codename+'-'+str(rank)
         source.code = (source.code[0], rank, self.code)
+        if source.id == IC_ID:
+            self.counter += (<IC>source).get_gate_count() + 1
+        else:
+            self.counter += 1
 
     cpdef void configure(self, list dictionary):
         cdef dict pseudo = {}

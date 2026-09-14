@@ -32,12 +32,17 @@ class ISCASVerilogRunner:
             'not': self.const.NOT_ID, 'buf': self.const.BUFFER_ID
         }
         
-        # Load DFF.json from common locations
+        # Load DFF.json or DFFSR.json from common locations
         for p in [
             os.path.join(_SCRIPT_DIR, "DFF.json"),
+            os.path.join(_PROJECT_ROOT, "tests", "src", "DFF.json"),
             os.path.join(_PROJECT_ROOT, "DFF.json"),
             os.path.join(_PROJECT_ROOT, "tests", "DFF.json"),
             "DFF.json",
+            os.path.join(_SCRIPT_DIR, "DFFSR.json"),
+            os.path.join(_PROJECT_ROOT, "tests", "src", "DFFSR.json"),
+            os.path.join(_PROJECT_ROOT, "tests", "DFFSR.json"),
+            "DFFSR.json",
         ]:
             if os.path.exists(p):
                 try:
@@ -201,6 +206,12 @@ class ISCASVerilogRunner:
                 d_gate = self.nodes.get(d_wire)
                 if d_gate and len(dff_inst.inputs) > 1:
                     self.circuit.connect(dff_inst.inputs[1], d_gate, 0)
+            if len(dff_inst.inputs) > 2:
+                c1_gate = get_const_node("1'b1")
+                self.circuit.connect(dff_inst.inputs[2], c1_gate, 0)
+            if len(dff_inst.inputs) > 3:
+                c1_gate = get_const_node("1'b1")
+                self.circuit.connect(dff_inst.inputs[3], c1_gate, 0)
 
         self.dff_connections = dff_connections
         self.circuit.simulate(self.const.COMPILE)
