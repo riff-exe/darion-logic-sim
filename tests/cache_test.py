@@ -155,9 +155,37 @@ def _connect_gate(c, g, g_type, prev_gate, const_high, const_low):
         c.connect(g, const_gate, 1)
 
 
+def init_simulation(c, start_node):
+    """Safely initialize simulation of the chain without triggering O(N^2) multi-wave constant avalanche."""
+    var_ref = start_node if (use_reactor_oop or not use_reactor) else start_node.location
+    if hasattr(c, 'custom_simulate'):
+        c.custom_simulate([var_ref])
+    else:
+        c.simulate(Const.SIMULATE)
+
+
+def get_chain_jump(start_node):
+    """Calculates the average physical memory jump distance along the active signal propagation path."""
+    curr = start_node
+    total_jump = 0
+    count = 0
+    while curr.hitlist:
+        nxt_candidates = [g for g in curr.hitlist if getattr(g, 'id', None) != Const.VARIABLE_ID]
+        nxt = nxt_candidates[0] if nxt_candidates else curr.hitlist[0]
+        total_jump += abs(nxt.location - curr.location)
+        count += 1
+        curr = nxt
+        if not nxt_candidates and count > 1:
+            break
+    return (total_jump / count) if count > 0 else 0.0
+
+
 def build_chain(active_size, mode='chaotic'):
     """Builds a mixed-gate chain with configurable memory allocation modes."""
     c = Circuit()
+    if hasattr(Const, 'set_MODE'):
+        Const.set_MODE(Const.SIMULATE)
+
     first_gate = c.getcomponent(Const.VARIABLE_ID)
 
     const_high = c.getcomponent(Const.VARIABLE_ID)
@@ -186,13 +214,16 @@ def build_chain(active_size, mode='chaotic'):
         _connect_gate(c, g, g_type, prev_gate, const_high, const_low)
         prev_gate = g
 
-    c.simulate(Const.SIMULATE)
+    init_simulation(c, first_gate)
     return c, first_gate
 
 
 def build_homogeneous_chain(active_size, gate_type):
     """Builds a chain made entirely of one gate type, with chaotic allocation order."""
     c = Circuit()
+    if hasattr(Const, 'set_MODE'):
+        Const.set_MODE(Const.SIMULATE)
+
     first_gate = c.getcomponent(Const.VARIABLE_ID)
 
     const_high = c.getcomponent(Const.VARIABLE_ID)
@@ -210,7 +241,7 @@ def build_homogeneous_chain(active_size, gate_type):
         _connect_gate(c, g, gate_type, prev_gate, const_high, const_low)
         prev_gate = g
 
-    c.simulate(Const.SIMULATE)
+    init_simulation(c, first_gate)
     return c, first_gate
 
 
@@ -286,7 +317,7 @@ async def run_profiler_suite(mode_name):
         current_size = 100
         while current_size <= 2_000_000:
             test_sizes.append(current_size)
-            current_size = int(current_size * 1.15)
+            current_size = int(current_size * 1.35)
 
     base_ram = get_ram_mb()
     results = []
@@ -298,7 +329,7 @@ async def run_profiler_suite(mode_name):
         f"| {'Active Gates':<12} | {'RAM (MB)':>8} | "
         f"{'Unopt(ms)':>10} | {'Opt(ms)':>10} | {'Sweep(ms)':>10} | "
         f"{'Unopt-ev':>11} | {'Opt-ev':>11} | {'Sweep-ev':>11} | "
-        f"{'Opt-spd':>8} | {'Swp-spd':>8} | {'Mean Jump':>9} | {'Bounds'}"
+        f"{'Opt-spd':>8} | {'Swp-spd':>8} | {'Unopt Jmp':>9} | {'Opt Jmp':>9} | {'Bounds'}"
     )
     print(hdr)
     print("-" * len(hdr))
@@ -324,18 +355,20 @@ async def run_profiler_suite(mode_name):
 
         # PASS 1: UNOPTIMIZED (BFS)
         if args.perf_pass in [None, 'unopt', 'oop']:
-            c.simulate(Const.SIMULATE)
+            init_simulation(c, start_node)
             iterations = get_iters()
             unopt_ms, unopt_ev = benchmark_pass(c, start_node, size, iterations, const=Const)
         else:
             unopt_ms, unopt_ev = 0.0, 0
 
-        jumps = c.geometry()
-        mean_jump = sum(jumps) / len(jumps) if jumps else 0.0
+        unopt_jump = get_chain_jump(start_node)
 
         # PASS 2: OPTIMIZED (BFS)
+        opt_jump = 0.0
         if args.perf_pass in [None, 'opt', 'sweep']:
             c.optimize()
+            init_simulation(c, start_node)
+            opt_jump = get_chain_jump(start_node)
         if args.perf_pass in [None, 'opt']:
             iterations = get_iters()
             opt_ms, opt_ev = benchmark_pass(c, start_node, size, iterations, const=Const)
@@ -377,8 +410,12 @@ async def run_profiler_suite(mode_name):
         plot_data["unopt_me"].append(unopt_ms)
         plot_data["opt_bfs_me"].append(opt_ms)
 
-        opt_spd = unopt_ms / opt_ms if opt_ms > 0 else 0.0
-        swp_spd = unopt_ms / sweep_ms if sweep_ms and sweep_ms > 0 else 0.0
+        unopt_rate = (unopt_ev / unopt_ms) if unopt_ms > 0 else 0.0
+        opt_rate = (opt_ev / opt_ms) if opt_ms > 0 else 0.0
+        swp_rate = (sweep_ev / sweep_ms) if (sweep_ms and sweep_ms > 0) else 0.0
+
+        opt_spd = (opt_rate / unopt_rate) if unopt_rate > 0 else 0.0
+        swp_spd = (swp_rate / unopt_rate) if unopt_rate > 0 else 0.0
 
         unopt_ms_str = f"{unopt_ms:.1f}"
         opt_ms_str = f"{opt_ms:.1f}"
@@ -412,7 +449,7 @@ async def run_profiler_suite(mode_name):
             f"| {size:<12,} | {current_ram:>8.1f} | "
             f"{unopt_ms_str:>10} | {opt_ms_str:>10} | {sweep_ms_str:>10} | "
             f"{unopt_ev_str:>11} | {opt_ev_str:>11} | {sweep_ev_str:>11} | "
-            f"{opt_spd_str:>8} | {swp_spd_str:>8} | {mean_jump:>9.1f} | {tag}"
+            f"{opt_spd_str:>8} | {swp_spd_str:>8} | {unopt_jump:>9.1f} | {opt_jump:>9.1f} | {tag}"
         )
         print(row)
 
@@ -451,7 +488,7 @@ async def run_homogeneous_suite(gate_type):
         f"| {'Active Gates':<12} | {'RAM (MB)':>8} | "
         f"{'Unopt(ms)':>10} | {'Opt(ms)':>10} | {'Sweep(ms)':>10} | "
         f"{'Unopt-ev':>11} | {'Opt-ev':>11} | {'Sweep-ev':>11} | "
-        f"{'Opt-spd':>8} | {'Swp-spd':>8} | {'Mean Jump':>9} | {'Bounds'}"
+        f"{'Opt-spd':>8} | {'Swp-spd':>8} | {'Unopt Jmp':>9} | {'Opt Jmp':>9} | {'Bounds'}"
     )
     print(hdr)
     print("-" * len(hdr))
@@ -470,14 +507,14 @@ async def run_homogeneous_suite(gate_type):
         iterations = min(iterations, 10) if size >= 200000 else iterations
 
         # PASS 1: UNOPTIMIZED (BFS)
-        c.simulate(Const.SIMULATE)
+        init_simulation(c, start_node)
         unopt_ms, unopt_ev = benchmark_pass(c, start_node, size, iterations, const=Const)
-
-        jumps = c.geometry()
-        mean_jump = sum(jumps) / len(jumps) if jumps else 0.0
+        unopt_jump = get_chain_jump(start_node)
 
         # PASS 2: OPTIMIZED (BFS)
         c.optimize()
+        init_simulation(c, start_node)
+        opt_jump = get_chain_jump(start_node)
         opt_ms, opt_ev = benchmark_pass(c, start_node, size, iterations, const=Const)
 
         # PASS 3: OPTIMIZED (SWEEP)
@@ -498,8 +535,12 @@ async def run_homogeneous_suite(gate_type):
         plot_data["unopt_me"].append(unopt_ms)
         plot_data["opt_bfs_me"].append(opt_ms)
 
-        opt_spd = unopt_ms / opt_ms if opt_ms > 0 else 0.0
-        swp_spd = unopt_ms / sweep_ms if sweep_ms and sweep_ms > 0 else 0.0
+        unopt_rate = (unopt_ev / unopt_ms) if unopt_ms > 0 else 0.0
+        opt_rate = (opt_ev / opt_ms) if opt_ms > 0 else 0.0
+        swp_rate = (sweep_ev / sweep_ms) if (sweep_ms and sweep_ms > 0) else 0.0
+
+        opt_spd = (opt_rate / unopt_rate) if unopt_rate > 0 else 0.0
+        swp_spd = (swp_rate / unopt_rate) if unopt_rate > 0 else 0.0
 
         unopt_ms_str = f"{unopt_ms:.1f}"
         opt_ms_str = f"{opt_ms:.1f}"
@@ -533,7 +574,7 @@ async def run_homogeneous_suite(gate_type):
             f"| {size:<12,} | {current_ram:>8.1f} | "
             f"{unopt_ms_str:>10} | {opt_ms_str:>10} | {sweep_ms_str:>10} | "
             f"{unopt_ev_str:>11} | {opt_ev_str:>11} | {sweep_ev_str:>11} | "
-            f"{opt_spd_str:>8} | {swp_spd_str:>8} | {mean_jump:>9.1f} | {tag}"
+            f"{opt_spd_str:>8} | {swp_spd_str:>8} | {unopt_jump:>9.1f} | {opt_jump:>9.1f} | {tag}"
         )
         print(row)
 
