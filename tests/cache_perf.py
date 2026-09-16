@@ -61,11 +61,13 @@ def main():
     
     for s in sizes:
         print(f"Profiling size {s:<9,} ... ", end="", flush=True)
+        shared_iters = None
         for pass_name in ["oop", "unopt", "opt", "sweep"]:
             pass_args = test_args + ["--reactor_oop"] if pass_name == "oop" else test_args
+            extra_args = ["--perf-iters", str(int(shared_iters))] if shared_iters is not None else []
             cmd = [
                 "perf", "stat", "-D", "-1", f"--control=fifo:{fifo_path}", "-e", events, "-x,",
-                "--", sys.executable, "tests/cache_test.py", *pass_args, "--perf-size", str(s), "--perf-pass", pass_name, "--perf-fifo", fifo_path
+                "--", sys.executable, "tests/cache_test.py", *pass_args, "--perf-size", str(s), "--perf-pass", pass_name, "--perf-fifo", fifo_path, *extra_args
             ]
             res = subprocess.run(cmd, capture_output=True, text=True)
             stats = {}
@@ -81,6 +83,8 @@ def main():
                         except: pass
                 elif line.startswith("ITERATIONS:"):
                     stats["_iterations"] = float(line.split(":")[1].strip())
+                    if shared_iters is None:
+                        shared_iters = stats["_iterations"]
                 elif line.startswith("TIME_MS:"):
                     stats["_time_ms"] = float(line.split(":")[1].strip())
                 elif line.startswith("EVAL_COUNT:"):

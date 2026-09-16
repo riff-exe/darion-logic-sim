@@ -13,7 +13,7 @@
 
 | Circuit | Gates | Cython Reactor | Pure Python | Icarus Verilog | Verilator C++ |
 |:---|---:|---:|---:|---:|---:|
-| DMA.v | 31,920 | 57.31 MB (88.6 MB peak) | N/A | 103.36 MB (111.1 MB peak) | 1.50 MB (5.2 MB peak) |
+| DMA.v | 31,920 | 56.88 MB (88.1 MB peak) | N/A | 103.14 MB (111.0 MB peak) | 1.36 MB (5.1 MB peak) |
 
 ---
 
@@ -21,7 +21,7 @@
 
 | Circuit | Gates | Cython Reactor | Pure Python | Icarus Verilog | Verilator C++ |
 |:---|---:|---:|---:|---:|---:|
-| DMA.v | 31,920 | 73.06 ms (16.143 ms opt) | N/A | 647.87 ms | 26.01 s |
+| DMA.v | 31,920 | 52.77 ms (12.931 ms opt) | N/A | 518.45 ms | 21.68 s |
 
 ---
 
@@ -31,25 +31,25 @@
 
 | Circuit | rx-prop (ms) | rx-sweep (ms) | rx-oop (ms) | Pure Python (ms) | Icarus (ms) | Verilator (ms) |
 |:---|---:|---:|---:|---:|---:|---:|
-| DMA.v | 2334.55 ms | 2749.08 ms | 2989.62 ms | N/A | 8663.64 ms | 1087.78 ms |
+| DMA.v | 1575.91 ms | 1840.29 ms | 2069.06 ms | N/A | 5631.21 ms | 717.35 ms |
 
 ### Speedup Analysis (vs Baseline: Icarus = 1.00x)
 
 | Circuit | rx-prop | rx-sweep | rx-oop | Pure Python | Icarus | Verilator C++ |
 |:---|---:|---:|---:|---:|---:|---:|
-| DMA.v | 3.71x | 3.15x | 2.90x | N/A | 1.00x | 7.96x |
+| DMA.v | 3.57x | 3.06x | 2.72x | N/A | 1.00x | 7.85x |
 
 ### Geo-Mean Speedup Highlights (Baseline: Icarus = 1.00x)
 
-- **rx-prop (Wavefront BFS):** `3.71x`
-- **rx-sweep (Linear Compiled):** `3.15x`
-- **rx-oop (OOP Graph):** `2.90x`
+- **rx-prop (Wavefront BFS):** `3.57x`
+- **rx-sweep (Linear Compiled):** `3.06x`
+- **rx-oop (OOP Graph):** `2.72x`
 - **Icarus Verilog:** `1.00x (Baseline)`
-- **Verilator C++:** `7.96x`
+- **Verilator C++:** `7.85x`
 
 ### Cross-Engine Comparisons
 
-- **Reactor Sweep vs Propagate Ratio:** `0.85x` (propagate faster)
+- **Reactor Sweep vs Propagate Ratio:** `0.86x` (propagate faster)
 
 ---
 
@@ -57,7 +57,7 @@
 
 | Circuit | Engine Variant | IPC | Cycles | Instructions | L1 Loads | L1 Hit% | L2 Hit% | LLC Misses | Brn Miss% |
 |:---|:---|---:|---:|---:|---:|---:|---:|---:|---:|
-| DMA.v | rx-prop | 2.81 | 6.52B | 18.33B | 6.07B | 87.55% | 73.17% | 202.89M | 0.54% |
-| DMA.v | rx-sweep (Linear) | 3.48 | 7.69B | 26.76B | 8.31B | 87.08% | 88.06% | 128.28M | 0.85% |
-| DMA.v | rx-oop (OOP Engine) | 2.15 | 8.36B | 17.99B | 6.14B | 84.93% | 49.38% | 468.14M | 0.58% |
-| DMA.v | Icarus Verilog | 3.30 | 26.92B | 88.78B | 41.15B | 97.24% | 48.65% | 581.44M | 0.37% |
+| DMA.v | rx-prop | 2.82 | 6.51B | 18.37B | 6.10B | 87.62% | 73.04% | 203.58M | 0.54% |
+| DMA.v | rx-sweep (Linear) | 3.51 | 7.61B | 26.74B | 8.32B | 87.09% | 88.70% | 121.37M | 0.84% |
+| DMA.v | rx-oop (OOP Engine) | 2.05 | 8.50B | 17.41B | 9.98B | 89.87% | 53.50% | 470.04M | 0.88% |
+| DMA.v | Icarus Verilog | 3.43 | 25.88B | 88.81B | 40.46B | 97.21% | 47.06% | 597.52M | 0.38% |

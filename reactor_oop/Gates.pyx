@@ -4,36 +4,36 @@
 # cython: initializedcheck=False
 # cython: cdivision=True
 # cython: nonecheck=False
-from Gates cimport vector
+from Gates cimport vector, CPP_Gate, Profile, make_gate, pop, hide, reveal
 from cpython.list cimport PyList_GET_SIZE, PyList_GET_ITEM
 from Const cimport *
 from libc.string cimport memmove
 from Store cimport decode
 from libc.stdint cimport uint16_t
-            
-cdef inline void pop(vector[Profile]& hitlist,CPP_Gate* target, int pin_index):
-    cdef Profile* profile= hitlist.data()
-    cdef Profile* end = profile+hitlist.size()
-    while profile<end:
+
+cdef inline void pop(vector[Profile]& hitlist, CPP_Gate* target, int pin_index):
+    cdef Profile* profile = hitlist.data()
+    cdef Profile* end = profile + hitlist.size()
+    while profile < end:
         if profile.target == target and profile.index == pin_index:
-            profile[0]=(end-1)[0]
+            profile[0] = (end - 1)[0]
             hitlist.pop_back()
             break
-        profile+=1
+        profile += 1
 
 cdef inline void hide(Profile& profile):
     cdef CPP_Gate* target_info = <CPP_Gate*>profile.target
     cdef Gate target = <Gate>target_info.gate
     if profile.output == HIGH: target_info.high -= 1
     elif profile.output == LOW: target_info.low -= 1
-    target_info.invalid += 1
+    target_info.inputlimit += 1
     target.sources[profile.index] = None
     profile.output = UNKNOWN
 
-cdef inline void reveal(Profile& profile,Gate source):
+cdef inline void reveal(Profile& profile, Gate source):
     cdef CPP_Gate* target_info = <CPP_Gate*>profile.target
     cdef Gate target = <Gate>target_info.gate
-    target_info.invalid -= 1
+    target_info.inputlimit -= 1
     target.sources[profile.index] = source
 
 cdef class Gate:
@@ -42,11 +42,11 @@ cdef class Gate:
         self.codename = name
         self.location = -1
         cdef uint8_t limit = 1 if id >= BUFFER_ID else 2
-        self.info = new CPP_Gate(<void*>self, id, limit)
+        self.info = make_gate(<void*>self, id, limit)
         if id >= BUFFER_ID:
-            self.sources: list = [None]
+            self.sources = [None]
         else:
-            self.sources:list=[None,None]
+            self.sources = [None, None]
         self.code = ()
         self.custom_name = ''
 
@@ -71,126 +71,109 @@ cdef class Gate:
         return result
 
     cdef void process(self):
-        cdef int gate_type
-        cdef int limit
-        cdef int low
-        cdef int high
-        cdef int realsource
-        
         if MODE == DESIGN:
             self.info.output = UNKNOWN
+        elif self.id == VARIABLE_ID:
+            self.info.output = self.info.flags & FLAG_VALUE
+        elif self.info.inputlimit == 0:
+            self.info.compute()    # virtual dispatch to typed subclass
         else:
-            if self.id==VARIABLE_ID:
-                self.info.output = self.info.flags & FLAG_VALUE
-            else:
-                limit=self.info.inputlimit
-                gate_type=self.id
-                high = self.info.high
-                low = self.info.low
-                if likely(self.info.invalid == 0):
-                    if gate_type<=NAND_ID:self.info.output = (low==0)^(gate_type&1)
-                    elif gate_type<=NOR_ID:self.info.output = (high>0)^(gate_type&1)
-                    else:self.info.output = (high&1)^(gate_type&1)
-                else:
-                    self.info.output = UNKNOWN
-       
-    cpdef void rename(self,str name):
+            self.info.output = UNKNOWN
+
+    cpdef void rename(self, str name):
         self.custom_name = name
 
-    cdef void connect(self, Gate source,int index):
-        if self.id==VARIABLE_ID or self.sources[index] is not None:
+    cdef void connect(self, Gate source, int index):
+        if self.id == VARIABLE_ID or self.sources[index] is not None:
             return
         source.info.hitlist.emplace_back(<CPP_Gate*>self.info, index, source.info.output)
         self.sources[index] = source
         if source.info.output == HIGH: self.info.high += 1
         elif source.info.output == LOW: self.info.low += 1
-        self.info.invalid -= 1
-        if source.info.output==UNKNOWN:
+        self.info.inputlimit -= 1
+        if source.info.output == UNKNOWN:
             self.info.output = UNKNOWN
         else:
             self.process()
 
-    cdef void disconnect(self,int index):
-        if self.id==VARIABLE_ID or self.sources[index] is None:
+    cdef void disconnect(self, int index):
+        if self.id == VARIABLE_ID or self.sources[index] is None:
             return
         cdef Gate source = self.sources[index]
         pop(source.info.hitlist, <CPP_Gate*>self.info, index)
         self.sources[index] = None
         if source.info.output == HIGH: self.info.high -= 1
         elif source.info.output == LOW: self.info.low -= 1
-        self.info.invalid += 1
-        self.info.output=UNKNOWN
-   
+        self.info.inputlimit += 1
+        self.info.output = UNKNOWN
+
     cdef void reset(self):
-        if self.id!= VARIABLE_ID:
+        if self.id != VARIABLE_ID:
             self.info.high = 0
             self.info.low = 0
         self.info.output = UNKNOWN
         cdef Profile* profile = self.info.hitlist.data()
         cdef Profile* end = profile + self.info.hitlist.size()
-        while profile<end:
-            profile.output=UNKNOWN
-            profile+=1
+        while profile < end:
+            profile.output = UNKNOWN
+            profile += 1
 
     cdef void hide(self):
-        # disconnect from targets (this gate's outputs)
         cdef Py_ssize_t i
-        cdef Py_ssize_t n=self.info.hitlist.size()
+        cdef Py_ssize_t n = self.info.hitlist.size()
         cdef Profile* hitlist = self.info.hitlist.data()
         for i in range(n):
             hide(hitlist[i])
-        # disconnect from sources (this gate's inputs)
-        cdef list sources=self.sources
-        
-        n=len(sources)
+        cdef list sources = self.sources
+        n = len(sources)
         cdef Gate source
-        if self.id!=VARIABLE_ID:
+        if self.id != VARIABLE_ID:
             for i in range(n):
-                source=<Gate>PyList_GET_ITEM(sources,i)
+                source = <Gate>PyList_GET_ITEM(sources, i)
                 if source is not None:
                     pop(source.info.hitlist, <CPP_Gate*>self.info, i)
-        self.info.output=UNKNOWN
+        self.info.output = UNKNOWN
         if self.id != VARIABLE_ID:
             self.info.high = 0
             self.info.low = 0
-            self.info.invalid = self.info.inputlimit
+            self.info.inputlimit = len(sources)
 
     cdef void reveal(self):
         cdef Profile* hitlist = self.info.hitlist.data()
         cdef Py_ssize_t i
-        cdef list sources=self.sources
-        cdef Py_ssize_t n=len(sources)
+        cdef list sources = self.sources
+        cdef Py_ssize_t n = len(sources)
         cdef Gate source
-        if self.id!=VARIABLE_ID:
+        if self.id != VARIABLE_ID:
             for i in range(n):
-                source=<Gate>PyList_GET_ITEM(sources,i)
+                source = <Gate>PyList_GET_ITEM(sources, i)
                 if source is not None:
                     source.info.hitlist.emplace_back(<CPP_Gate*>self.info, i, source.info.output)
                     if source.info.output == HIGH: self.info.high += 1
                     elif source.info.output == LOW: self.info.low += 1
-                    self.info.invalid -= 1
-        n=self.info.hitlist.size()
-        # reconnect to targets via Python-side hitlist only
+                    self.info.inputlimit -= 1
+        n = self.info.hitlist.size()
         for i in range(n):
             reveal(hitlist[i], self)
         self.process()
 
-    cpdef bint setlimits(self,int size):
-        if size<2 or self.id>=BUFFER_ID:
+    cpdef bint setlimits(self, int size):
+        if size < 2 or self.id >= BUFFER_ID:
             return False
-        cdef int limit=self.info.inputlimit
-        if size>limit:
-            self.sources.extend([None]*(size-limit))
-            self.info.inputlimit=size
-            self.info.invalid += (size-limit)
+        cdef int limit = self.info.inputlimit
+        cdef int connected = len(self.sources) - limit
+        if size > len(self.sources):
+            self.sources.extend([None] * (size - len(self.sources)))
+            self.info.inputlimit += (size - len(self.sources) + (size - len(self.sources)))
+            # recalculate: inputlimit = size - connected
+            self.info.inputlimit = size - connected
             self.process()
             return True
-        elif size<limit:
-            for i in range(size,limit):
-                if self.sources[i]:return False
-            self.sources=self.sources[:size]
-            self.info.inputlimit=size
-            self.info.invalid -= (limit-size)
+        elif size < len(self.sources):
+            for i in range(size, len(self.sources)):
+                if self.sources[i]: return False
+            self.sources = self.sources[:size]
+            self.info.inputlimit = size - connected
             self.process()
             return True
         return False
@@ -207,15 +190,17 @@ cdef class Gate:
 
     @property
     def invalid(self):
-        return self.info.invalid
-        
+        '''Alias for inputlimit (number of unresolved inputs)'''
+        return self.info.inputlimit
+
     @property
     def inputlimit(self):
         return self.info.inputlimit
-        
+
     @property
     def book(self):
-        return [self.info.low, self.info.high, self.info.invalid]
+        cdef int connected = len(self.sources) - self.info.inputlimit
+        return [self.info.low, self.info.high, self.info.inputlimit]
 
     @property
     def value(self):
@@ -243,8 +228,8 @@ cdef class Gate:
             self.id,
             self.location,
             self.info.inputlimit,
-            bool(self.info.flags & FLAG_VALUE) if self.id==VARIABLE_ID else [source.location if source else -1 for source in self.sources],
-            ]
+            bool(self.info.flags & FLAG_VALUE) if self.id == VARIABLE_ID else [source.location if source else -1 for source in self.sources],
+        ]
         return dictionary
 
     cpdef list partial_data(self):
@@ -254,22 +239,22 @@ cdef class Gate:
             self.id,
             self.location,
             self.info.inputlimit,
-            bool(self.info.flags & FLAG_VALUE) if self.id==VARIABLE_ID else [source.location if source and (source.info.flags & FLAG_SCHEDULED) else -1 for source in self.sources],
-            ]
+            bool(self.info.flags & FLAG_VALUE) if self.id == VARIABLE_ID else [source.location if source and (source.info.flags & FLAG_SCHEDULED) else -1 for source in self.sources],
+        ]
         return dictionary
 
     cpdef void clone(self, list dictionary, dict pseudo):
         self.custom_name = dictionary[CUSTOM_NAME]
-        if self.id==VARIABLE_ID:
+        if self.id == VARIABLE_ID:
             if dictionary[VALUE]: self.info.flags |= FLAG_VALUE
             else: self.info.flags &= ~FLAG_VALUE
         else:
             self.setlimits(dictionary[INPUTLIMIT])
-            for index,source_loc in enumerate(dictionary[SOURCES]):
+            for index, source_loc in enumerate(dictionary[SOURCES]):
                 if source_loc != -1 and source_loc in pseudo:
                     self.connect(pseudo[source_loc], index)
 
-    cpdef void load_to_cluster(self,list cluster):
+    cpdef void load_to_cluster(self, list cluster):
         cluster.append(self)
         self.info.flags |= FLAG_SCHEDULED
 

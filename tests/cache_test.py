@@ -48,6 +48,7 @@ parser.add_argument('--not', dest='gate_not', action='store_true', help='Run hom
 parser.add_argument('--dump', action='store_true', help='Dump output to time-stamped txt in test_result')
 parser.add_argument('--plot', action='store_true', help='Generate plots in test_result')
 parser.add_argument('--perf-size', type=int, default=None, help='Target size to run for perf profiling')
+parser.add_argument('--perf-iters', type=int, default=None, help='Target iterations for perf profiling')
 parser.add_argument('--perf-pass', type=str, choices=['unopt', 'opt', 'sweep', 'oop'], default=None, help='Target pass to profile')
 parser.add_argument('--perf-fifo', type=str, default=None, help='Path to perf control FIFO')
 args, unknown = parser.parse_known_args()
@@ -341,6 +342,10 @@ async def run_profiler_suite(mode_name):
         current_ram = get_ram_mb() - base_ram
 
         def get_iters():
+            if args.perf_iters is not None:
+                if args.perf_size is not None:
+                    print(f"ITERATIONS:{args.perf_iters}", file=sys.stderr)
+                return args.perf_iters
             start_calib = time.perf_counter_ns()
             c.toggle(start_node, Const.HIGH)
             c.toggle(start_node, Const.LOW)
@@ -353,10 +358,12 @@ async def run_profiler_suite(mode_name):
                 iters = max(5, int(50_000_000 / calib_time)) if calib_time > 0 else max(5, 5_000_000 // (size * 2))
                 return min(iters, 10) if size >= 200000 else iters
 
+        # Equal evaluation count: compute iterations once on the baseline chain and share across passes
+        iterations = get_iters()
+
         # PASS 1: UNOPTIMIZED (BFS)
         if args.perf_pass in [None, 'unopt', 'oop']:
             init_simulation(c, start_node)
-            iterations = get_iters()
             unopt_ms, unopt_ev = benchmark_pass(c, start_node, size, iterations, const=Const)
         else:
             unopt_ms, unopt_ev = 0.0, 0
@@ -370,7 +377,6 @@ async def run_profiler_suite(mode_name):
             init_simulation(c, start_node)
             opt_jump = get_chain_jump(start_node)
         if args.perf_pass in [None, 'opt']:
-            iterations = get_iters()
             opt_ms, opt_ev = benchmark_pass(c, start_node, size, iterations, const=Const)
         else:
             opt_ms, opt_ev = 0.0, 0
@@ -387,7 +393,6 @@ async def run_profiler_suite(mode_name):
             if args.perf_pass in [None, 'sweep']:
                 c.simulate(Const.COMPILE)
                 Const.set_MODE(Const.COMPILE)
-                iterations = get_iters()
                 sweep_ms, sweep_ev = benchmark_pass(c, start_node, size, iterations, is_sweep=True, const=Const)
                 Const.set_MODE(Const.SIMULATE)
                 
@@ -499,12 +504,15 @@ async def run_homogeneous_suite(gate_type):
         c, start_node = build_homogeneous_chain(size, gate_type)
         current_ram = get_ram_mb() - base_ram
 
-        start_calib = time.perf_counter_ns()
-        c.toggle(start_node, Const.HIGH)
-        c.toggle(start_node, Const.LOW)
-        calib_time = time.perf_counter_ns() - start_calib
-        iterations = max(5, int(50_000_000 / calib_time)) if calib_time > 0 else max(5, 5_000_000 // (size * 2))
-        iterations = min(iterations, 10) if size >= 200000 else iterations
+        if getattr(args, 'perf_iters', None) is not None:
+            iterations = args.perf_iters
+        else:
+            start_calib = time.perf_counter_ns()
+            c.toggle(start_node, Const.HIGH)
+            c.toggle(start_node, Const.LOW)
+            calib_time = time.perf_counter_ns() - start_calib
+            iterations = max(5, int(50_000_000 / calib_time)) if calib_time > 0 else max(5, 5_000_000 // (size * 2))
+            iterations = min(iterations, 10) if size >= 200000 else iterations
 
         # PASS 1: UNOPTIMIZED (BFS)
         init_simulation(c, start_node)

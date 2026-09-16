@@ -8,22 +8,19 @@ cdef extern from "<vector>" namespace "std" nogil:
             iterator operator++()
             bint operator!=(iterator)
             bint operator==(iterator)
-            
+
         vector()
-        
         T& operator[](int)
         T& at(int)
         T& front()
-        T& back()           
-        T* data()           
-
+        T& back()
+        T* data()
         void push_back(T&)
-        void emplace_back(...)  
-        void pop_back()         
+        void emplace_back(...)
+        void pop_back()
         void clear()
         void reserve(int)
         void resize(int)
-        
         bint empty()
         int size()
         int capacity()
@@ -35,7 +32,7 @@ cdef class Variable
 
 cdef extern from "Profile.h":
     cdef cppclass Profile:
-        void* target
+        CPP_Gate* target
         uint8_t index
         uint8_t output
         Profile()
@@ -47,6 +44,9 @@ cdef extern from "Profile.h":
         Task() nogil
         Task(int gate_loc, unsigned int time, int location) nogil
         bint operator>(const Task& other) nogil
+    # Polymorphic gate base — subclasses override compute() per gate type.
+    # Cython accesses fields by name (ptr->field); the vtable pointer is
+    # invisible to named member access and causes no offset issue.
     cdef cppclass CPP_Gate:
         void* gate
         int8_t type
@@ -55,33 +55,30 @@ cdef extern from "Profile.h":
         uint8_t flags
         uint8_t high
         uint8_t low
-        uint8_t invalid
         unsigned int target_time
         vector[Profile] hitlist
         CPP_Gate()
         CPP_Gate(void* g, int8_t t, uint8_t lim)
+        void compute() nogil          # virtual dispatch to typed subclass
+    CPP_Gate* make_gate(void* g, int8_t type_id, uint8_t lim) nogil
 
 cdef void hide(Profile& profile)
-cdef void reveal(Profile& profile,Gate source)
+cdef void reveal(Profile& profile, Gate source)
 cdef void pop(vector[Profile]& hitlist, CPP_Gate* target, int pin_index)
 
 cdef class Gate:
-# --- 4-BYTE ALIGNED (HOT C-TYPES) ---
     cdef public uint8_t id
-    cdef public int location       # index into gate_infolist (assigned by Circuit)
-    cdef CPP_Gate* info
-    
-    # --- 8-BYTE ALIGNED (C++ VECTORS) ---
+    cdef public int location
+    cdef CPP_Gate* info        # points to a typed subclass (AND_Gate, NOT_Gate…)
+
     cdef public list sources
-    
-    # --- 8-BYTE ALIGNED (COLD PYTHON OBJECTS) ---
+
     cdef public tuple code
     cdef public str codename
     cdef public str custom_name
 
     cdef void process(self)
     cpdef void rename(self, str name)
-
     cdef void connect(self, Gate source, int index)
     cdef void disconnect(self, int index)
     cdef void reset(self)
@@ -100,7 +97,5 @@ cdef class Variable(Gate):
 cdef class Probe(Gate):
     pass
 
-
 cdef class NOT(Gate):
     pass
-

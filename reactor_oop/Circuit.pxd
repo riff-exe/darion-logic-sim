@@ -21,12 +21,10 @@ cdef class Circuit:
     cdef public list copydata
     cdef public int counter
     cdef public unsigned long long eval_count
-    cdef public object runner
     cdef priority_queue[Task, vector[Task], greater[Task]] time_queue
     cdef priority_queue[unsigned int, vector[unsigned int], greater[unsigned int]] time_limit
     cdef unsigned int Global_Clock
     cdef CPP_Gate* queue[2][LIMIT]
-    cdef void complete_task(self, Task task) nogil
     cpdef object getcomponent(self, int choice)
     cpdef object getobj(self, tuple code)
     cpdef list get_components(self)
@@ -55,7 +53,7 @@ cdef class Circuit:
     cpdef void reorder(self, object gate, int index)
     cpdef void generate(self, list circuit)
     cpdef void recalculate_counter(self)
-    cpdef str truthTable(self, list variables, list outputs)
+    cpdef str truthTable(self, list variables=*, list outputs=*)
     cpdef void rank_reset(self)
     cpdef void clearcircuit(self)
     cpdef void simulate(self, int Mode)

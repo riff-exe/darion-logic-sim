@@ -4,8 +4,8 @@
 # cython: initializedcheck=False
 # cython: cdivision=True
 # cython: nonecheck=False
-from Gates cimport Gate, Probe, Profile, hide, reveal, pop
-from Store cimport get,decode
+from Gates cimport Gate, Probe, Profile, CPP_Gate, hide, reveal, pop
+from Store cimport get, decode
 from Const cimport *
 
 cdef class IC:
@@ -165,15 +165,15 @@ cdef class IC:
         cdef Gate src
         cdef Gate target
         for pin_out in self.outputs:
-            hitlist = pin_out.info.hitlist.data()
-            size = pin_out.info.hitlist.size()
+            hitlist = (<CPP_Gate*>pin_out.info).hitlist.data()
+            size = (<CPP_Gate*>pin_out.info).hitlist.size()
             for i in range(size):
                 hide(hitlist[i])
         for pin_in in self.inputs:
             for index, source in enumerate(pin_in.sources):
                 if source is not None:
                     src = <Gate>source
-                    pop(src.info.hitlist, <CPP_Gate*>pin_in.info, index)
+                    pop((<CPP_Gate*>src.info).hitlist, <CPP_Gate*>pin_in.info, index)
 
     cpdef void reveal(self):
         cdef Gate pin_in
@@ -185,17 +185,18 @@ cdef class IC:
         cdef size_t size
         cdef Gate src
         for pin_in in self.inputs:
-            source=<Gate>pin_in.sources[0]
+            source = <Gate>pin_in.sources[0]
             if source is not None:
-                source.info.hitlist.emplace_back(<CPP_Gate*>pin_in.info, 0, source.info.output)
-            pin_in.process()
-
+                (<CPP_Gate*>source.info).hitlist.emplace_back(<CPP_Gate*>pin_in.info, 0, (<CPP_Gate*>source.info).output)
+                if (<CPP_Gate*>source.info).output == HIGH: (<CPP_Gate*>pin_in.info).high += 1
+                elif (<CPP_Gate*>source.info).output == LOW: (<CPP_Gate*>pin_in.info).low += 1
+                (<CPP_Gate*>pin_in.info).inputlimit -= 1
             pin_in.process()
         for pin_out in self.outputs:
-            hitlist = pin_out.info.hitlist.data()
-            size = pin_out.info.hitlist.size()
+            hitlist = (<CPP_Gate*>pin_out.info).hitlist.data()
+            size = (<CPP_Gate*>pin_out.info).hitlist.size()
             for i in range(size):
-                reveal(hitlist[i], pin_out)      
+                reveal(hitlist[i], pin_out)
 
     cpdef void reset(self):
         for i in self.inputs+self.internal+self.outputs:
