@@ -78,7 +78,7 @@ cdef class Circuit:
     cpdef void transfer_info(self, Gate gate, int id)
     cdef void complete_task(self, Task task) noexcept nogil
     cdef void propagate(self, Py_ssize_t end_point) noexcept nogil
-    cdef void sweep(self, int origin) noexcept nogil
+    cdef void sweep(self, Py_ssize_t end_point) noexcept nogil
     cpdef double batch_toggle(self, list batch, int batch_size=*, bint perf_trace=*)
     cpdef list geometry(self)
     cpdef bint visual_queue_empty(self)

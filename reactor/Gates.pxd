@@ -2,6 +2,7 @@
 from Const cimport HIGH, LOW, ERROR, UNKNOWN, DESIGN, SIMULATE, MODE
 from libc.stdint cimport uint8_t,uint8_t,int8_t
 from libcpp.unordered_map cimport unordered_map
+from libcpp.deque cimport deque
 cdef extern from "<vector>" namespace "std" nogil:
     cdef cppclass vector[T, ALLOCATOR=*]:
         cppclass iterator:
@@ -60,6 +61,7 @@ cdef extern from "Profile.h":
         vector[Profile] hitlist
         CPP_Gate()
         CPP_Gate(uint8_t t, uint8_t lim)
+        void compute() noexcept nogil
 
 cdef enum GateFlags:
     FLAG_VALUE     = 1 << 0

@@ -459,32 +459,32 @@ class IWLSVerilogRunner:
                 continue
 
             # ── 2. Inverters & Buffers ─────────────────────────────────────────
-            if cell_type.startswith('INV'):
-                g = self.circuit.getcomponent(self.const.NOT_ID)
+            if cell_type.startswith('INV') and named_ports:
                 y = named_ports.get('Y')
                 a = named_ports.get('A')
                 if y:
+                    g = self.circuit.getcomponent(self.const.NOT_ID)
                     self.nodes[y] = g
                     connections.append((g, [a]))
-                continue
+                    continue
 
-            if cell_type.startswith('BUF') or cell_type.startswith('CLKBUF') or cell_type.startswith('TBUF'):
-                g = self.circuit.getcomponent(self.const.BUFFER_ID)
+            if (cell_type.startswith(('BUFX', 'CLKBUF', 'TBUF')) or (cell_type.startswith('BUF') and named_ports)):
                 y = named_ports.get('Y')
                 a = named_ports.get('A')
                 if y:
+                    g = self.circuit.getcomponent(self.const.BUFFER_ID)
                     self.nodes[y] = g
                     connections.append((g, [a]))
-                continue
+                    continue
 
-            if cell_type.startswith('TINV'):
-                g = self.circuit.getcomponent(self.const.NOT_ID)
+            if cell_type.startswith('TINV') and named_ports:
                 y = named_ports.get('Y')
                 a = named_ports.get('A')
                 if y:
+                    g = self.circuit.getcomponent(self.const.NOT_ID)
                     self.nodes[y] = g
                     connections.append((g, [a]))
-                continue
+                    continue
 
             # ── 3. Basic Gates (AND, OR, NAND, NOR, XOR) ─────────────────────
             if cell_type.startswith('AND2'):

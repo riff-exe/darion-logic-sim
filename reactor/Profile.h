@@ -11,8 +11,8 @@ struct Profile {
     CPP_Gate* target;
     uint8_t index;
     uint8_t output;
-    Profile() : target(nullptr), index(0), output(0){}
-    Profile(CPP_Gate* t, uint8_t i, uint8_t o) : target(t),index(i), output(o){}
+    Profile() : target(nullptr), index(0), output(0) {}
+    Profile(CPP_Gate* t, uint8_t i, uint8_t o) : target(t), index(i), output(o) {}
     bool operator<(const Profile& other) const {
         return target < other.target;
     }
@@ -61,6 +61,19 @@ struct CPP_Gate {
     uint8_t      reserved; // Keep padding for size alignment
     unsigned int target_time;    // moved before hitlist — stays in hot cacheline
     std::vector<Profile> hitlist; // 24 B; out-of-line data prefetched separately
+
+    inline void compute() noexcept {
+        if (inputlimit) {
+            output = 2;
+        } else if (flags & 16) {
+            output = (low == 0) ^ (flags & 1);
+        } else if (flags & 32) {
+            output = (high > 0) ^ (flags & 1);
+        } else {
+            output = (high & 1) ^ (flags & 1);
+        }
+    }
+
     // flag is 8 means it's not going to support the ui, 0 means supported
     CPP_Gate() : type(0), output(2), inputlimit(2), flags(0), high(0), low(0), reserved(0), target_time(0), hitlist() {
     }

@@ -92,7 +92,7 @@ cdef class Circuit:
 
     cpdef void toggle(self, Gate target, int value):
         if value != target.info.output:
-            target.info.flags = (target.info.flags & ~FLAG_VALUE) | value
+            target.info.value = value
             target.info.output = value if MODE == SIMULATE else UNKNOWN
             self.queue[0][0] = <CPP_Gate*>target.info
             self.propagate(1)
@@ -137,7 +137,7 @@ cdef class Circuit:
                 info = targets[i + j]
                 value = values[i + j]
                 if value != info.output:
-                    info.flags = (info.flags & ~FLAG_VALUE) | value
+                    info.value = value
                     info.output = value if MODE != DESIGN else UNKNOWN
                     self.queue[0][end_point] = info
                     end_point += 1
@@ -450,7 +450,7 @@ cdef class Circuit:
         cdef list outputs = [i for i in self.objlist[IC_OUTPUT_PIN_ID] if i is not None]
         cdef list inputs = [i for i in self.objlist[IC_INPUT_PIN_ID] if i is not None]
         for gate in outputs + inputs:
-            gate.info.flags |= FLAG_SCHEDULED
+            gate.info.scheduled = 1
             queue.append(gate)
         cdef Py_ssize_t size = len(queue)
         cdef Py_ssize_t index = len(outputs)
@@ -474,8 +474,8 @@ cdef class Circuit:
             end = profile + (<CPP_Gate*>gate.info).hitlist.size()
             while profile != end:
                 target = <Gate>(<CPP_Gate*>profile.target).gate
-                if not (target.info.flags & FLAG_SCHEDULED):
-                    target.info.flags |= FLAG_SCHEDULED
+                if not target.info.scheduled:
+                    target.info.scheduled = 1
                     queue.append(target)
                     size += 1
                 profile += 1
@@ -616,7 +616,7 @@ cdef class Circuit:
         for i in components:
             self.copydata.append(i.partial_data())
         for i in cluster:
-            (<Gate>i).info.flags &= ~FLAG_SCHEDULED
+            (<Gate>i).info.scheduled = 0
 
     cpdef list paste(self):
         cdef list circuit = self.copydata
@@ -662,7 +662,7 @@ cdef class Circuit:
         cdef CPP_Gate** read_queue = self.queue[0]
         for variable in self.objlist[VARIABLE_ID]:
             if variable is not None:
-                variable.info.output = variable.info.flags & FLAG_VALUE
+                variable.info.output = variable.info.value
                 read_queue[end_point] = <CPP_Gate*>variable.info
                 end_point += 1
         if end_point > 0:
@@ -674,7 +674,7 @@ cdef class Circuit:
         cdef Py_ssize_t end_point = 0
         cdef CPP_Gate** read_queue = self.queue[0]
         for variable in varlist:
-            variable.info.output = variable.info.flags & FLAG_VALUE
+            variable.info.output = variable.info.value
             read_queue[end_point] = <CPP_Gate*>variable.info
             end_point += 1
         if end_point > 0:
@@ -719,7 +719,7 @@ cdef class Circuit:
         while index < end_point:
             while index < end_point:
                 gate_info = <CPP_Gate*>read_queue[index]
-                gate_info.flags &= ~FLAG_MARK
+                gate_info.mark = 0
                 profile = gate_info.hitlist.data()
                 end = profile + gate_info.hitlist.size()
                 gate_info.output = UNKNOWN
@@ -759,33 +759,32 @@ cdef class Circuit:
 
         while end_point > 0:
             if unlikely(counter > self.counter):
-                print(f"Burn triggered! counter={counter} self.counter={self.counter}")
                 self.eval_count += eval
                 self.burn(index, end_point, read_queue, write_queue)
                 return
 
             counter += 1
             for index in range(end_point):
-                gate_info = <CPP_Gate*>read_queue[index]
-                gate_info.flags &= ~FLAG_MARK
+                gate_info = read_queue[index]
+                gate_info.mark = 0
                 new_output = gate_info.output
                 profile = gate_info.hitlist.data()
                 end = profile + gate_info.hitlist.size()
                 eval += gate_info.hitlist.size()
-                while profile != end:
+                while profile < end:
                     profile_output = profile.output
-                    target_info = <CPP_Gate*>profile.target
+                    target_info = profile.target
                     target_info.high += (new_output == HIGH) - (profile_output == HIGH)
                     target_info.low  += (new_output == LOW)  - (profile_output == LOW)
                     target_output = target_info.output
-                    if new_output == UNKNOWN or target_info.inputlimit:
+                    if unlikely(new_output == UNKNOWN):
                         target_info.output = UNKNOWN
                     else:
-                        target_info.compute()   # virtual dispatch to typed subclass
+                        target_info.compute()
 
-                    write_queue[size] = <CPP_Gate*>target_info
-                    size += (((target_info.flags & FLAG_MARK) == 0) & (target_output != target_info.output))
-                    target_info.flags |= FLAG_MARK * (target_output != target_info.output)
+                    write_queue[size] = target_info
+                    size += (((target_info.mark == 0) & (target_output != target_info.output)))
+                    target_info.mark |= (target_output != target_info.output)
                     profile.output = new_output
                     profile += 1
             end_point = size

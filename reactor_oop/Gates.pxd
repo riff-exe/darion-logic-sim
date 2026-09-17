@@ -52,7 +52,10 @@ cdef extern from "Profile.h":
         int8_t type
         uint8_t output
         uint8_t inputlimit
-        uint8_t flags
+        uint8_t mark
+        uint8_t update
+        uint8_t value
+        uint8_t scheduled
         uint8_t high
         uint8_t low
         unsigned int target_time
@@ -78,6 +81,7 @@ cdef class Gate:
     cdef public str custom_name
 
     cdef void process(self)
+    cdef void compute(self)
     cpdef void rename(self, str name)
     cdef void connect(self, Gate source, int index)
     cdef void disconnect(self, int index)
@@ -91,11 +95,55 @@ cdef class Gate:
     cpdef void clone(self, list dictionary, dict pseudo)
     cpdef void load_to_cluster(self, list cluster)
 
+cdef class MultiInputGate(Gate):
+    cpdef bint setlimits(self, int size)
+
+cdef class AND(MultiInputGate):
+    cdef void compute(self)
+
+cdef class NAND(MultiInputGate):
+    cdef void compute(self)
+
+cdef class OR(MultiInputGate):
+    cdef void compute(self)
+
+cdef class NOR(MultiInputGate):
+    cdef void compute(self)
+
+cdef class XOR(MultiInputGate):
+    cdef void compute(self)
+
+cdef class XNOR(MultiInputGate):
+    cdef void compute(self)
+
+cdef class SingleInputGate(Gate):
+    cpdef bint setlimits(self, int size)
+
+cdef class BUFFER(SingleInputGate):
+    cdef void compute(self)
+
+cdef class Probe(BUFFER):
+    pass
+
+cdef class NOT(SingleInputGate):
+    cdef void compute(self)
+
+cdef class IC_Input(SingleInputGate):
+    cdef void compute(self)
+
+cdef class IC_Output(SingleInputGate):
+    cdef void compute(self)
+
 cdef class Variable(Gate):
-    pass
+    cdef void process(self)
+    cdef void compute(self)
+    cdef void connect(self, Gate source, int index)
+    cdef void disconnect(self, int index)
+    cdef void reset(self)
+    cdef void hide(self)
+    cdef void reveal(self)
+    cpdef bint setlimits(self, int size)
+    cpdef list full_data(self)
+    cpdef list partial_data(self)
+    cpdef void clone(self, list dictionary, dict pseudo)
 
-cdef class Probe(Gate):
-    pass
-
-cdef class NOT(Gate):
-    pass
