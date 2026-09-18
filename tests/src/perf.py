@@ -254,7 +254,7 @@ for c_name, engs in circuit_metrics.items():
     has_oop = "oop" in engs
 
     first_eng = True
-    for eng_key in ["prop", "sweep", "oop", "engine", "icarus"]:
+    for eng_key in ["prop", "sweep", "oop", "engine", "icarus", "verilator"]:
         if eng_key in engs:
             m = engs[eng_key]
             disp = engine_display_names[eng_key]

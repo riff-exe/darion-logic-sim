@@ -949,7 +949,8 @@ def main():
             ("rx-sweep (Linear)", "sweep"),
             ("rx-oop (OOP Engine)", "oop"),
             ("Pure Python Engine", "engine"),
-            ("Icarus Verilog", "icarus")
+            ("Icarus Verilog", "icarus"),
+            ("Verilator C++", "verilator"),
         ]
         for label, k in order:
             s = perf.get(k)

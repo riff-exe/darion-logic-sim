@@ -174,9 +174,9 @@ def main():
         f.write("\n")
 
         # 4. Evaluation and Time Table
-        f.write("## 4. Execution Time (per Iteration)\n")
-        f.write("| Size | OOP Eval | OOP Time (ms) | Unopt Eval | Unopt Time (ms) | Opt Eval | Opt Time (ms) | Sweep Eval | Sweep Time (ms) |\n")
-        f.write("|---|---|---|---|---|---|---|---|---|\n")
+        f.write("## 4. Execution Time & Throughput (per Iteration)\n")
+        f.write("| Size | OOP Eval | OOP Time (ms) | OOP MEval/s | Unopt Eval | Unopt Time (ms) | Unopt MEval/s | Opt Eval | Opt Time (ms) | Opt MEval/s | Sweep Eval | Sweep Time (ms) | Sweep MEval/s |\n")
+        f.write("|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
         for i, s in enumerate(sizes):
             def cols_time(p):
                 time_ms = data[p]['time_ms'][i]
@@ -184,7 +184,9 @@ def main():
                 iters = data[p]['iters'][i]
                 t_str = f"{time_ms / iters:.4f}" if iters > 0 else "0.0000"
                 e_str = f"{evals / iters:,.0f}" if iters > 0 else "0"
-                return f"{e_str} | {t_str}"
+                me_val = (evals / (time_ms / 1000.0)) / 1_000_000.0 if time_ms > 0 else 0.0
+                me_str = f"{me_val:.2f}"
+                return f"{e_str} | {t_str} | {me_str}"
             f.write(f"| {s:,} | {cols_time('oop')} | {cols_time('unopt')} | {cols_time('opt')} | {cols_time('sweep')} |\n")
         f.write("\n")
 
@@ -237,6 +239,7 @@ def main():
             plt.plot(sizes, norm("oop", "l1_loads"), label="Reactor OOP", marker="d", color="purple")
             plt.plot(sizes, norm("unopt", "l1_loads"), label="Unoptimized (BFS)", marker="o", color="red")
             plt.plot(sizes, norm("opt", "l1_loads"), label="Optimized (BFS)", marker="s", color="blue")
+            plt.plot(sizes, norm("sweep", "l1_loads"), label="Optimized (Sweep)", marker="^", color="green")
             plt.xscale("log")
             plt.yscale("log")
             plt.ylabel("L1 Loads / Iter")
@@ -250,6 +253,7 @@ def main():
             plt.plot(sizes, norm("oop", "l1_miss"), marker="d", color="purple")
             plt.plot(sizes, norm("unopt", "l1_miss"), marker="o", color="red")
             plt.plot(sizes, norm("opt", "l1_miss"), marker="s", color="blue")
+            plt.plot(sizes, norm("sweep", "l1_miss"), marker="^", color="green")
             plt.xscale("log")
             plt.yscale("log")
             plt.ylabel("L1 Misses / Iter")
@@ -262,6 +266,7 @@ def main():
             plt.plot(sizes, norm("oop", "l2_miss"), marker="d", color="purple")
             plt.plot(sizes, norm("unopt", "l2_miss"), marker="o", color="red")
             plt.plot(sizes, norm("opt", "l2_miss"), marker="s", color="blue")
+            plt.plot(sizes, norm("sweep", "l2_miss"), marker="^", color="green")
             plt.xscale("log")
             plt.yscale("log")
             plt.ylabel("L2 Misses / Iter")
@@ -274,6 +279,7 @@ def main():
             plt.plot(sizes, norm("oop", "l3_miss"), marker="d", color="purple")
             plt.plot(sizes, norm("unopt", "l3_miss"), marker="o", color="red")
             plt.plot(sizes, norm("opt", "l3_miss"), marker="s", color="blue")
+            plt.plot(sizes, norm("sweep", "l3_miss"), marker="^", color="green")
             plt.xscale("log")
             plt.yscale("log")
             plt.ylabel("L3 Misses / Iter")
@@ -283,15 +289,17 @@ def main():
             # Subplot 5: MEPS
             ax5 = plt.subplot(5, 1, 5)
             plt.title(f"Throughput (Mega-Evaluations Per Second) ({mode_name.upper()})")
-            plt.plot(sizes, meps("oop"), marker="d", color="purple")
-            plt.plot(sizes, meps("unopt"), marker="o", color="red")
-            plt.plot(sizes, meps("opt"), marker="s", color="blue")
+            plt.plot(sizes, meps("oop"), label="Reactor OOP", marker="d", color="purple")
+            plt.plot(sizes, meps("unopt"), label="Unoptimized (BFS)", marker="o", color="red")
+            plt.plot(sizes, meps("opt"), label="Optimized (BFS)", marker="s", color="blue")
+            plt.plot(sizes, meps("sweep"), label="Optimized (Sweep)", marker="^", color="green")
             plt.xscale("log")
             plt.yscale("linear")
             plt.ylabel("MEPS")
             plt.xlabel("Circuit Size (Gates)")
             add_cliffs(ax5)
             plt.grid(True, alpha=0.3)
+            plt.legend()
             
             plt.tight_layout()
             plot_file = f"tests/test_result/perf/cache_perf_{mode_name}_{ts}.png"

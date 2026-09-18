@@ -324,12 +324,13 @@ async def run_profiler_suite(mode_name):
     results = []
     current_zone = 1
 
-    plot_data = {"sizes": [], "unopt_me": [], "opt_bfs_me": []}
+    plot_data = {"sizes": [], "unopt_ms": [], "opt_bfs_ms": [], "sweep_ms": [], "unopt_me": [], "opt_bfs_me": [], "swp_me": []}
 
     hdr = (
         f"| {'Active Gates':<12} | {'RAM (MB)':>8} | "
         f"{'Unopt(ms)':>10} | {'Opt(ms)':>10} | {'Sweep(ms)':>10} | "
         f"{'Unopt-ev':>11} | {'Opt-ev':>11} | {'Sweep-ev':>11} | "
+        f"{'Unopt ME/s':>11} | {'Opt ME/s':>10} | {'Swp ME/s':>10} | "
         f"{'Opt-spd':>8} | {'Swp-spd':>8} | {'Unopt Jmp':>9} | {'Opt Jmp':>9} | {'Bounds'}"
     )
     print(hdr)
@@ -411,16 +412,21 @@ async def run_profiler_suite(mode_name):
                 print(f"EVAL_COUNT:{unopt_ev}", file=sys.stderr)
             sys.exit(0)
 
+        unopt_meps = (unopt_ev / (unopt_ms / 1000.0)) / 1_000_000.0 if unopt_ms > 0 else 0.0
+        opt_meps = (opt_ev / (opt_ms / 1000.0)) / 1_000_000.0 if opt_ms > 0 else 0.0
+        swp_meps = (sweep_ev / (sweep_ms / 1000.0)) / 1_000_000.0 if (sweep_ms and sweep_ms > 0) else 0.0
+
         plot_data["sizes"].append(size)
-        plot_data["unopt_me"].append(unopt_ms)
-        plot_data["opt_bfs_me"].append(opt_ms)
+        plot_data["unopt_ms"].append(unopt_ms)
+        plot_data["opt_bfs_ms"].append(opt_ms)
+        plot_data["unopt_me"].append(unopt_meps)
+        plot_data["opt_bfs_me"].append(opt_meps)
+        if sweep_ms is not None:
+            plot_data["sweep_ms"].append(sweep_ms)
+            plot_data["swp_me"].append(swp_meps)
 
-        unopt_rate = (unopt_ev / unopt_ms) if unopt_ms > 0 else 0.0
-        opt_rate = (opt_ev / opt_ms) if opt_ms > 0 else 0.0
-        swp_rate = (sweep_ev / sweep_ms) if (sweep_ms and sweep_ms > 0) else 0.0
-
-        opt_spd = (opt_rate / unopt_rate) if unopt_rate > 0 else 0.0
-        swp_spd = (swp_rate / unopt_rate) if unopt_rate > 0 else 0.0
+        opt_spd = (opt_meps / unopt_meps) if unopt_meps > 0 else 0.0
+        swp_spd = (swp_meps / unopt_meps) if unopt_meps > 0 else 0.0
 
         unopt_ms_str = f"{unopt_ms:.1f}"
         opt_ms_str = f"{opt_ms:.1f}"
@@ -429,6 +435,10 @@ async def run_profiler_suite(mode_name):
         unopt_ev_str = f"{unopt_ev:,}"
         opt_ev_str = f"{opt_ev:,}"
         sweep_ev_str = f"{sweep_ev:,}" if sweep_ev is not None else "N/A"
+
+        unopt_me_str = f"{unopt_meps:.2f}"
+        opt_me_str = f"{opt_meps:.2f}"
+        sweep_me_str = f"{swp_meps:.2f}" if sweep_ms is not None else "N/A"
 
         opt_spd_str = f"{opt_spd:.1f}x"
         swp_spd_str = f"{swp_spd:.1f}x" if sweep_ms is not None else "N/A"
@@ -454,6 +464,7 @@ async def run_profiler_suite(mode_name):
             f"| {size:<12,} | {current_ram:>8.1f} | "
             f"{unopt_ms_str:>10} | {opt_ms_str:>10} | {sweep_ms_str:>10} | "
             f"{unopt_ev_str:>11} | {opt_ev_str:>11} | {sweep_ev_str:>11} | "
+            f"{unopt_me_str:>11} | {opt_me_str:>10} | {sweep_me_str:>10} | "
             f"{opt_spd_str:>8} | {swp_spd_str:>8} | {unopt_jump:>9.1f} | {opt_jump:>9.1f} | {tag}"
         )
         print(row)
@@ -487,12 +498,13 @@ async def run_homogeneous_suite(gate_type):
     results = []
     current_zone = 1
 
-    plot_data = {"sizes": [], "unopt_me": [], "opt_bfs_me": [], "gate": gate_name}
+    plot_data = {"sizes": [], "unopt_ms": [], "opt_bfs_ms": [], "sweep_ms": [], "unopt_me": [], "opt_bfs_me": [], "swp_me": [], "gate": gate_name}
 
     hdr = (
         f"| {'Active Gates':<12} | {'RAM (MB)':>8} | "
         f"{'Unopt(ms)':>10} | {'Opt(ms)':>10} | {'Sweep(ms)':>10} | "
         f"{'Unopt-ev':>11} | {'Opt-ev':>11} | {'Sweep-ev':>11} | "
+        f"{'Unopt ME/s':>11} | {'Opt ME/s':>10} | {'Swp ME/s':>10} | "
         f"{'Opt-spd':>8} | {'Swp-spd':>8} | {'Unopt Jmp':>9} | {'Opt Jmp':>9} | {'Bounds'}"
     )
     print(hdr)
@@ -539,16 +551,21 @@ async def run_homogeneous_suite(gate_type):
             sweep_ms, sweep_ev = benchmark_pass(c, start_node, size, iterations, is_sweep=True, const=Const)
             Const.set_MODE(Const.SIMULATE)
 
+        unopt_meps = (unopt_ev / (unopt_ms / 1000.0)) / 1_000_000.0 if unopt_ms > 0 else 0.0
+        opt_meps = (opt_ev / (opt_ms / 1000.0)) / 1_000_000.0 if opt_ms > 0 else 0.0
+        swp_meps = (sweep_ev / (sweep_ms / 1000.0)) / 1_000_000.0 if (sweep_ms and sweep_ms > 0) else 0.0
+
         plot_data["sizes"].append(size)
-        plot_data["unopt_me"].append(unopt_ms)
-        plot_data["opt_bfs_me"].append(opt_ms)
+        plot_data["unopt_ms"].append(unopt_ms)
+        plot_data["opt_bfs_ms"].append(opt_ms)
+        plot_data["unopt_me"].append(unopt_meps)
+        plot_data["opt_bfs_me"].append(opt_meps)
+        if sweep_ms is not None:
+            plot_data["sweep_ms"].append(sweep_ms)
+            plot_data["swp_me"].append(swp_meps)
 
-        unopt_rate = (unopt_ev / unopt_ms) if unopt_ms > 0 else 0.0
-        opt_rate = (opt_ev / opt_ms) if opt_ms > 0 else 0.0
-        swp_rate = (sweep_ev / sweep_ms) if (sweep_ms and sweep_ms > 0) else 0.0
-
-        opt_spd = (opt_rate / unopt_rate) if unopt_rate > 0 else 0.0
-        swp_spd = (swp_rate / unopt_rate) if unopt_rate > 0 else 0.0
+        opt_spd = (opt_meps / unopt_meps) if unopt_meps > 0 else 0.0
+        swp_spd = (swp_meps / unopt_meps) if unopt_meps > 0 else 0.0
 
         unopt_ms_str = f"{unopt_ms:.1f}"
         opt_ms_str = f"{opt_ms:.1f}"
@@ -557,6 +574,10 @@ async def run_homogeneous_suite(gate_type):
         unopt_ev_str = f"{unopt_ev:,}"
         opt_ev_str = f"{opt_ev:,}"
         sweep_ev_str = f"{sweep_ev:,}" if sweep_ev is not None else "N/A"
+
+        unopt_me_str = f"{unopt_meps:.2f}"
+        opt_me_str = f"{opt_meps:.2f}"
+        sweep_me_str = f"{swp_meps:.2f}" if sweep_ms is not None else "N/A"
 
         opt_spd_str = f"{opt_spd:.1f}x"
         swp_spd_str = f"{swp_spd:.1f}x" if sweep_ms is not None else "N/A"
@@ -582,6 +603,7 @@ async def run_homogeneous_suite(gate_type):
             f"| {size:<12,} | {current_ram:>8.1f} | "
             f"{unopt_ms_str:>10} | {opt_ms_str:>10} | {sweep_ms_str:>10} | "
             f"{unopt_ev_str:>11} | {opt_ev_str:>11} | {sweep_ev_str:>11} | "
+            f"{unopt_me_str:>11} | {opt_me_str:>10} | {sweep_me_str:>10} | "
             f"{opt_spd_str:>8} | {swp_spd_str:>8} | {unopt_jump:>9.1f} | {opt_jump:>9.1f} | {tag}"
         )
         print(row)
@@ -607,7 +629,7 @@ def _base_ax(fig, ax, title, cpu_name):
     ax.set_xscale('log')
     ax.set_title(f"{title}\nCPU: {cpu_name}", fontsize=14, fontweight='bold', color='#FFFFFF', pad=15)
     ax.set_xlabel("Circuit Size (Number of Active Logic Gates) — Log Scale", fontsize=11, color='#E0E0E0', labelpad=10)
-    ax.set_ylabel("Execution Time (ms)", fontsize=11, color='#E0E0E0', labelpad=10)
+    ax.set_ylabel("Throughput (MEval/sec)", fontsize=11, color='#E0E0E0', labelpad=10)
     ax.grid(True, color='#333333', linestyle=':', linewidth=1, alpha=0.8)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -630,11 +652,15 @@ def generate_cache_plot(data_chaotic, data_realistic, cpu_name, output_dir):
         sizes  = data['sizes']
         unopt  = data['unopt_me']
         opt    = data['opt_bfs_me']
+        swp    = data.get('swp_me', [])
 
         ax.plot(sizes, unopt, marker='o', markersize=6, linestyle='-',
                 color='#FF3366', linewidth=2.5, alpha=0.9, label='Unoptimized (BFS)')
         ax.plot(sizes, opt,   marker='s', markersize=6, linestyle='--',
                 color='#00FFCC', linewidth=2.5, alpha=0.9, label='Optimized (BFS)')
+        if swp and len(swp) == len(sizes) and any(s > 0 for s in swp):
+            ax.plot(sizes, swp, marker='^', markersize=6, linestyle=':',
+                    color='#FFCC00', linewidth=2.5, alpha=0.9, label='Optimized (Sweep)')
         ax.fill_between(sizes, unopt, opt, color='#00FFCC', alpha=0.08)
 
         legend = ax.legend(frameon=True, facecolor='#1A1A1A', edgecolor='#333333',

@@ -448,16 +448,35 @@ def generate_verilator_tb_89(v_file: str, tb_file: str, module_name: str, inputs
         tb.append(f'    top->{clk_name} = 0;')
         tb.append('    top->eval();')
 
+    # Pre-parse vectors into typed binary structs outside the timed loop
+    tb.append('    struct SimVector {')
+    tb.append('#pragma GCC diagnostic push')
+    tb.append('#pragma GCC diagnostic ignored "-Wunused"')
+    for inp in inputs:
+        p = inp.split()[-1]
+        tb.append(f'        std::decay_t<decltype(top->{p})> {p};')
+    tb.append('#pragma GCC diagnostic pop')
+    tb.append('    };')
+    tb.append('    std::vector<SimVector> sim_vectors;')
+    tb.append('    sim_vectors.resize(vectors.size());')
+    tb.append('    for (size_t i = 0; i < vectors.size(); ++i) {')
+    tb.append('        const std::string& vec = vectors[i];')
+    tb.append('        SimVector& sv = sim_vectors[i];')
+    for idx, inp in enumerate(inputs):
+        p = inp.split()[-1]
+        tb.append(f"        sv.{p} = vec[{idx}] - '0';")
+    tb.append('    }')
+
     if use_perf:
         tb.append('    int fd = open("/tmp/rx_perf_ctrl", O_WRONLY | O_NONBLOCK);')
         tb.append('    if (fd >= 0) { write(fd, "enable\\n", 7); close(fd); }')
 
     tb.append('    auto start = std::chrono::high_resolution_clock::now();')
-    tb.append('    for (size_t i = 0; i < vectors.size(); ++i) {')
-    tb.append('        const std::string& vec = vectors[i];')
-    for idx, inp in enumerate(inputs):
+    tb.append('    for (size_t i = 0; i < sim_vectors.size(); ++i) {')
+    tb.append('        const SimVector& sv = sim_vectors[i];')
+    for inp in inputs:
         p = inp.split()[-1]
-        tb.append(f'        top->{p} = vec[{idx}] - \'0\';')
+        tb.append(f'        top->{p} = sv.{p};')
     tb.append('        top->eval();')
     tb.append('    }')
     tb.append('    auto end = std::chrono::high_resolution_clock::now();')

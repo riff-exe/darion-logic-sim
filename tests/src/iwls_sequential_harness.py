@@ -523,29 +523,47 @@ def generate_verilator_tb_iwls(v_file: str, tb_file: str, module_name: str, port
         tb.append(f'    top->{c_clock_name} = 0;')
         tb.append('    top->eval();')
 
+    tb.append('    // Pre-parse vectors into typed binary structs outside the timed loop')
+    tb.append('    struct SimVector {')
+    tb.append('#pragma GCC diagnostic push')
+    tb.append('#pragma GCC diagnostic ignored "-Wunused"')
+    for n, _, _ in port_decls['inputs']:
+        tb.append(f'        std::decay_t<decltype(top->{cpp_ident(n)})> {cpp_ident(n)};')
+    tb.append('#pragma GCC diagnostic pop')
+    tb.append('    };')
+    tb.append('    std::vector<SimVector> sim_vectors;')
+    tb.append('    sim_vectors.resize(vectors.size());')
+    tb.append('    for (size_t i = 0; i < vectors.size(); ++i) {')
+    tb.append('        const std::string& vec = vectors[i];')
+    tb.append('        SimVector& sv = sim_vectors[i];')
+
+    for i, (name, msb, lsb) in enumerate(port_decls['inputs']):
+        offset = sum(
+            (abs(m - l) + 1) if (m is not None and l is not None) else 1
+            for _, m, l in port_decls['inputs'][:i]
+        )
+        c_name = cpp_ident(name)
+        if msb is not None and lsb is not None:
+            base_shift = min(msb, lsb)
+            tb.append(f'        vl_clear(sv.{c_name});')
+            step = 1 if msb <= lsb else -1
+            for idx, bit in enumerate(range(msb, lsb + step, step)):
+                f_idx = offset + idx
+                tb.append(f"        if (vec[{f_idx}] == '1') vl_set_bit(sv.{c_name}, {bit - base_shift});")
+        else:
+            tb.append(f"        sv.{c_name} = vec[{offset}] - '0';")
+    tb.append('    }')
+
     if use_perf:
         tb.append('    int fd = open("/tmp/rx_perf_ctrl", O_WRONLY | O_NONBLOCK);')
         tb.append('    if (fd >= 0) { write(fd, "enable\\n", 7); close(fd); }')
 
     tb.append('    auto start = std::chrono::high_resolution_clock::now();')
-    tb.append('    for (size_t i = 0; i < vectors.size(); ++i) {')
-    tb.append('        const std::string& vec = vectors[i];')
-
-    # Assign inputs from vec
-    flat_idx = 0
-    for name, msb, lsb in port_decls['inputs']:
-        c_name = cpp_ident(name)
-        if msb is not None and lsb is not None:
-            base_shift = min(msb, lsb)
-            tb.append(f'        vl_clear(top->{c_name});')
-            step = 1 if msb <= lsb else -1
-            for bit in range(msb, lsb + step, step):
-                tb.append(f"        if (vec[{flat_idx}] == '1') vl_set_bit(top->{c_name}, {bit - base_shift});")
-                flat_idx += 1
-        else:
-            tb.append(f"        top->{c_name} = vec[{flat_idx}] - '0';")
-            flat_idx += 1
-
+    tb.append('    for (size_t i = 0; i < sim_vectors.size(); ++i) {')
+    tb.append('        const SimVector& sv = sim_vectors[i];')
+    for n, _, _ in port_decls['inputs']:
+        c_name = cpp_ident(n)
+        tb.append(f'        top->{c_name} = sv.{c_name};')
     tb.append('        top->eval();')
     tb.append('    }')
     tb.append('    auto end = std::chrono::high_resolution_clock::now();')
@@ -632,11 +650,14 @@ def run_verilator_harness_iwls(v_file: str, vectors: int, warmup: int,
         perf_data = f"perf_verilator_{filename}.data"
         perf_txt  = f"perf_verilator_{filename}.txt"
         if use_perf:
-            cmd = ["perf", "record", "-m", "32", "-o", perf_data]
+            fifo_path = "/tmp/rx_perf_ctrl"
+            if not os.path.exists(fifo_path):
+                try: os.mkfifo(fifo_path)
+                except Exception: pass
+            perf_cmd = ["perf", "record", "-D", "-1", "-m", "32", "--control=fifo:/tmp/rx_perf_ctrl", "-o", perf_data]
             if perf_events:
-                cmd.extend(["-e", perf_events])
-            cmd.extend(run_cmd)
-            run_cmd = cmd
+                perf_cmd.extend(["-e", perf_events])
+            run_cmd = perf_cmd + ["--"] + run_cmd
 
         t_run_start = time.perf_counter_ns()
         run_res = subprocess.run(run_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -650,9 +671,8 @@ def run_verilator_harness_iwls(v_file: str, vectors: int, warmup: int,
             t_run_end = time.perf_counter_ns()
             run_ms = (t_run_end - t_run_start) / 1_000_000.0
         elif use_perf and os.path.exists(perf_data):
-            rep = subprocess.run(["perf", "report", "-i", perf_data, "--stdio"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            with open(perf_txt, 'w', encoding='utf-8') as f:
-                f.write(rep.stdout)
+            with open(perf_txt, "w") as f:
+                subprocess.run(["perf", "report", "-i", perf_data], stdout=f, stderr=subprocess.DEVNULL)
             for p in (perf_data, perf_data + ".old"):
                 if os.path.exists(p):
                     try: os.remove(p)
@@ -694,3 +714,30 @@ def run_verilator_harness_iwls(v_file: str, vectors: int, warmup: int,
         if obj_dir and os.path.exists(obj_dir):
             try: shutil.rmtree(obj_dir)
             except OSError: pass
+
+
+# ---------------------------------------------------------------------------
+# CLI (standalone usage)
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    import argparse, json
+
+    ap = argparse.ArgumentParser(
+        description="IWLS 2005 sequential circuit harness (Icarus / Verilator)"
+    )
+    ap.add_argument("v_file", type=str, help="Path to IWLS 2005 .v file")
+    ap.add_argument("--vectors", type=int, default=5000,
+                    help="Total vectors (warmup + measured logical)")
+    ap.add_argument("--warmup",  type=int, default=500,
+                    help="Logical warmup vectors (50 extra hardware cycles driven inline)")
+    ap.add_argument("--engine", choices=["icarus", "verilator", "all"], default="all",
+                    help="Engine to benchmark")
+    args = ap.parse_args()
+
+    results = {}
+    if args.engine in ("icarus", "all"):
+        results["icarus"] = run_icarus_harness_iwls(args.v_file, args.vectors, args.warmup)
+    if args.engine in ("verilator", "all"):
+        results["verilator"] = run_verilator_harness_iwls(args.v_file, args.vectors, args.warmup)
+    print(json.dumps(results if args.engine == "all" else results[args.engine], indent=2))
+
