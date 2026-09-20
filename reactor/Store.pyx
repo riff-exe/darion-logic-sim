@@ -56,11 +56,11 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, list gate_verse):
                     
             for i in range(gate_infolist.size()):
                 info = &gate_infolist[i]
-                profile = info.hitlist.data()
-                end = profile + info.hitlist.size()
-                while profile < end:
-                    profile.target = profile.target + diff
-                    profile += 1
+                for j in range(info.hitlist.size()):
+                    info.hitlist[j] = info.hitlist[j] + diff
+                for j in range(info.sources.size()):
+                    if info.sources[j] != NULL:
+                        info.sources[j] = info.sources[j] + diff
             
         gate_infolist.emplace_back(CPP_Gate(choice, lim))
         gate.location = gate_infolist.size()-1
@@ -68,8 +68,12 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, list gate_verse):
         
         if choice <OR_ID:
             gate.info.flags |= FLAG_AND
+            gate.info.seed = 0
         elif choice <XOR_ID:
             gate.info.flags |= FLAG_OR
+            gate.info.seed = 1
+        else:
+            gate.info.seed = 1
             
         gate.info.flags |= (choice & 1) & (choice != VARIABLE_ID)
         

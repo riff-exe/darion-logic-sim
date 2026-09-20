@@ -4,7 +4,7 @@
 # cython: initializedcheck=False
 # cython: cdivision=True
 # cython: nonecheck=False
-from Gates cimport Gate, Probe, Profile, CPP_Gate, hide, reveal, pop, vector,CPP_Gate,vector
+from Gates cimport Gate, Probe, Profile, CPP_Gate, pop, vector
 from Store cimport get, decode
 from Const cimport *
 from cpython.list cimport PyList_GET_SIZE, PyList_GET_ITEM
@@ -100,6 +100,9 @@ cdef class IC:
         for i in self.map:
             gate = <Gate>self.gate_verse[pseudo[i[LOCATION]]]
             gate.clone(i, pseudo)
+        for i in self.map:
+            gate = <Gate>self.gate_verse[pseudo[i[LOCATION]]]
+            gate.process()
 
     cpdef void load_to_cluster(self, list cluster):
         '''Mark all internal gates as scheduled and collect them into the cluster list
@@ -145,59 +148,76 @@ cdef class IC:
         for i in self.map:
             gate = <Gate>PyList_GET_ITEM(self.gate_verse, pseudo[i[LOCATION]])
             gate.clone(i, pseudo)
+        for i in self.map:
+            gate = <Gate>PyList_GET_ITEM(self.gate_verse, pseudo[i[LOCATION]])
+            gate.process()
 
     cpdef void hide(self):
         '''Cut the IC out of the live graph — disconnects output targets and drops input registrations'''
-        cdef Gate pin_out, pin_in, src
+        cdef Gate pin_out, pin_in
         cdef CPP_Gate* pin_out_info
         cdef CPP_Gate* src_info
-        cdef Profile* hitlist
-        cdef int index
+        cdef CPP_Gate* target_info
+        cdef Gate target_gate
+        cdef int pin, index, source_loc
         cdef size_t i, sz
 
         # Disconnect outputs from external targets
         cdef CPP_Gate* gate_infolist = self.gate_infolist_ptr[0].data()
         for pin_out in self.outputs:
             pin_out_info = &gate_infolist[pin_out.location]
-            hitlist = pin_out_info.hitlist.data()
             sz = pin_out_info.hitlist.size()
             for i in range(sz):
-                hide(hitlist[i],gate_infolist, self.gate_verse)
+                target_info = pin_out_info.hitlist[i]
+                target_gate = <Gate>self.gate_verse[target_info - gate_infolist]
+                for pin in range(len(target_gate._sources)):
+                    if target_gate._sources[pin] == pin_out.location:
+                        target_gate._sources[pin] = -pin_out.location - 2
+                        target_info.sources[pin] = NULL
+                        target_info.invalid += 1
 
         # Disconnect inputs from external sources
         for pin_in in self.inputs:
             for index, source_loc in enumerate(<list>pin_in._sources):
                 if source_loc != -1:
                     src_info = &gate_infolist[source_loc]
-                    pop(src_info.hitlist,gate_infolist, &gate_infolist[pin_in.location], index)
+                    pop(src_info.hitlist, &gate_infolist[pin_in.location])
 
     cpdef void reveal(self):
         '''Plug the IC back into the live graph — re-registers inputs and reconnects output targets'''
-        cdef Gate pin_in, pin_out, source
+        cdef Gate pin_in, pin_out
         cdef CPP_Gate* pin_in_info
         cdef CPP_Gate* pin_out_info
         cdef CPP_Gate* src_info
-        cdef Profile* hitlist
+        cdef CPP_Gate* target_info
+        cdef Gate target_gate
+        cdef int pin
         cdef size_t i, sz
         cdef CPP_Gate* gate_infolist = self.gate_infolist_ptr[0].data()
-        # Re-register in external source hitlists
 
+        # Re-register in external source hitlists
         cdef int source_loc
         for pin_in in self.inputs:
             pin_in_info = &gate_infolist[pin_in.location]
             source_loc = pin_in._sources[0]
             if source_loc != -1:
                 src_info = &gate_infolist[source_loc]
-                src_info.hitlist.emplace_back(&gate_infolist[pin_in.location], 0, src_info.output)
+                src_info.hitlist.push_back(&gate_infolist[pin_in.location])
+                pin_in_info.sources[0] = src_info
             pin_in.process()
 
         # Reconnect output targets via hitlist
         for pin_out in self.outputs:
             pin_out_info = &gate_infolist[pin_out.location]
-            hitlist = pin_out_info.hitlist.data()
             sz = pin_out_info.hitlist.size()
             for i in range(sz):
-                reveal(hitlist[i], pin_out, self.gate_verse)
+                target_info = pin_out_info.hitlist[i]
+                target_gate = <Gate>self.gate_verse[target_info - gate_infolist]
+                for pin in range(len(target_gate._sources)):
+                    if target_gate._sources[pin] == -pin_out.location - 2:
+                        target_gate._sources[pin] = pin_out.location
+                        target_info.sources[pin] = &gate_infolist[pin_out.location]
+                        target_info.invalid -= 1
 
     cpdef void reset(self):
         '''Reset all internal gates back to unknown state'''
@@ -223,8 +243,8 @@ cdef class IC:
         '''Print the IC's inputs, internals, and outputs with their connections'''
         cdef Gate pin
         cdef CPP_Gate* pin_info
-        cdef Profile* p
-        cdef Profile* pend
+        cdef CPP_Gate** p
+        cdef CPP_Gate** pend
         cdef list gate_verse = self.gate_verse
         print(f"\n  IC: {self.codename} (Code: {self.code})")
         print("  " + "-" * 40)
@@ -237,7 +257,7 @@ cdef class IC:
                 p = pin_info.hitlist.data()
                 pend = p + pin_info.hitlist.size()
                 while p < pend:
-                    targets.append(str(<Gate>PyList_GET_ITEM(gate_verse, p.target - gate_infolist)))
+                    targets.append(str(<Gate>PyList_GET_ITEM(gate_verse, p[0] - gate_infolist)))
                     p += 1
                 print(f"    {pin.codename}: out={pin.getoutput()}, to={', '.join(targets) if targets else 'None'}")
 
@@ -254,7 +274,7 @@ cdef class IC:
                 p = pin_info.hitlist.data()
                 pend = p + pin_info.hitlist.size()
                 while p < pend:
-                    tgt.append(str(<Gate>PyList_GET_ITEM(gate_verse, p.target - gate_infolist)))
+                    tgt.append(str(<Gate>PyList_GET_ITEM(gate_verse, p[0] - gate_infolist)))
                     p += 1
                 tgt_str = ", ".join(tgt) if tgt else "None"
                 print(f"    {pin.codename}: out={pin.getoutput()}, sources={ch_str}, targets={tgt_str}")

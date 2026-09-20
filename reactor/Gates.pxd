@@ -50,15 +50,16 @@ cdef extern from "Profile.h":
         Task(int gate_loc, unsigned int time, int location) nogil
         bint operator>(const Task& other) nogil
     cdef cppclass CPP_Gate:
-        int8_t type
         uint8_t output
-        uint8_t inputlimit
         uint8_t flags
-        uint8_t high
-        uint8_t low
-        uint8_t reserved
+        uint8_t invalid
+        uint8_t limit
+        uint8_t logic
+        uint8_t seed
         unsigned int target_time
-        vector[Profile] hitlist
+        vector[CPP_Gate*] hitlist
+        vector[CPP_Gate*] sources
+        int8_t type
         CPP_Gate()
         CPP_Gate(uint8_t t, uint8_t lim)
         void compute() noexcept nogil
@@ -69,9 +70,7 @@ cdef enum GateFlags:
     FLAG_MARK      = 1 << 2
     FLAG_UPDATE    = 1 << 3
 
-cdef void hide(Profile& profile, CPP_Gate* gate_infolist, list gate_verse)
-cdef void reveal(Profile& profile, Gate source, list gate_verse)
-cdef void pop(vector[Profile]& hitlist, CPP_Gate* gate_infolist, CPP_Gate* target, int pin_index)
+cdef void pop(vector[CPP_Gate*]& hitlist, CPP_Gate* target)
 
 cdef class Gate:
 # --- 4-BYTE ALIGNED (HOT C-TYPES) ---

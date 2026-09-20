@@ -1,88 +1,93 @@
 // reactor/Profile.h
 #ifndef PROFILE_H
 #define PROFILE_H
-#include <vector>
+#include <cstddef> // offsetof
 #include <stdint.h>
-#include <cstddef>   // offsetof
+#include <vector>
 
 struct CPP_Gate;
 
 struct Profile {
-    CPP_Gate* target;
-    uint8_t index;
-    uint8_t output;
-    Profile() : target(nullptr), index(0), output(0) {}
-    Profile(CPP_Gate* t, uint8_t i, uint8_t o) : target(t), index(i), output(o) {}
-    bool operator<(const Profile& other) const {
-        return target < other.target;
-    }
+  CPP_Gate *target;
+  uint8_t index;
+  uint8_t output;
+  Profile() : target(nullptr), index(0), output(0) {}
+  Profile(CPP_Gate *t, uint8_t i, uint8_t o) : target(t), index(i), output(o) {}
+  bool operator<(const Profile &other) const { return target < other.target; }
 };
 
 // ─── Task ─────────────────────────────────────────────────────────────────
 struct Task {
-    int      gate_loc;
-    unsigned int time;
-    int      location;
-    Task() : gate_loc(-1), time(0), location(0) {}
-    Task(int g, unsigned int t, int loc) : gate_loc(g), time(t), location(loc) {}
-    bool operator>(const Task& other) const {
-        if (time != other.time) return time > other.time;
-        return location > other.location;
-    }
+  int gate_loc;
+  unsigned int time;
+  int location;
+  Task() : gate_loc(-1), time(0), location(0) {}
+  Task(int g, unsigned int t, int loc) : gate_loc(g), time(t), location(loc) {}
+  bool operator>(const Task &other) const {
+    if (time != other.time)
+      return time > other.time;
+    return location > other.location;
+  }
 };
 // ──────────────────────────────────────────────────────────────────────────
 
 // Bitmask Definitions
 
 struct CPP_Gate {
-    // ── HOT SCALARS (12 B, all read in the inner propagate/sweep loop) ────────
-    // Packed into bytes 0–11 so a single 64-B cache-line fetch covers every
-    // field needed before touching hitlist.
-    //
-    //   offset  0: type         (int8_t,  1 B)
-    //   offset  1: output       (uint8_t, 1 B)
-    //   offset  2: inputlimit   (uint8_t, 1 B)
-    //   offset  3: flags        (uint8_t, 1 B)
-    //   offset  4: high         (uint8_t, 1 B)
-    //   offset  5: low          (uint8_t, 1 B)
-    //   offset  6: reserved     (uint8_t, 1 B)
-    //   offset  7: invalid (uint8_t, 1 B)
-    //   offset  8: target_time  (uint32_t, 4 B)
-    //   offset 12: [4 B natural padding to align 8-B hitlist pointer]
-    // ── COLD / LARGE (offset 16) ──────────────────────────────────────────────
-    //   offset 16: hitlist      (std::vector<Profile>, 24 B: ptr+size+capacity)
-    //   → hitlist.data() lives on the heap; prefetch it explicitly.
-    int8_t       type;
-    uint8_t      output;
-    uint8_t      inputlimit;
-    uint8_t      flags;
-    uint8_t      high;
-    uint8_t      low;
-    uint8_t      reserved; // Keep padding for size alignment
-    unsigned int target_time;    // moved before hitlist — stays in hot cacheline
-    std::vector<Profile> hitlist; // 24 B; out-of-line data prefetched separately
+  // ── HOT DATA ON TOP ──────────────────────────────────────────────────────
+  uint8_t output;  // offset 0 (1 B)
+  uint8_t flags;   // offset 1 (1 B)
+  uint8_t invalid; // offset 2 (1 B): count of unconnected inputs (0 = valid)
+  uint8_t limit;   // offset 3 (1 B): static count = sources.size() (or INFINITE
+                   // for clock)
+  uint8_t logic;   // offset 4 (1 B): matching input tally
+  uint8_t seed;    // offset 5 (1 B): matching target (0 for AND/NAND, 1 for others)
+  // offset 6..7: 2 bytes natural padding for 8-byte aligned hitlist
+  // ── HOT VECTORS ──────────────────────────────────────────────────────────
+  std::vector<CPP_Gate *> hitlist; // offset  8 (24 B): target gates
+  std::vector<CPP_Gate *> sources; // offset 32 (24 B): source gates
+  // ── COLD DATA ON THE BOTTOM ──────────────────────────────────────────────
+  int8_t type; // offset 56 (1 B)
+  // offset 57..59: 3 bytes natural padding for 4-byte aligned target_time
+  unsigned int target_time; // offset 60 (4 B)
 
-    inline void compute() noexcept {
-        if (inputlimit) {
-            output = 2;
-        } else if (flags & 16) {
-            output = (low == 0) ^ (flags & 1);
-        } else if (flags & 32) {
-            output = (high > 0) ^ (flags & 1);
-        } else {
-            output = (high & 1) ^ (flags & 1);
-        }
+  inline void compute() noexcept {
+    if (invalid) {
+      output = 2; // UNKNOWN
+      return;
     }
+    logic = 0;
+    for (auto &src : sources) {
+      logic += (src->output == seed);
+    }
+    if (flags & 16) {
+      output = (logic == 0) ^ (flags & 1);
+    } else if (flags & 32) {
+      output = (logic > 0) ^ (flags & 1);
+    } else {
+      output = (logic & 1) ^ (flags & 1);
+    }
+  }
 
-    // flag is 8 means it's not going to support the ui, 0 means supported
-    CPP_Gate() : type(0), output(2), inputlimit(2), flags(0), high(0), low(0), reserved(0), target_time(0), hitlist() {
-    }
-    CPP_Gate(uint8_t t, uint8_t lim) : type(t), output(2), inputlimit(lim), flags(0), high(0), low(0), reserved(0), target_time(0), hitlist() {
-    }
+  // flag is 8 means it's not going to support the ui, 0 means supported
+  CPP_Gate()
+      : output(2), flags(0), invalid(2), limit(2), logic(0), seed(1),
+        hitlist(), sources(2, nullptr), type(0), target_time(0) {}
+  CPP_Gate(uint8_t t, uint8_t lim)
+      : output(2), flags(0), invalid(lim), limit(lim), logic(0),
+        seed(t < 2 ? 0 : 1), hitlist(), sources(lim, nullptr), type(t),
+        target_time(0) {}
 };
 
-// Compile-time assertion: hot scalars must all fit before the hitlist pointer.
-// If the struct layout ever drifts, this will fail at compile time.
-static_assert(offsetof(CPP_Gate, hitlist) >= 12,
-    "CPP_Gate: hot scalars overflowed into hitlist — check field order");
+static_assert(sizeof(CPP_Gate) == 64, "CPP_Gate must be exactly 64 bytes (1 cache line)");
+static_assert(offsetof(CPP_Gate, output) == 0, "output at offset 0");
+static_assert(offsetof(CPP_Gate, flags) == 1, "flags at offset 1");
+static_assert(offsetof(CPP_Gate, invalid) == 2, "invalid at offset 2");
+static_assert(offsetof(CPP_Gate, limit) == 3, "limit at offset 3");
+static_assert(offsetof(CPP_Gate, logic) == 4, "logic at offset 4");
+static_assert(offsetof(CPP_Gate, seed) == 5, "seed at offset 5");
+static_assert(offsetof(CPP_Gate, hitlist) == 8, "hitlist at offset 8");
+static_assert(offsetof(CPP_Gate, sources) == 32, "sources at offset 32");
+static_assert(offsetof(CPP_Gate, type) == 56, "type at offset 56");
+static_assert(offsetof(CPP_Gate, target_time) == 60, "target_time at offset 60");
 #endif
