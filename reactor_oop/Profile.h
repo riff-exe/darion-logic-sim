@@ -50,6 +50,11 @@ struct Task {
 // inputlimit — number of unresolved (not-yet-connected) inputs.
 //              inputlimit == 0  →  all inputs resolved, compute() is valid.
 //              inputlimit  > 0  →  pending inputs, output must stay UNKNOWN.
+//
+// logic  — count of connected inputs whose current output == seed.
+// seed   — the "triggering" value for this gate type:
+//            seed=0 (LOW)  for AND/NAND  (count LOWs to detect a 0-pulling input)
+//            seed=1 (HIGH) for OR/NOR/XOR/XNOR/BUFFER/NOT/IC_Input/IC_Output
 // ==============================================================================
 struct CPP_Gate {
     void*                gate;        // back-pointer to Python Gate object
@@ -60,15 +65,15 @@ struct CPP_Gate {
     uint8_t              update;
     uint8_t              value;
     uint8_t              scheduled;
-    uint8_t              high;        // connected HIGH-input count
-    uint8_t              low;         // connected LOW-input count
+    uint8_t              logic;       // count of inputs matching seed
+    uint8_t              seed;        // triggering input value for this gate type
     unsigned int         target_time;
     std::vector<Profile> hitlist;
 
     CPP_Gate() : gate(nullptr), type(0), output(LOGIC_UNKNOWN),
-                 inputlimit(2), mark(0), update(1), value(0), scheduled(0), high(0), low(0), target_time(0) {}
+                 inputlimit(2), mark(0), update(1), value(0), scheduled(0), logic(0), seed(1), target_time(0) {}
     CPP_Gate(void* g, int8_t t, uint8_t lim) : gate(g), type(t), output(LOGIC_UNKNOWN),
-              inputlimit(lim), mark(0), update(1), value(0), scheduled(0), high(0), low(0), target_time(0) {}
+              inputlimit(lim), mark(0), update(1), value(0), scheduled(0), logic(0), seed(1), target_time(0) {}
 
     virtual void compute() noexcept { output = LOGIC_UNKNOWN; }
     virtual ~CPP_Gate() = default;
@@ -76,70 +81,70 @@ struct CPP_Gate {
 
 // ─── Typed gate subclasses ────────────────────────────────────────────────────
 
-// AND (id=0): HIGH iff no LOW input
+// AND (id=0): HIGH iff no LOW input  → seed=0, HIGH when logic==0
 struct AND_Gate : CPP_Gate {
-    AND_Gate(void* g, uint8_t lim) : CPP_Gate(g, 0, lim) {}
-    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (low == 0); }
+    AND_Gate(void* g, uint8_t lim) : CPP_Gate(g, 0, lim) { seed = 0; }
+    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic == 0); }
 };
 
-// NAND (id=1): LOW iff no LOW input (inverted AND)
+// NAND (id=1): LOW iff no LOW input (inverted AND) → seed=0, HIGH when logic>0
 struct NAND_Gate : CPP_Gate {
-    NAND_Gate(void* g, uint8_t lim) : CPP_Gate(g, 1, lim) {}
-    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (low > 0); }
+    NAND_Gate(void* g, uint8_t lim) : CPP_Gate(g, 1, lim) { seed = 0; }
+    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic > 0); }
 };
 
-// OR (id=2): HIGH iff any HIGH input
+// OR (id=2): HIGH iff any HIGH input → seed=1, HIGH when logic>0
 struct OR_Gate : CPP_Gate {
-    OR_Gate(void* g, uint8_t lim) : CPP_Gate(g, 2, lim) {}
-    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (high > 0); }
+    OR_Gate(void* g, uint8_t lim) : CPP_Gate(g, 2, lim) { seed = 1; }
+    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic > 0); }
 };
 
-// NOR (id=3): HIGH iff no HIGH input (inverted OR)
+// NOR (id=3): HIGH iff no HIGH input (inverted OR) → seed=1, HIGH when logic==0
 struct NOR_Gate : CPP_Gate {
-    NOR_Gate(void* g, uint8_t lim) : CPP_Gate(g, 3, lim) {}
-    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (high == 0); }
+    NOR_Gate(void* g, uint8_t lim) : CPP_Gate(g, 3, lim) { seed = 1; }
+    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic == 0); }
 };
 
-// XOR (id=4): HIGH iff odd HIGH count
+// XOR (id=4): HIGH iff odd HIGH count → seed=1, HIGH when logic&1
 struct XOR_Gate : CPP_Gate {
-    XOR_Gate(void* g, uint8_t lim) : CPP_Gate(g, 4, lim) {}
-    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (high & 1); }
+    XOR_Gate(void* g, uint8_t lim) : CPP_Gate(g, 4, lim) { seed = 1; }
+    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic & 1); }
 };
 
-// XNOR (id=5): HIGH iff even HIGH count (inverted XOR)
+// XNOR (id=5): HIGH iff even HIGH count (inverted XOR) → seed=1, HIGH when (logic&1)^1
 struct XNOR_Gate : CPP_Gate {
-    XNOR_Gate(void* g, uint8_t lim) : CPP_Gate(g, 5, lim) {}
-    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : ((high & 1) ^ 1); }
+    XNOR_Gate(void* g, uint8_t lim) : CPP_Gate(g, 5, lim) { seed = 1; }
+    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : ((logic & 1) ^ 1); }
 };
 
-// BUFFER (id=6): pass-through, 1 input
+// BUFFER (id=6): pass-through, 1 input → seed=1, HIGH when logic>0
 struct BUFFER_Gate : CPP_Gate {
-    BUFFER_Gate(void* g) : CPP_Gate(g, 6, 1) {}
-    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (high & 1); }
+    BUFFER_Gate(void* g) : CPP_Gate(g, 6, 1) { seed = 1; }
+    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic > 0); }
 };
 
-// NOT (id=7): inverter, 1 input
+// NOT (id=7): inverter, 1 input → seed=1, HIGH when logic==0
 struct NOT_Gate : CPP_Gate {
-    NOT_Gate(void* g) : CPP_Gate(g, 7, 1) {}
-    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : ((high & 1) ^ 1); }
+    NOT_Gate(void* g) : CPP_Gate(g, 7, 1) { seed = 1; }
+    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic == 0); }
 };
 
-// IC_INPUT_PIN (id=8): internal input pin, pass-through
+// IC_INPUT_PIN (id=8): internal input pin, pass-through → seed=1, HIGH when logic>0
 struct IC_Input_Gate : CPP_Gate {
-    IC_Input_Gate(void* g) : CPP_Gate(g, 8, 1) {}
-    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (high & 1); }
+    IC_Input_Gate(void* g) : CPP_Gate(g, 8, 1) { seed = 1; }
+    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic > 0); }
 };
 
-// VARIABLE (id=9): driven by value, ignores high/low
+// VARIABLE (id=9): driven by value, ignores logic/seed
 struct Variable_Gate : CPP_Gate {
-    Variable_Gate(void* g) : CPP_Gate(g, 9, 1) {}
+    Variable_Gate(void* g) : CPP_Gate(g, 9, 1) { seed = 1; }
     inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : value; }
 };
 
-// IC_OUTPUT_PIN (id=10): internal output pin, pass-through
+// IC_OUTPUT_PIN (id=10): internal output pin, pass-through → seed=1, HIGH when logic>0
 struct IC_Output_Gate : CPP_Gate {
-    IC_Output_Gate(void* g) : CPP_Gate(g, 10, 1) {}
-    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (high & 1); }
+    IC_Output_Gate(void* g) : CPP_Gate(g, 10, 1) { seed = 1; }
+    inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic > 0); }
 };
 
 // ─── Factory ──────────────────────────────────────────────────────────────────

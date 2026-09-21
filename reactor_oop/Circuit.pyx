@@ -727,8 +727,7 @@ cdef class Circuit:
                     eval += 1
                     if profile.output != UNKNOWN:
                         target_info = <CPP_Gate*>profile.target
-                        if profile.output == HIGH: target_info.high -= 1
-                        elif profile.output == LOW: target_info.low -= 1
+                        target_info.logic -= (profile.output == target_info.seed)
                         if target_info.output != UNKNOWN:
                             write_queue[size] = <CPP_Gate*>target_info
                             size += 1
@@ -774,8 +773,7 @@ cdef class Circuit:
                 while profile < end:
                     profile_output = profile.output
                     target_info = profile.target
-                    target_info.high += (new_output == HIGH) - (profile_output == HIGH)
-                    target_info.low  += (new_output == LOW)  - (profile_output == LOW)
+                    target_info.logic += (new_output == target_info.seed) - (profile_output == target_info.seed)
                     target_output = target_info.output
                     if unlikely(new_output == UNKNOWN):
                         target_info.output = UNKNOWN

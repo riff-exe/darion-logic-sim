@@ -188,8 +188,7 @@ cdef class IC:
             source = <Gate>pin_in.sources[0]
             if source is not None:
                 (<CPP_Gate*>source.info).hitlist.emplace_back(<CPP_Gate*>pin_in.info, 0, (<CPP_Gate*>source.info).output)
-                if (<CPP_Gate*>source.info).output == HIGH: (<CPP_Gate*>pin_in.info).high += 1
-                elif (<CPP_Gate*>source.info).output == LOW: (<CPP_Gate*>pin_in.info).low += 1
+                (<CPP_Gate*>pin_in.info).logic += ((<CPP_Gate*>source.info).output == (<CPP_Gate*>pin_in.info).seed)
                 (<CPP_Gate*>pin_in.info).inputlimit -= 1
             pin_in.process()
         for pin_out in self.outputs:

@@ -24,8 +24,7 @@ cdef inline void pop(vector[Profile]& hitlist, CPP_Gate* target, int pin_index):
 cdef inline void hide(Profile& profile):
     cdef CPP_Gate* target_info = <CPP_Gate*>profile.target
     cdef Gate target = <Gate>target_info.gate
-    if profile.output == HIGH: target_info.high -= 1
-    elif profile.output == LOW: target_info.low -= 1
+    target_info.logic -= (profile.output == target_info.seed)
     target_info.inputlimit += 1
     target.sources[profile.index] = None
     profile.output = UNKNOWN
@@ -89,8 +88,7 @@ cdef class Gate:
             return
         source.info.hitlist.emplace_back(<CPP_Gate*>self.info, index, source.info.output)
         self.sources[index] = source
-        if source.info.output == HIGH: self.info.high += 1
-        elif source.info.output == LOW: self.info.low += 1
+        self.info.logic += (source.info.output == self.info.seed)
         self.info.inputlimit -= 1
         if source.info.output == UNKNOWN:
             self.info.output = UNKNOWN
@@ -103,14 +101,12 @@ cdef class Gate:
         cdef Gate source = self.sources[index]
         pop(source.info.hitlist, <CPP_Gate*>self.info, index)
         self.sources[index] = None
-        if source.info.output == HIGH: self.info.high -= 1
-        elif source.info.output == LOW: self.info.low -= 1
+        self.info.logic -= (source.info.output == self.info.seed)
         self.info.inputlimit += 1
         self.info.output = UNKNOWN
 
     cdef void reset(self):
-        self.info.high = 0
-        self.info.low = 0
+        self.info.logic = 0
         self.info.output = UNKNOWN
         cdef Profile* profile = self.info.hitlist.data()
         cdef Profile* end = profile + self.info.hitlist.size()
@@ -132,8 +128,7 @@ cdef class Gate:
             if source is not None:
                 pop(source.info.hitlist, <CPP_Gate*>self.info, i)
         self.info.output = UNKNOWN
-        self.info.high = 0
-        self.info.low = 0
+        self.info.logic = 0
         self.info.inputlimit = len(sources)
 
     cdef void reveal(self):
@@ -146,8 +141,7 @@ cdef class Gate:
             source = <Gate>PyList_GET_ITEM(sources, i)
             if source is not None:
                 source.info.hitlist.emplace_back(<CPP_Gate*>self.info, i, source.info.output)
-                if source.info.output == HIGH: self.info.high += 1
-                elif source.info.output == LOW: self.info.low += 1
+                self.info.logic += (source.info.output == self.info.seed)
                 self.info.inputlimit -= 1
         n = self.info.hitlist.size()
         for i in range(n):
@@ -178,8 +172,7 @@ cdef class Gate:
 
     @property
     def book(self):
-        cdef int connected = len(self.sources) - self.info.inputlimit
-        return [self.info.low, self.info.high, self.info.inputlimit]
+        return [self.info.logic, self.info.seed, self.info.inputlimit]
 
     @property
     def value(self):
@@ -273,42 +266,42 @@ cdef class AND(MultiInputGate):
         super().__init__(id, name)
 
     cdef void compute(self):
-        self.info.output = (self.info.low == 0)
+        self.info.output = (self.info.logic == 0)  # no LOW input → HIGH
 
 cdef class NAND(MultiInputGate):
     def __init__(self, int id=NAND_ID, str name='NAND'):
         super().__init__(id, name)
 
     cdef void compute(self):
-        self.info.output = (self.info.low > 0)
+        self.info.output = (self.info.logic > 0)   # any LOW input → HIGH
 
 cdef class OR(MultiInputGate):
     def __init__(self, int id=OR_ID, str name='OR'):
         super().__init__(id, name)
 
     cdef void compute(self):
-        self.info.output = (self.info.high > 0)
+        self.info.output = (self.info.logic > 0)   # any HIGH input → HIGH
 
 cdef class NOR(MultiInputGate):
     def __init__(self, int id=NOR_ID, str name='NOR'):
         super().__init__(id, name)
 
     cdef void compute(self):
-        self.info.output = (self.info.high == 0)
+        self.info.output = (self.info.logic == 0)  # no HIGH input → HIGH
 
 cdef class XOR(MultiInputGate):
     def __init__(self, int id=XOR_ID, str name='XOR'):
         super().__init__(id, name)
 
     cdef void compute(self):
-        self.info.output = self.info.high & 1
+        self.info.output = self.info.logic & 1     # odd HIGH count → HIGH
 
 cdef class XNOR(MultiInputGate):
     def __init__(self, int id=XNOR_ID, str name='XNOR'):
         super().__init__(id, name)
 
     cdef void compute(self):
-        self.info.output = (self.info.high & 1) ^ 1
+        self.info.output = (self.info.logic & 1) ^ 1  # even HIGH count → HIGH
 
 cdef class SingleInputGate(Gate):
     def __init__(self, int id, str name=''):
@@ -328,7 +321,7 @@ cdef class BUFFER(SingleInputGate):
         super().__init__(id, name)
 
     cdef void compute(self):
-        self.info.output = self.info.high & 1
+        self.info.output = (self.info.logic > 0)
 
 cdef class Probe(BUFFER):
     def __init__(self, int id=BUFFER_ID, str name='Probe'):
@@ -339,21 +332,21 @@ cdef class NOT(SingleInputGate):
         super().__init__(id, name)
 
     cdef void compute(self):
-        self.info.output = (self.info.high & 1) ^ 1
+        self.info.output = (self.info.logic == 0)
 
 cdef class IC_Input(SingleInputGate):
     def __init__(self, int id=IC_INPUT_PIN_ID, str name='In'):
         super().__init__(id, name)
 
     cdef void compute(self):
-        self.info.output = self.info.high & 1
+        self.info.output = (self.info.logic > 0)
 
 cdef class IC_Output(SingleInputGate):
     def __init__(self, int id=IC_OUTPUT_PIN_ID, str name='Out'):
         super().__init__(id, name)
 
     cdef void compute(self):
-        self.info.output = self.info.high & 1
+        self.info.output = (self.info.logic > 0)
 
 cdef class Variable(Gate):
     def __init__(self, int id=VARIABLE_ID, str name='Variable'):
