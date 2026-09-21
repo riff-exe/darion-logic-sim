@@ -66,10 +66,26 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, list gate_verse):
         gate.location = gate_infolist.size()-1
         gate.info = &gate_infolist[gate.location]
         
-        if choice <OR_ID:
-            gate.info.flags |= FLAG_AND
-        elif choice <XOR_ID:
-            gate.info.flags |= FLAG_OR
+        if choice == AND_ID:
+            gate.info.flags |= LOGIC_1# low==0
+            gate.info.seed = 0
+        elif choice == NAND_ID:
+            gate.info.flags |= LOGIC_2# low>0
+            gate.info.seed = 0
+        elif choice ==OR_ID:
+            gate.info.flags |= LOGIC_2# high>0
+            gate.info.seed = 1
+        elif choice == NOR_ID:
+            gate.info.flags |= LOGIC_1#high==0
+            gate.info.seed = 1
+        elif choice == NOT_ID:
+            gate.info.flags |= LOGIC_2# low>0
+            gate.info.seed = 0
+        elif choice>=BUFFER_ID:
+            gate.info.flags |= LOGIC_2# high>0
+            gate.info.seed = 1
+        else:
+            gate.info.seed = 1
             
         gate.info.flags |= (choice & 1) & (choice != VARIABLE_ID)
         

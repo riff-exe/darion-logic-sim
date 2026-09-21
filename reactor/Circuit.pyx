@@ -529,7 +529,7 @@ cdef class Circuit:
                 else:
                     ch_str = f"val:{comp._sources}"
 
-                book = f"[{info.low},{info.high},{len(comp._sources)-info.inputlimit-info.low-info.high}]"
+                book = f"[{info.logic},{len(comp._sources)-info.inputlimit-info.logic}]"
 
                 # Targets from info.hitlist — repr() only, no colors in auxiliary columns.
                 tgt = []
@@ -1279,11 +1279,10 @@ cdef class Circuit:
         cdef int origin = task.gate_loc
         cdef Profile* profile
         cdef Profile* end
-        cdef Py_ssize_t realsource, high, low, limit, gate_type
-        cdef Py_ssize_t new_output, profile_output, target_output
+        cdef uint8_t target_output
         cdef unsigned int next_time
         cdef CPP_Gate* self_info
-        cdef CPP_Gate* target_info
+        cdef CPP_Gate* target
 
         cdef CPP_Gate* gate_infolist = self.gate_infolist.data()
         self_info = &gate_infolist[origin]
@@ -1305,27 +1304,23 @@ cdef class Circuit:
         if not (self_info.flags & FLAG_UPDATE):
             self.visual_queue.push_back(origin)
             self_info.flags |= FLAG_UPDATE
-        new_output = self_info.output
         profile = self_info.hitlist.data()
         end = profile + self_info.hitlist.size()
         while profile != end:
-            while profile!=end and profile.output==new_output:
+            while profile!=end and profile.output==self_info.output:
                 profile+=1
             if profile ==end:break
-            profile_output = profile.output
-            target_info = profile.target
-            gate_type = target_info.type
-            target_info.high += (new_output == HIGH) - (profile_output == HIGH)
-            target_info.low += (new_output == LOW) - (profile_output == LOW)
-            target_output = target_info.output
-            if unlikely(new_output == UNKNOWN):
-                target_info.output = UNKNOWN
+            target = profile.target
+            target.logic += (self_info.output == target.seed) - (profile.output == target.seed)
+            target_output = target.output
+            if self_info.output == UNKNOWN:
+                target.output = UNKNOWN
             else:
-                target_info.compute()
-            if target_output != target_info.output:
-                target_info.target_time = self.Global_Clock + self.Global_delay[target_info.type] + (self.FanIn_delay[target_info.type] * target_info.inputlimit) + (self.FanOut_delay[target_info.type] * target_info.hitlist.size())
-                self.time_queue.push(Task(profile.target - gate_infolist, target_info.target_time, profile.target - gate_infolist))
-            profile.output = new_output
+                target.compute()
+            if target_output != target.output:
+                target.target_time = self.Global_Clock + self.Global_delay[target.type] + (self.FanIn_delay[target.type] * target.inputlimit) + (self.FanOut_delay[target.type] * target.hitlist.size())
+                self.time_queue.push(Task(profile.target - gate_infolist, target.target_time, profile.target - gate_infolist))
+            profile.output = self_info.output
             profile += 1
         if self_info.inputlimit == INFINITE:
             with gil:
@@ -1338,13 +1333,13 @@ cdef class Circuit:
         '''propagate the output of a gate to its targets'''
         cdef Profile* profile
         cdef Profile* end
-        cdef Py_ssize_t new_output, profile_output, target_output
+        cdef uint8_t target_output
         cdef Py_ssize_t index = 0, size = 0
         cdef Py_ssize_t eval = 0
         cdef CPP_Gate** read_queue = self.queue[0]
         cdef CPP_Gate** write_queue = self.queue[1]
         cdef CPP_Gate* self_info
-        cdef CPP_Gate* target_info
+        cdef CPP_Gate* target
         cdef int i
 
         cdef CPP_Gate* gate_infolist = self.gate_infolist.data()            
@@ -1368,24 +1363,21 @@ cdef class Circuit:
                 if not (self_info.flags & FLAG_UPDATE):
                     self.visual_queue.push_back(read_queue[index] - gate_infolist)   # target changed — mark dirty
                     self_info.flags |= FLAG_UPDATE
-                new_output = self_info.output
                 profile = self_info.hitlist.data()
                 end = profile + self_info.hitlist.size()
                 eval += self_info.hitlist.size()
                 while profile < end:
-                    profile_output = profile.output
-                    target_info = profile.target
-                    target_info.high += (new_output == HIGH) - (profile_output == HIGH)
-                    target_info.low += (new_output == LOW) - (profile_output == LOW)
-                    target_output = target_info.output
-                    if unlikely(new_output == UNKNOWN):
-                        target_info.output = UNKNOWN
+                    target = profile.target
+                    target.logic += (self_info.output == target.seed) - (profile.output == target.seed)
+                    target_output = target.output
+                    if self_info.output == UNKNOWN:
+                        target.output = UNKNOWN
                     else:
-                        target_info.compute()
+                        target.compute()
                     write_queue[size] = profile.target
-                    size += (((target_info.flags & FLAG_MARK) == 0) & (target_output != target_info.output))
-                    target_info.flags |= FLAG_MARK * (target_output != target_info.output)
-                    profile.output = new_output
+                    size += (((target.flags & FLAG_MARK) == 0) & (target_output != target.output))
+                    target.flags |= FLAG_MARK * (target_output != target.output)
+                    profile.output = self_info.output
                     profile += 1
             # size is actually the growing size of write_queue
             end_point, size = size, 0
@@ -1400,14 +1392,15 @@ cdef class Circuit:
 
         cdef Profile* profile
         cdef Profile* end
-        cdef Py_ssize_t new_output, profile_output, target_output
+        cdef uint8_t target_output
         cdef Py_ssize_t back_edges = 0
         cdef Py_ssize_t eval = 0
         cdef Py_ssize_t i
         cdef CPP_Gate* curr_gate
-        cdef CPP_Gate* target_info
+        cdef CPP_Gate* target
 
         cdef CPP_Gate* gate_infolist = self.gate_infolist.data()
+        cdef CPP_Gate** read_queue = self.queue[0]
         cdef CPP_Gate* curr = NULL
         cdef CPP_Gate* threshold = NULL
 
@@ -1418,30 +1411,27 @@ cdef class Circuit:
             if not (curr_gate.flags & FLAG_UPDATE):
                 self.visual_queue.push_back(<int>(curr_gate - gate_infolist))
                 curr_gate.flags |= FLAG_UPDATE
-            new_output = curr_gate.output
             profile = curr_gate.hitlist.data()
             end = profile + curr_gate.hitlist.size()
             eval += curr_gate.hitlist.size()
 
             while profile < end:
-                profile_output = profile.output
-                target_info = profile.target
-                target_info.high += (new_output == HIGH) - (profile_output == HIGH)
-                target_info.low  += (new_output == LOW)  - (profile_output == LOW)
-                target_output = target_info.output
-                if unlikely(new_output == UNKNOWN):
-                    target_info.output = UNKNOWN
+                target = profile.target
+                target.logic += (curr_gate.output == target.seed) - (profile.output == target.seed)
+                target_output = target.output
+                if curr_gate.output == UNKNOWN:
+                    target.output = UNKNOWN
                 else:
-                    target_info.compute()
+                    target.compute()
 
-                if target_output != target_info.output:
-                    target_info.flags |= FLAG_MARK
-                    if curr == NULL or target_info < curr:
-                        curr = target_info
-                    if threshold == NULL or target_info > threshold:
-                        threshold = target_info
+                if  ((target.flags & FLAG_MARK)==0) & (target_output != target.output):
+                    target.flags |= FLAG_MARK
+                    if curr == NULL or target < curr:
+                        curr = target
+                    if threshold == NULL or target > threshold:
+                        threshold = target
 
-                profile.output = new_output
+                profile.output = curr_gate.output
                 profile += 1
 
         # If none of the immediate targets changed, no sweep is required
@@ -1453,7 +1443,6 @@ cdef class Circuit:
         while curr <= threshold:
             if curr.flags & FLAG_MARK:
                 curr.flags &= ~FLAG_MARK   
-                new_output = curr.output
                 if not (curr.flags & FLAG_UPDATE):
                     self.visual_queue.push_back(<int>(curr - gate_infolist))   # target changed — mark dirty
                     curr.flags |= FLAG_UPDATE
@@ -1462,26 +1451,22 @@ cdef class Circuit:
                 eval += curr.hitlist.size()
 
                 while profile < end:
-                    profile_output = profile.output
-                    target_info = profile.target
-                    target_info.high += (new_output == HIGH) - (profile_output == HIGH)
-                    target_info.low += (new_output == LOW) - (profile_output == LOW)
-                    target_output = target_info.output
-                    if unlikely(new_output == UNKNOWN):
-                        target_info.output = UNKNOWN
+                    target = profile.target
+                    target.logic += (curr.output == target.seed) - (profile.output == target.seed)
+                    target_output = target.output
+                    if curr.output == UNKNOWN:
+                        target.output = UNKNOWN
                     else:
-                        target_info.compute()
+                        target.compute()
+                    if ((target.flags & FLAG_MARK) == 0) & (target_output != target.output):
+                        target.flags |= FLAG_MARK
+                        if target <= curr:
+                            read_queue[back_edges] = target
+                            back_edges += 1
+                        if target > threshold:
+                            threshold = target
 
-                    if target_output != target_info.output:
-                        if not (target_info.flags & FLAG_MARK):
-                            target_info.flags |= FLAG_MARK
-                            if profile.target <= curr:
-                                self.queue[0][back_edges] = profile.target
-                                back_edges += 1
-                        if profile.target > threshold:
-                            threshold = profile.target
-
-                    profile.output = new_output
+                    profile.output = curr.output
                     profile += 1
             curr += 1
 

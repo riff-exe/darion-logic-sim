@@ -527,7 +527,7 @@ def main():
     )
     parser.add_argument("target", nargs="?", default="tests/IWLS2005/itc99",
                         help="Suite alias (iwls, iscas85, iscas89, epfl, etc.), file, or directory")
-    parser.add_argument("--vectors", type=int, default=10000,
+    parser.add_argument("--vectors", type=int, default=50000,
                         help="Test vectors for simulation benchmarking (default: 10000)")
     parser.add_argument("--verify-vectors", type=int, default=100,
                         help="Vectors for correctness verification (default: 100)")
