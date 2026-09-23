@@ -389,17 +389,17 @@ To experimentally prove the instruction bloat hypothesis, hardware Performance M
 
 ##### Empirical Hardware PMU Counter Comparison (10,000 Vectors):
 
-| Suite | Circuit | Gates | Simulation Engine | IPC | CPU Cycles | Retired Instructions | L1-D Loads | L1 Hit% | Brn Miss% | Instructions / Gate / Vec |
+| Suite | Circuit | Gates | Simulation Engine | IPC | CPU Cycles | Retired Instructions | L1-D Loads | L1-D Misses | Brn Miss% | Instructions / Gate / Vec |
 |:---|:---|---:|:---|---:|---:|---:|---:|---:|---:|---:|
-| **ISCAS-85** | `c5315.v` | 2,608 | **Verilator C++** | **9.42** | **1.33M** | **12.49M** | **5.64M** | 99.82% | 5.18% | **0.48** |
-| | | | Reactor Sweep | 1.67 | 587.73M | 979.78M | 422.72M | 92.47% | 6.65% | 37.57 |
-| | | | Icarus Verilog | 3.00 | 5.50B | 16.48B | 8.09B | 96.61% | 1.34% | 631.90 |
-| **ISCAS-89** | `s5378.v` | 3,043 | **Verilator C++** | **2.96** | **12.39M** | **36.66M** | **16.48M** | 99.85% | 1.37% | **0.60** |
-| | | | Reactor Sweep | 3.23 | 711.30M | 2.29B | 771.03M | 86.73% | 1.80% | 37.63 |
-| | | | Icarus Verilog | 3.38 | 1.93B | 6.54B | 3.23B | 97.01% | 0.85% | 107.46 |
-| **IWLS 2005** | `b12.v` | 2,937 | **Verilator C++** | **2.08** | **85.28M** | **177.15M** | **86.23M** | 99.99% | 0.42% | **3.02** ⚠️ |
-| | | | Reactor Sweep | 4.55 | 273.46M | 1.24B | 367.01M | 82.54% | 0.37% | 21.11 |
-| | | | Icarus Verilog | 3.52 | 943.84M | 3.32B | 1.49B | 95.83% | 0.69% | 56.52 |
+| **ISCAS-85** | `c5315.v` | 2,608 | **Verilator C++** | **9.42** | **1.33M** | **12.49M** | **5.64M** | **10.15K** | 5.18% | **0.48** |
+| | | | Reactor Sweep | 1.67 | 587.73M | 979.78M | 422.72M | 31.83M | 6.65% | 37.57 |
+| | | | Icarus Verilog | 3.00 | 5.50B | 16.48B | 8.09B | 274.25M | 1.34% | 631.90 |
+| **ISCAS-89** | `s5378.v` | 3,043 | **Verilator C++** | **2.96** | **12.39M** | **36.66M** | **16.48M** | **24.72K** | 1.37% | **0.60** |
+| | | | Reactor Sweep | 3.23 | 711.30M | 2.29B | 771.03M | 102.32M | 1.80% | 37.63 |
+| | | | Icarus Verilog | 3.38 | 1.93B | 6.54B | 3.23B | 96.58M | 0.85% | 107.46 |
+| **IWLS 2005** | `b12.v` | 2,937 | **Verilator C++** | **2.08** | **85.28M** | **177.15M** | **86.23M** | **8.62K** | 0.42% | **3.02** ⚠️ |
+| | | | Reactor Sweep | 4.55 | 273.46M | 1.24B | 367.01M | 64.08M | 0.37% | 21.11 |
+| | | | Icarus Verilog | 3.52 | 943.84M | 3.32B | 1.49B | 62.13M | 0.69% | 56.52 |
 
 ##### Detailed PMU Metric Breakdown:
 
@@ -422,20 +422,20 @@ To investigate the exact transition where Reactor approaches and overtakes Veril
 
 ##### Empirical Hardware PMU Counter Comparison:
 
-| Benchmark Circuit | Gates | Engine Variant | IPC | CPU Cycles | Instructions | L1 Loads | L1 Hit% | Brn Miss% | Simulation Wall Time | Speedup vs. Verilator |
+| Benchmark Circuit | Gates | Engine Variant | IPC | CPU Cycles | Instructions | L1 Loads | L1 Misses | Brn Miss% | Simulation Wall Time | Speedup vs. Verilator |
 |:---|---:|:---|---:|---:|---:|---:|---:|---:|---:|---:|
-| **`b05.v`** (10k vecs) | 1,292 | **Verilator C++** | 1.76 | 31.35M | 55.20M | 32.82M | 99.97% | 0.35% | **10.42 ms** | 1.00× (Baseline) |
-| | | rx-prop | **4.75** | 64.47M | 305.92M | 104.80M | 97.92% | 0.26% | 19.47 ms | 0.54× (Verilator 1.8×) |
-| | | rx-sweep (Linear) | **4.34** | 96.46M | 418.30M | 129.82M | 84.58% | 0.40% | 25.58 ms | 0.41× (Verilator 2.4×) |
-| | | Icarus Verilog | 3.46 | 261.85M | 906.15M | 400.76M | 96.41% | 0.62% | 39.41 ms | 0.26× |
-| **`b17.v`** (10k vecs) | 52,250 | **Verilator C++** | 1.15 ⚠️ | 4.51B | 5.19B | 2.43B | 99.69% | 2.33% ⚠️ | **1,079.1 ms** | 1.00× (Baseline) |
-| | | rx-prop | **2.94** | 5.26B | 15.46B | 5.20B | 87.76% | 0.94% | 1,288.2 ms | **0.84× (Near parity!)** |
-| | | rx-sweep (Linear) | **3.43** | 5.38B | 18.46B | 5.96B | 82.79% | 0.91% | 1,266.1 ms | **0.85× (Near parity!)** |
-| | | Icarus Verilog | 2.47 | 15.28B | 37.76B | 17.74B | 94.44% | 0.72% | 2,627.0 ms | 0.41× |
-| **`b18.v`** (5k vecs) | 132,940 | **Verilator C++** | **0.69** 🛑 | **10.85B** 🛑 | 7.52B | 3.84B | 99.37% | **14.60%** 🛑 | 5,627.8 ms | 1.00× (Baseline) |
-| | | **rx-sweep (Linear)** | **3.22** | **6.94B** | 22.36B | 7.34B | 83.18% | **1.26%** | **3,535.5 ms** | 🏆 **1.59× FASTER** |
-| | | rx-prop | 2.19 | 9.89B | 21.69B | 7.95B | 89.06% | 3.59% | 5,104.1 ms | 🏆 **1.10× FASTER** |
-| | | Icarus Verilog | 1.96 | 20.33B | 39.76B | 18.79B | 94.80% | 1.45% | 19,910 ms | 0.28× |
+| **`b05.v`** (10k vecs) | 1,292 | **Verilator C++** | 1.76 | 31.35M | 55.20M | 32.82M | **9.85K** | 0.35% | **10.42 ms** | 1.00× (Baseline) |
+| | | rx-prop | **4.75** | 64.47M | 305.92M | 104.80M | 2.18M | 0.26% | 19.47 ms | 0.54× (Verilator 1.8×) |
+| | | rx-sweep (Linear) | **4.34** | 96.46M | 418.30M | 129.82M | 20.02M | 0.40% | 25.58 ms | 0.41× (Verilator 2.4×) |
+| | | Icarus Verilog | 3.46 | 261.85M | 906.15M | 400.76M | 14.39M | 0.62% | 39.41 ms | 0.26× |
+| **`b17.v`** (10k vecs) | 52,250 | **Verilator C++** | 1.15 ⚠️ | 4.51B | 5.19B | 2.43B | **7.53M** | 2.33% ⚠️ | **1,079.1 ms** | 1.00× (Baseline) |
+| | | rx-prop | **2.94** | 5.26B | 15.46B | 5.20B | 636.48M | 0.94% | 1,288.2 ms | **0.84× (Near parity!)** |
+| | | rx-sweep (Linear) | **3.43** | 5.38B | 18.46B | 5.96B | 1.03B | 0.91% | 1,266.1 ms | **0.85× (Near parity!)** |
+| | | Icarus Verilog | 2.47 | 15.28B | 37.76B | 17.74B | 986.34M | 0.72% | 2,627.0 ms | 0.41× |
+| **`b18.v`** (5k vecs) | 132,940 | **Verilator C++** | **0.69** 🛑 | **10.85B** 🛑 | 7.52B | 3.84B | **24.19M** | **14.60%** 🛑 | 5,627.8 ms | 1.00× (Baseline) |
+| | | **rx-sweep (Linear)** | **3.22** | **6.94B** | 22.36B | 7.34B | 1.23B | **1.26%** | **3,535.5 ms** | 🏆 **1.59× FASTER** |
+| | | rx-prop | 2.19 | 9.89B | 21.69B | 7.95B | 869.73M | 3.59% | 5,104.1 ms | 🏆 **1.10× FASTER** |
+| | | Icarus Verilog | 1.96 | 20.33B | 39.76B | 18.79B | 977.08M | 1.45% | 19,910 ms | 0.28× |
 
 ##### Why Does the Gap Close and Invert? (Microarchitectural Breakdown)
 
@@ -932,15 +932,37 @@ python tests/cache_test.py --xor --dump
 - `ex_ret_brn` & `ex_ret_brn_misp` (Branch instructions & mispredictions)
 - `instructions` & `cycles` (Instructions Per Cycle — IPC)
 
-Profiles four distinct execution paths: OOP, Unoptimized Propagate, Optimized Propagate, and Linear Sweep.
+Profiles four distinct execution paths: OOP, Unoptimized BFS, Optimized BFS, and Linear Sweep.
 
-### 9.2 Execution Examples
+### 9.2 Outputs & Report Structure
+Every run emits two artifacts in `tests/test_result/perf/`:
+1. **JSON Data File** (`cache_perf_{mode}_{ts}.json`): Complete raw and normalized PMU metrics, timing, evaluations, and hardware counters for offline processing without re-profiling.
+2. **Streamlined Markdown Report** (`cache_perf_{mode}_{ts}.md`): Concise 4-phase benchmark report:
+   - **Phase 1: Core Performance** (`Size`, `Engine Variant`, `Instructions`, `Cycles`, `IPC`)
+   - **Phase 2: Memory Hierarchy** (`Size`, `Engine Variant`, `L1 Loads`, `L1 Misses`, `L2 Loads`, `L2 Misses`, `L3 Loads`, `DRAM Loads`)
+   - **Phase 3: Branch Profiling** (`Size`, `Engine Variant`, `Branches`, `Branch Misses`)
+   - **Phase 4: Execution Time & Throughput** (`Size`, `Engine Variant`, `Time (ms)`, `Evaluations`, `MEval/sec`)
+
+### 9.3 Dedicated Standalone Plotter (`plot_cache_perf.py`)
+Hardware profiling takes time. You can plot or re-style existing benchmark data instantly without re-profiling:
 ```bash
-# Profile chaotic layout hardware counters
-python tests/cache_perf.py --chaotic
+# Auto-detect latest benchmark JSON and generate 4-subplot linear hierarchy (L1, L2, L3, DRAM) + throughput plots
+python tests/plot_cache_perf.py --scale linear
 
-# Profile homogeneous AND chains with plots
+# Generate both linear and logarithmic 4-subplot hierarchy plots for a specific JSON file
+python tests/plot_cache_perf.py --json tests/test_result/perf/cache_perf_chaotic_20260923_140052.json --scale both
+```
+
+### 9.4 Profiling Execution Examples
+```bash
+# Profile chaotic layout (saves JSON + Markdown + linear hierarchy plot)
+python tests/cache_perf.py --chaotic --plot-linear
+
+# Profile homogeneous AND chains with both logarithmic and linear axis plots
 python tests/cache_perf.py --and --plot
+
+# Profile with custom gate step and range
+python tests/cache_perf.py --chaotic --min-size 100 --max-size 50000 --step 100 --plot-linear
 ```
 
 ---

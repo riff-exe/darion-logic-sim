@@ -16,10 +16,10 @@ Integrates three comprehensive testing dimensions into a single unified pipeline
            - Simultaneously traces hardware performance counters via Linux perf kernel PMU:
              * Instructions per cycle (IPC)
              * CPU cycles and retired instructions
-             * L1 data cache loads & L1 hit rate %
-             * L2 cache misses & L2 hit rate %
+             * L1 data cache loads & L1 cache misses
+             * L2 cache loads & L2 cache misses
              * L3 / LLC cache misses (DRAM access)
-             * Branch instructions & branch misprediction rate %
+             * Branch instructions & branch mispredictions
            - Quantifies speedup and hardware metrics of topologically optimized layout vs. OOP graph engines.
 
 Supported Benchmark Datasets:
@@ -52,6 +52,8 @@ sys.path.insert(0, _SCRIPT_DIR)
 sys.path.insert(0, _SRC_DIR)
 sys.path.insert(0, _PROJECT_ROOT)
 
+from pmu_harness import pmu_harness, PmuStats
+
 def _find_script(name: str) -> str:
     for d in (_SRC_DIR, _SCRIPT_DIR):
         p = os.path.join(d, name)
@@ -71,7 +73,7 @@ SUITE_ALIASES = {
     "epfl_mammoth": os.path.join(_SCRIPT_DIR, "EPFL_mammoth_parsed"),
 }
 
-EVENTS = "L1-dcache-loads:u,L1-dcache-load-misses:u,l2_cache_req_stat.ic_dc_miss_in_l2:u,cache-misses:u,ex_ret_brn:u,ex_ret_brn_misp:u,instructions:u,cycles:u"
+EVENTS = pmu_harness.get_event_string()
 
 def fmt_num(n):
     if n is None or (isinstance(n, float) and math.isnan(n)): return "N/A"
@@ -468,52 +470,12 @@ def run_phase3_simulation_and_perf(c_path: str, c_type: str, vectors: int, warmu
             report_files["prop"] = f"perf_reactor_prop_opt_{c_name}.txt"
         for eng, rep_file in report_files.items():
             if os.path.exists(rep_file):
-                eng_stats = {}
-                with open(rep_file, "r", encoding="utf-8") as f:
-                    current_event = None
-                    for line in f:
-                        m_event = re.search(r"# Samples: .* of event '(.*?)'", line)
-                        if m_event:
-                            current_event = m_event.group(1)
-                            continue
-                        m_total = re.search(r"# Event count \(approx\.\):\s+(\d+)", line)
-                        if m_total and current_event:
-                            eng_stats[current_event] = int(m_total.group(1))
+                st = pmu_harness.parse_report_file(rep_file)
                 try: os.remove(rep_file)
                 except Exception: pass
 
-                if eng_stats:
-                    def get_cnt(e): return eng_stats.get(e, 0)
-                    l1_load = get_cnt("L1-dcache-loads:u") or get_cnt("L1-dcache-loads")
-                    l1_miss = get_cnt("L1-dcache-load-misses:u") or get_cnt("L1-dcache-load-misses")
-                    l2_miss = get_cnt("l2_cache_req_stat.ic_dc_miss_in_l2:u") or get_cnt("l2_cache_req_stat.ic_dc_miss_in_l2")
-                    l3_miss = get_cnt("cache-misses:u") or get_cnt("cache-misses")
-                    brn = get_cnt("ex_ret_brn:u")
-                    brn_miss = get_cnt("ex_ret_brn_misp:u")
-                    inst = get_cnt("instructions:u") or get_cnt("instructions")
-                    cyc = get_cnt("cycles:u") or get_cnt("cycles")
-
-                    l1_hit = max(0, l1_load - l1_miss)
-                    l2_hit = max(0, l1_miss - l2_miss)
-                    ipc = (inst / cyc) if cyc > 0 else 0.0
-                    l1_hr = (l1_hit / l1_load * 100) if l1_load > 0 else 0.0
-                    l2_hr = (l2_hit / l1_miss * 100) if l1_miss > 0 else 0.0
-                    brn_mr = (brn_miss / brn * 100) if brn > 0 else 0.0
-
-                    perf_metrics[eng] = {
-                        "ipc": ipc,
-                        "cyc": cyc,
-                        "inst": inst,
-                        "l1_load": l1_load,
-                        "l1_miss": l1_miss,
-                        "l1_hit_rate": l1_hr,
-                        "l2_miss": l2_miss,
-                        "l2_hit_rate": l2_hr,
-                        "l3_miss": l3_miss,
-                        "brn": brn,
-                        "brn_miss": brn_miss,
-                        "brn_miss_rate": brn_mr,
-                    }
+                if st.instructions > 0 or st.cycles > 0:
+                    perf_metrics[eng] = st
 
     return {"sim": sim_raw, "perf": perf_metrics}
 
@@ -683,9 +645,10 @@ def main():
                 perf = p3.get("perf", {})
                 rx_p = perf.get("prop", perf.get("prop_opt", perf.get("sweep", perf.get("oop", perf.get("engine", {})))))
                 ipc = rx_p.get("ipc", 0.0)
-                l1_hit = rx_p.get("l1_hit_rate", 0.0)
+                l1_ld = rx_p.get("l1_loads", rx_p.get("l1_load", 0))
+                l1_ms = rx_p.get("l1_misses", rx_p.get("l1_miss", 0))
                 cyc = rx_p.get("cyc", 0)
-                print(f" Done ({t_el:.1f}ms) | IPC: {ipc:.2f} | Cycles: {fmt_num(cyc)} | L1 Hit: {l1_hit:.2f}%")
+                print(f" Done ({t_el:.1f}ms) | IPC: {ipc:.2f} | Cycles: {fmt_num(cyc)} | L1 Load: {fmt_num(l1_ld)} | L1 Miss: {fmt_num(l1_ms)}")
 
             results[c_name] = c_data
         finally:
@@ -937,8 +900,9 @@ def main():
 
     # TABLE 4: Hardware PMU & Cache Hierarchy Profiling (Phase 3)
     md.append("## 4. Hardware PMU & Cache Hierarchy Profiling (Phase 3)\n")
-    md.append("| Circuit | Engine Variant | IPC | Cycles | Instructions | L1 Loads | L1 Hit% | L2 Hit% | LLC Misses | Brn Miss% |")
-    md.append("|:---|:---|---:|---:|---:|---:|---:|---:|---:|---:|")
+    pmu_hdr, pmu_sep = PmuStats.get_table_header(["Circuit", "Engine Variant"])
+    md.append(pmu_hdr)
+    md.append(pmu_sep)
     for c_name, data in results.items():
         p3 = data.get("phase3_sim_perf", {})
         perf = p3.get("perf", {})
@@ -957,11 +921,27 @@ def main():
             if not s and k == "prop":
                 s = perf.get("prop_opt")
             if s:
-                md.append(
-                    f"| {c_name} | {label} | {s['ipc']:.2f} | {fmt_num(s['cyc'])} | {fmt_num(s['inst'])} | "
-                    f"{fmt_num(s['l1_load'])} | {s['l1_hit_rate']:.2f}% | {s['l2_hit_rate']:.2f}% | "
-                    f"{fmt_num(s['l3_miss'])} | {s['brn_miss_rate']:.2f}% |"
-                )
+                if isinstance(s, PmuStats):
+                    md.append(s.format_row([c_name, label], fmt_num))
+                else:
+                    inst_val = s.get("instructions", s.get("inst", 0))
+                    cyc_val = s.get("cycles", s.get("cyc", 0))
+                    ipc_val = s.get("ipc", 0.0)
+                    l1_load_val = s.get("l1_loads", s.get("l1_load", 0))
+                    l1_miss_val = s.get("l1_misses", s.get("l1_miss", 0))
+                    l2_load_val = s.get("l2_loads", s.get("l2_load", 0))
+                    l2_miss_val = s.get("l2_misses", s.get("l2_miss", 0))
+                    l3_load_val = s.get("l3_loads", s.get("l3_load", 0))
+                    dram_val = s.get("dram_loads", s.get("l3_miss", 0))
+                    brn_val = s.get("branches", s.get("brn", 0))
+                    brn_miss_val = s.get("branch_misses", s.get("brn_miss", 0))
+
+                    md.append(
+                        f"| {c_name} | {label} | {fmt_num(inst_val)} | {fmt_num(cyc_val)} | {ipc_val:.2f} | "
+                        f"{fmt_num(l1_load_val)} | {fmt_num(l1_miss_val)} | {fmt_num(l2_load_val)} | {fmt_num(l2_miss_val)} | "
+                        f"{fmt_num(l3_load_val)} | {fmt_num(dram_val)} | "
+                        f"{fmt_num(brn_val)} | {fmt_num(brn_miss_val)} |"
+                    )
 
     # Save Markdown (and JSON only if requested)
     if not args.no_dump:
@@ -969,10 +949,10 @@ def main():
             f.write("\n".join(md) + "\n")
         if args.dump_json or args.json:
             with open(json_file, "w", encoding="utf-8") as f:
-                json.dump(results, f, indent=2)
+                json.dump(results, f, indent=2, default=lambda o: o.to_dict() if hasattr(o, "to_dict") else o.__dict__)
 
     if args.json:
-        print(json.dumps(results, indent=2))
+        print(json.dumps(results, indent=2, default=lambda o: o.to_dict() if hasattr(o, "to_dict") else o.__dict__))
     else:
         print("\n" + "\n".join(md))
         if not args.no_dump:

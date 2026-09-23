@@ -654,17 +654,18 @@ def generate_cache_plot(data_chaotic, data_realistic, cpu_name, output_dir):
         opt    = data['opt_bfs_me']
         swp    = data.get('swp_me', [])
 
-        ax.plot(sizes, unopt, marker='o', markersize=6, linestyle='-',
+        ax.plot(sizes, unopt, linestyle='-',
                 color='#FF3366', linewidth=2.5, alpha=0.9, label='Unoptimized (BFS)')
-        ax.plot(sizes, opt,   marker='s', markersize=6, linestyle='--',
+        ax.plot(sizes, opt,   linestyle='-',
                 color='#00FFCC', linewidth=2.5, alpha=0.9, label='Optimized (BFS)')
         if swp and len(swp) == len(sizes) and any(s > 0 for s in swp):
-            ax.plot(sizes, swp, marker='^', markersize=6, linestyle=':',
+            ax.plot(sizes, swp, linestyle='-',
                     color='#FFCC00', linewidth=2.5, alpha=0.9, label='Optimized (Sweep)')
         ax.fill_between(sizes, unopt, opt, color='#00FFCC', alpha=0.08)
 
         legend = ax.legend(frameon=True, facecolor='#1A1A1A', edgecolor='#333333',
-                           fontsize=11, loc='upper right')
+                           fontsize=11, loc='upper center', bbox_to_anchor=(0.5, -0.15),
+                           ncol=3)
         for text in legend.get_texts():
             text.set_color('#E0E0E0')
 
@@ -710,7 +711,7 @@ def generate_homogeneous_plots(homo_results, cpu_name, output_dir):
         gate_name = data['gate']
         colour    = _GATE_COLOURS.get(gate_name, '#FFFFFF')
 
-        fig, ax = plt.subplots(figsize=(11, 6.5), facecolor='#121212')
+        fig, ax = plt.subplots(figsize=(11, 6.8), facecolor='#121212')
         _base_ax(fig, ax,
                  f"Homogeneous Chaotic Chain — {gate_name} Gate: Unoptimized vs Optimized",
                  cpu_name)
@@ -719,14 +720,15 @@ def generate_homogeneous_plots(homo_results, cpu_name, output_dir):
         unopt  = data['unopt_me']
         opt    = data['opt_bfs_me']
 
-        ax.plot(sizes, unopt, marker='o', markersize=6, linestyle='-',
+        ax.plot(sizes, unopt, linestyle='-',
                 color='#FF3366', linewidth=2.5, alpha=0.9, label='Unoptimized (BFS)')
-        ax.plot(sizes, opt,   marker='s', markersize=6, linestyle='--',
+        ax.plot(sizes, opt,   linestyle='-',
                 color=colour,   linewidth=2.5, alpha=0.9, label=f'Optimized (BFS) — {gate_name}')
         ax.fill_between(sizes, unopt, opt, color=colour, alpha=0.08)
 
         legend = ax.legend(frameon=True, facecolor='#1A1A1A', edgecolor='#333333',
-                           fontsize=11, loc='upper right')
+                           fontsize=11, loc='upper center', bbox_to_anchor=(0.5, -0.15),
+                           ncol=2)
         for text in legend.get_texts():
             text.set_color('#E0E0E0')
 
@@ -739,7 +741,7 @@ def generate_homogeneous_plots(homo_results, cpu_name, output_dir):
     # --- Overview: Opt BFS across all gate types ---
     if not homo_results:
         return
-    fig, ax = plt.subplots(figsize=(13, 7), facecolor='#121212')
+    fig, ax = plt.subplots(figsize=(13, 7.5), facecolor='#121212')
     _base_ax(fig, ax,
              "Homogeneous Chaotic Chains — Optimized BFS Throughput by Gate Type",
              cpu_name)
@@ -748,11 +750,12 @@ def generate_homogeneous_plots(homo_results, cpu_name, output_dir):
         gate_name = data['gate']
         colour    = _GATE_COLOURS.get(gate_name, '#FFFFFF')
         ax.plot(data['sizes'], data['opt_bfs_me'],
-                marker='o', markersize=5, linestyle='-',
+                linestyle='-',
                 color=colour, linewidth=2.0, alpha=0.9, label=gate_name)
 
     legend = ax.legend(frameon=True, facecolor='#1A1A1A', edgecolor='#333333',
-                       fontsize=11, loc='upper right', title='Gate Type',
+                       fontsize=11, loc='upper center', bbox_to_anchor=(0.5, -0.14),
+                       ncol=4, title='Gate Type',
                        title_fontsize=11)
     legend.get_title().set_color('#E0E0E0')
     for text in legend.get_texts():

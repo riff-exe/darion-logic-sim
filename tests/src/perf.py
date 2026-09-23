@@ -15,6 +15,10 @@ _SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
 _TESTS_DIR    = os.path.dirname(_SCRIPT_DIR)
 _PROJECT_ROOT = os.path.dirname(_TESTS_DIR)
 
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
+from pmu_harness import pmu_harness, PmuStats
+
 parser = argparse.ArgumentParser(description="Multi-engine hardware profiling")
 parser.add_argument("target", nargs="?", default="iwls", help="Circuit file, directory or suite name (default: iwls)")
 parser.add_argument("--vectors", type=int, default=5000, help="Number of test vectors (default: 5000)")
@@ -82,7 +86,7 @@ if args.filter:
 if args.limit is not None:
     CIRCUITS = CIRCUITS[:args.limit]
 
-EVENTS = "L1-dcache-loads:u,L1-dcache-load-misses:u,l2_cache_req_stat.ic_dc_miss_in_l2:u,cache-misses:u,ex_ret_brn:u,ex_ret_brn_misp:u,instructions:u,cycles:u"
+EVENTS = pmu_harness.get_event_string()
 VECTORS = args.vectors
 
 ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -163,65 +167,15 @@ for c_path in CIRCUITS:
         "verilator": f"perf_verilator_{c_name}.txt"
     }
 
-    raw_stats = {}
     for eng, rep_file in report_files.items():
-        raw_stats[eng] = {}
         if os.path.exists(rep_file):
-            with open(rep_file, "r", encoding="utf-8") as f:
-                current_event = None
-                for line in f:
-                    m_event = re.search(r"# Samples: .* of event '(.*?)'", line)
-                    if m_event:
-                        current_event = m_event.group(1)
-                        continue
-                    m_total = re.search(r"# Event count \(approx\.\):\s+(\d+)", line)
-                    if m_total and current_event:
-                        raw_stats[eng][current_event] = int(m_total.group(1))
+            st = pmu_harness.parse_report_file(rep_file)
             for p in (rep_file, rep_file.replace(".txt", ".data"), rep_file.replace(".txt", ".data.old")):
                 if os.path.exists(p):
                     try: os.remove(p)
                     except Exception: pass
-
-    for eng, stats in raw_stats.items():
-        if not stats:
-            continue
-        def get_count(evt):
-            return stats.get(evt, 0)
-
-        l1_load = get_count("L1-dcache-loads:u") or get_count("L1-dcache-loads")
-        l1_miss = get_count("L1-dcache-load-misses:u") or get_count("L1-dcache-load-misses")
-        l2_miss = get_count("l2_cache_req_stat.ic_dc_miss_in_l2:u") or get_count("l2_cache_req_stat.ic_dc_miss_in_l2")
-        l3_miss = get_count("cache-misses:u") or get_count("cache-misses")
-        brn = get_count("ex_ret_brn:u")
-        brn_miss = get_count("ex_ret_brn_misp:u")
-        inst = get_count("instructions:u") or get_count("instructions")
-        cyc = get_count("cycles:u") or get_count("cycles")
-
-        l1_hit = max(0, l1_load - l1_miss)
-        l2_hit = max(0, l1_miss - l2_miss)
-        l3_hit = max(0, l2_miss - l3_miss)
-
-        ipc = (inst / cyc) if cyc > 0 else 0.0
-        brn_hr = ((brn - brn_miss) / brn * 100) if brn > 0 else 0.0
-        l1_hr = (l1_hit / l1_load * 100) if l1_load > 0 else 0.0
-        l2_hr = (l2_hit / l1_miss * 100) if l1_miss > 0 else 0.0
-        l3_hr = (l3_hit / l2_miss * 100) if l2_miss > 0 else 0.0
-
-        circuit_metrics[c_name][eng] = {
-            "ipc": ipc,
-            "inst": inst,
-            "cyc": cyc,
-            "l1_load": l1_load,
-            "l1_miss": l1_miss,
-            "l1_hr": l1_hr,
-            "l2_miss": l2_miss,
-            "l2_hr": l2_hr,
-            "l3_miss": l3_miss,
-            "l3_hr": l3_hr,
-            "brn": brn,
-            "brn_miss": brn_miss,
-            "brn_hr": brn_hr
-        }
+            if st.instructions > 0 or st.cycles > 0:
+                circuit_metrics[c_name][eng] = st
 
 # --- GENERATE COMPARISON REPORT ---
 engine_display_names = {
@@ -236,8 +190,7 @@ engine_display_names = {
 # Tables formatting
 c_w = max(10, max((len(c) for c in circuit_metrics.keys()), default=10))
 
-side_header = f"| {'Circuit':<{c_w}} | {'Variant':<22} | {'IPC':>5} | {'Cycles':>9} | {'Instructions':>13} | {'L1 Loads':>10} | {'L1 Hit%':>8} | {'Brn Miss%':>10} |"
-side_div    = f"|{'-'*(c_w+2)}|{'-'*24}|{'-'*7}|{'-'*11}|{'-'*15}|{'-'*12}|{'-'*10}|{'-'*12}|"
+side_header, side_div = PmuStats.get_table_header(["Circuit", "Variant"])
 
 delta_header = f"| {'Circuit':<{c_w}} | {'Cycles rx-prop vs OOP':<22} | {'Inst rx-prop vs OOP':<20} | {'L1 Load Delta':<14} | {'IPC vs OOP':<11} |"
 delta_div    = f"|{'-'*(c_w+2)}|{'-'*24}|{'-'*22}|{'-'*16}|{'-'*13}|"
@@ -260,10 +213,16 @@ for c_name, engs in circuit_metrics.items():
             disp = engine_display_names[eng_key]
             circ_label = c_name if first_eng else ""
             first_eng = False
-            brn_misp_pct = (100.0 - m["brn_hr"]) if m["brn"] > 0 else 0.0
-            side_rows.append(
-                f"| {circ_label:<{c_w}} | {disp:<22} | {m['ipc']:>5.2f} | {fmt(m['cyc']):>9} | {fmt(m['inst']):>13} | {fmt(m['l1_load']):>10} | {m['l1_hr']:>7.2f}% | {brn_misp_pct:>9.2f}% |"
-            )
+            if isinstance(m, PmuStats):
+                side_rows.append(m.format_row([circ_label, disp], fmt))
+            else:
+                side_rows.append(
+                    f"| {circ_label} | {disp} | {fmt(m.get('instructions', 0))} | {fmt(m.get('cycles', 0))} | "
+                    f"{m.get('ipc', 0.0):.2f} | {fmt(m.get('l1_loads', 0))} | {fmt(m.get('l1_misses', m.get('l1_miss', 0)))} | "
+                    f"{fmt(m.get('l2_loads', 0))} | {fmt(m.get('l2_misses', m.get('l2_miss', 0)))} | "
+                    f"{fmt(m.get('l3_loads', 0))} | {fmt(m.get('dram_loads', m.get('l3_miss', 0)))} | "
+                    f"{fmt(m.get('branches', 0))} | {fmt(m.get('branch_misses', 0))} |"
+                )
 
     if has_prop and has_oop:
         p = engs["prop"]
@@ -350,8 +309,7 @@ with open(REPORT_FILE, "w") as f:
 
     # Detailed tables for engines that have data
     f.write("## 3. Detailed Cache Hierarchy & Branch Profiling\n\n")
-    det_header = f"| {'Circuit':<{c_w}} | {'IPC':>5} | {'Branch':>9} | {'Brn Miss':>9} | {'L1 Load':>10} | {'L1 Hit%':>8} | {'L2 Load':>9} | {'L2 Hit%':>8} | {'L3/RAM Load':>12} |"
-    det_div    = f"|{'-'*(c_w+2)}|{'-'*7}|{'-'*11}|{'-'*11}|{'-'*12}|{'-'*10}|{'-'*11}|{'-'*10}|{'-'*14}|"
+    det_header, det_div = PmuStats.get_table_header(["Circuit"])
 
     engines_to_detail = [
         ("prop",       "Reactor: `rx-prop` (Wavefront BFS)"),
@@ -371,7 +329,16 @@ with open(REPORT_FILE, "w") as f:
         for c_name, engs in circuit_metrics.items():
             if eng_key in engs:
                 m = engs[eng_key]
-                row = f"| {c_name:<{c_w}} | {m['ipc']:>5.2f} | {fmt(m['brn']):>9} | {fmt(m['brn_miss']):>9} | {fmt(m['l1_load']):>10} | {m['l1_hr']:>7.2f}% | {fmt(m['l1_miss']):>9} | {m['l2_hr']:>7.2f}% | {fmt(m['l2_miss']):>12} |"
+                if isinstance(m, PmuStats):
+                    row = m.format_row([c_name], fmt)
+                else:
+                    row = (
+                        f"| {c_name} | {fmt(m.get('instructions', 0))} | {fmt(m.get('cycles', 0))} | "
+                        f"{m.get('ipc', 0.0):.2f} | {fmt(m.get('l1_loads', 0))} | {fmt(m.get('l1_misses', m.get('l1_miss', 0)))} | "
+                        f"{fmt(m.get('l2_loads', 0))} | {fmt(m.get('l2_misses', m.get('l2_miss', 0)))} | "
+                        f"{fmt(m.get('l3_loads', 0))} | {fmt(m.get('dram_loads', m.get('l3_miss', 0)))} | "
+                        f"{fmt(m.get('branches', 0))} | {fmt(m.get('branch_misses', 0))} |"
+                    )
                 f.write(row + "\n")
         f.write("\n")
 
