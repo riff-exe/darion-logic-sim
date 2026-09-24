@@ -28,7 +28,7 @@ def main():
     parser.add_argument('--plot-linear', action='store_true', help='Generate linear plot')
     parser.add_argument('--min-size', type=int, default=100, help='Minimum circuit size (default: 100)')
     parser.add_argument('--max-size', type=int, default=50000, help='Maximum circuit size (default: 50000)')
-    parser.add_argument('--step', type=int, default=100, help='Circuit size step increment (default: 200)')
+    parser.add_argument('--step', type=float, default=1.15, help='Circuit size step increment (default: 200)')
     
     args, unknown = parser.parse_known_args()
     
@@ -61,7 +61,7 @@ def main():
     current_size = args.min_size
     while current_size <= args.max_size:
         sizes.append(current_size)
-        current_size = int(current_size + args.step)
+        current_size = int(current_size * args.step)
         
     data = {
         "oop": [],

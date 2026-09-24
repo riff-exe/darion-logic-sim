@@ -1,7 +1,6 @@
 import os
 import sys
 import glob
-import re
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -14,7 +13,7 @@ sys.path.insert(0, current_dir)
 import Circuit
 import Const
 
-class HybridParser:
+class JSONCircuitLoader:
     def __init__(self, filepath, circuit_cls, const_mod):
         self.filepath = filepath
         self.Circuit = circuit_cls
@@ -23,159 +22,25 @@ class HybridParser:
         self.circuit.simulate(self.const.DESIGN)
         
         self.is_sequential = False
-        self.nodes = {}
+        self._load()
         
-        self.VERILOG_GATE_MAP = {
-            'and':  self.const.AND_ID,
-            'nand': self.const.NAND_ID,
-            'or':   self.const.OR_ID,
-            'nor':  self.const.NOR_ID,
-            'xor':  self.const.XOR_ID,
-            'xnor': self.const.XNOR_ID,
-            'not':  self.const.NOT_ID,
-            'buf':  self.const.BUFFER_ID,
-        }
-        
-        self.dff_crct = None
-        for p in [os.path.join(current_dir, "DFF.json"), os.path.join(root_dir, "DFF.json")]:
-            if os.path.exists(p):
-                try:
-                    self.dff_crct = self.circuit.get_ic(p)
-                    break
-                except:
-                    pass
-        
-        self._parse()
-        
-    def _parse(self):
-        if self.filepath.endswith('.json'):
-            self.circuit.readfromjson(self.filepath)
-            for gate in (self.circuit.get_components() if hasattr(self.circuit, 'get_components') else self.circuit.components):
-                name_str = getattr(gate, 'custom_name', None) or getattr(gate, 'codename', None) or str(gate)
-                if isinstance(name_str, bytes):
-                    name_str = name_str.decode('utf-8')
-                if 'dff' in name_str.lower() or 'DFF' in name_str:
-                    self.is_sequential = True
-            return
-
-        with open(self.filepath, 'r', encoding='utf-8') as f:
-            content = f.read()
-
-        content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
-        content = re.sub(r'//.*', '', content)
-        
-        module_body = content
-        for m in re.finditer(r'\bmodule\s+([a-zA-Z0-9_]+)(.*?)\bendmodule\b', content, flags=re.DOTALL):
-            if m.group(1).lower() != 'dff':
-                module_body = m.group(0)
+    def _load(self):
+        if not self.filepath.endswith('.json'):
+            raise ValueError(
+                f"Geometry analysis is permanently JSON-based. Cannot load '{self.filepath}'. "
+                "Only .json circuit files are supported."
+            )
+        self.circuit.readfromjson(self.filepath)
+        for gate in (self.circuit.get_components() if hasattr(self.circuit, 'get_components') else self.circuit.components):
+            name_str = getattr(gate, 'custom_name', None) or getattr(gate, 'codename', None) or str(gate)
+            if isinstance(name_str, bytes):
+                name_str = name_str.decode('utf-8')
+            if 'dff' in name_str.lower() or 'DFF' in name_str:
+                self.is_sequential = True
                 break
-                
-        statements = [s.strip() for s in module_body.split(';') if s.strip()]
-        connections = []
-        dff_connections = []
-        
-        for stmt in statements:
-            if stmt.startswith('input '):
-                ports = stmt.replace('input', '').strip().split(',')
-                for p in ports:
-                    p = p.strip()
-                    if p:
-                        var_node = self.circuit.getcomponent(self.const.VARIABLE_ID)
-                        var_node.rename(f"IN_{p}")
-                        self.nodes[p] = var_node
-            elif stmt.startswith('output '):
-                ports = stmt.replace('output', '').strip().split(',')
-                for p in ports:
-                    p = p.strip()
-                    if p:
-                        out_node = self.circuit.getcomponent(self.const.IC_OUTPUT_PIN_ID)
-                        out_node.rename(f"OUT_{p}")
-                        self.nodes[p + "_OUTPIN"] = out_node
-                        connections.append((p + "_OUTPIN", [p]))
-            elif stmt.startswith(('wire ', 'module ', 'endmodule', 'reg ')):
-                continue
-            else:
-                match = re.match(r'^([a-zA-Z_]\w*)\s+([a-zA-Z_0-9]+)?\s*\((.*)\)$', stmt, flags=re.DOTALL)
-                if not match:
-                    continue
-                gate_type = match.group(1).lower()
-                ports_str = match.group(3)
-                
-                if gate_type.startswith('dff'):
-                    self.is_sequential = True
-                    if not self.dff_crct:
-                        raise RuntimeError("DFF.json is required for sequential circuits but was not found.")
-                        
-                    wires = {}
-                    if '.' in ports_str:
-                        for pm in re.finditer(r'\.\s*([a-zA-Z0-9_]+)\s*\(\s*([a-zA-Z0-9_]+)\s*\)', ports_str):
-                            wires[pm.group(1).upper()] = pm.group(2)
-                        d_wire = wires.get('D')
-                        clk_wire = wires.get('CK', wires.get('CLK', wires.get('C')))
-                        q_wire = wires.get('Q')
-                    else:
-                        pts = [p.strip() for p in ports_str.split(',')]
-                        clk_wire = pts[0] if len(pts) > 0 else None
-                        q_wire = pts[1] if len(pts) > 1 else None
-                        d_wire = pts[2] if len(pts) > 2 else None
-                        
-                    dff_inst = self.circuit.load_ic(self.dff_crct)
-                    inst_name = match.group(2) or f"inst_{len(dff_connections)}"
-                    if hasattr(dff_inst, 'rename'):
-                        dff_inst.rename(f"DFF_{inst_name}")
-                    else:
-                        dff_inst.custom_name = f"DFF_{inst_name}"
-                        
-                    if q_wire:
-                        self.nodes[q_wire] = dff_inst.outputs[0]
-                        
-                    dff_connections.append((dff_inst, d_wire, clk_wire))
-                    continue
 
-                if gate_type in self.VERILOG_GATE_MAP:
-                    ports = [p.strip() for p in ports_str.split(',')]
-                    out_wire = ports[0]
-                    in_wires = ports[1:]
-                    gate_id = self.VERILOG_GATE_MAP[gate_type]
-                    gate = self.circuit.getcomponent(gate_id)
-                    gate.rename(f"G_{out_wire}")
-                    if gate_id < self.const.VARIABLE_ID and hasattr(self.circuit, 'setlimits'):
-                        self.circuit.setlimits(gate, len(in_wires))
-                    self.nodes[out_wire] = gate
-                    
-                    for w in in_wires:
-                        if w == "1'b1":
-                            if "1'b1" not in self.nodes:
-                                const_1 = self.circuit.getcomponent(self.const.VARIABLE_ID)
-                                const_1.rename("CONST_1")
-                                self.nodes["1'b1"] = const_1
-                        elif w == "1'b0":
-                            if "1'b0" not in self.nodes:
-                                const_0 = self.circuit.getcomponent(self.const.VARIABLE_ID)
-                                const_0.rename("CONST_0")
-                                self.nodes["1'b0"] = const_0
-                    
-                    connections.append((out_wire, in_wires))
-
-        for target_id, source_ids in connections:
-            target_gate = self.nodes.get(target_id)
-            if not target_gate: continue
-            for pin_index, source_id in enumerate(source_ids):
-                source_gate = self.nodes.get(source_id)
-                if source_gate:
-                    self.circuit.connect(target_gate, source_gate, pin_index)
-                    
-        for dff_inst, d_wire, clk_wire in dff_connections:
-            if clk_wire:
-                clk_gate = self.nodes.get(clk_wire)
-                if clk_gate and len(dff_inst.inputs) > 0:
-                    self.circuit.connect(dff_inst.inputs[0], clk_gate, 0)
-            if d_wire:
-                d_gate = self.nodes.get(d_wire)
-                if d_gate and len(dff_inst.inputs) > 1:
-                    self.circuit.connect(dff_inst.inputs[1], d_gate, 0)
-        
-        pass
+# Backwards compatibility alias
+HybridParser = JSONCircuitLoader
 
 
 def _process_jumps(jumps, filename, ctype, label, output_dir):
@@ -240,38 +105,94 @@ def _process_jumps(jumps, filename, ctype, label, output_dir):
     }
 
 
+def _heap_stats(layout):
+    """Compute physical hitlist buffer address stats from hitlist_mem_layout() output."""
+    if not layout:
+        return None
+    addrs = np.array([a for _, a, _, _ in layout], dtype=np.int64)
+    sizes = np.array([s for _, _, s, _ in layout], dtype=np.int64)
+    deltas = np.diff(addrs)
+    MB = 1024 * 1024
+    if len(deltas) == 0:
+        return None
+    return {
+        'n_buffers':   len(addrs),
+        'total_edges': int(sizes.sum()),
+        'span_mb':     float((addrs.max() - addrs.min()) / MB),
+        'mean_delta':  float(np.mean(np.abs(deltas))),
+        'median_delta':float(np.median(np.abs(deltas))),
+        'fwd_pct':     float(np.sum(deltas > 0) / len(deltas) * 100),
+        'max_fanout':  int(sizes.max()),
+        'mean_fanout': float(sizes.mean()),
+    }
+
+
 def analyze_file(filepath, output_dir):
     filename = os.path.basename(filepath)
-    
+
     try:
-        parser = HybridParser(filepath, Circuit.Circuit, Const)
-        ctype = "ISCAS89 (Sequential)" if parser.is_sequential else "ISCAS85 (Combinational)"
-        
-        jumps_unopt = parser.circuit.geometry()
+        loader = JSONCircuitLoader(filepath, Circuit.Circuit, Const)
+        ctype = "Sequential" if loader.is_sequential else "Combinational"
+
+        jumps_unopt = loader.circuit.geometry()
         unopt_res = _process_jumps(jumps_unopt, filename, ctype, "Unopt", output_dir)
-        
-        if hasattr(parser.circuit, 'optimize'):
-            parser.circuit.optimize()
-        jumps_opt = parser.circuit.geometry()
+
+        # Heap layout BEFORE optimize — switch to SIMULATE so hitlists are populated
+        unopt_heap = None
+        if hasattr(loader.circuit, 'hitlist_mem_layout'):
+            try:
+                loader.circuit.simulate(Const.SIMULATE)
+                vars_ = loader.circuit.get_variables()
+                if vars_:
+                    for v in vars_[:min(4, len(vars_))]:
+                        loader.circuit.toggle(v, Const.HIGH)
+                        loader.circuit.toggle(v, Const.LOW)
+                unopt_heap = _heap_stats(loader.circuit.hitlist_mem_layout())
+                loader.circuit.simulate(Const.DESIGN)   # restore design mode
+            except Exception:
+                pass
+
+        if hasattr(loader.circuit, 'optimize'):
+            loader.circuit.optimize()
+        jumps_opt = loader.circuit.geometry()
         opt_res = _process_jumps(jumps_opt, filename, ctype, "Opt", output_dir)
-        
+
+        # Heap layout AFTER optimize
+        opt_heap = None
+        if hasattr(loader.circuit, 'hitlist_mem_layout'):
+            try:
+                loader.circuit.simulate(Const.SIMULATE)
+                vars_ = loader.circuit.get_variables()
+                if vars_:
+                    for v in vars_[:min(4, len(vars_))]:
+                        loader.circuit.toggle(v, Const.HIGH)
+                        loader.circuit.toggle(v, Const.LOW)
+                opt_heap = _heap_stats(loader.circuit.hitlist_mem_layout())
+                loader.circuit.simulate(Const.DESIGN)
+            except Exception:
+                pass
+
     except Exception as e:
         print(f"Error processing {filename}: {e}")
         return None
-    
+
     results = []
     if unopt_res:
+        if unopt_heap:
+            unopt_res['heap'] = unopt_heap
         results.append(unopt_res)
     if opt_res:
+        if opt_heap:
+            opt_res['heap'] = opt_heap
         results.append(opt_res)
-        
+
     return results
 
 def print_batch_summary(results):
     if not results:
         return
     print("\n" + "="*100)
-    print(" BATCH GEOMETRY ANALYSIS SUMMARY REPORT")
+    print(" BATCH GEOMETRY ANALYSIS SUMMARY REPORT — LOGICAL JUMP DISTANCES")
     print("="*100)
     print(" Jump Distance Zones:")
     print("   Adj (Adjacent) : Jump of 1 index (Ideal locality)")
@@ -281,23 +202,69 @@ def print_batch_summary(results):
     print("-" * 100)
     print(f"{'Circuit':<25} | {'Type':<4} | {'Edges':>10} | {'Adj %':>7} | {'Near %':>7} | {'Med %':>7} | {'Far %':>7}")
     print("-" * 100)
-    
+
     for r in results:
         print(f"{r['circuit']:<25} | {r['type']:<4} | {r['edges']:10,} | {r['adj']:6.1f}% | {r['near']:6.1f}% | {r['med']:6.1f}% | {r['far']:6.1f}%")
-    
+
     print("="*100 + "\n")
+
+
+def print_heap_summary(results):
+    """Print physical hitlist buffer heap locality before vs after optimize()."""
+    # Only show rows that have heap data and come in (Unopt, Opt) pairs
+    heap_rows = [(r['circuit'].replace(' (Unopt)', '').replace(' (Opt)', ''), r)
+                 for r in results if 'heap' in r]
+    if not heap_rows:
+        return
+
+    # Group by base circuit name
+    seen = {}
+    for name, r in heap_rows:
+        seen.setdefault(name, {})
+        stage = 'unopt' if 'Unopt' in r['circuit'] else 'opt'
+        seen[name][stage] = r['heap']
+
+    W = 130
+    print("\n" + "="*W)
+    print(" HITLIST PHYSICAL HEAP LOCALITY REPORT")
+    print("="*W)
+    print(" Measures actual C++ hitlist.data() buffer addresses (via hitlist_mem_layout()).")
+    print(" Median|Δ|: median byte distance between consecutive hitlist buffers in traversal order.")
+    print(" FwdAddr%:  % of consecutive buffer pairs where next_addr > prev_addr (100% = fully linear alloc).")
+    print(" Defrag ratio = Before_median / After_median  (higher = more dramatic compaction from optimize()).")
+    print("-"*W)
+    hdr = (f"{'Circuit':<22} | {'Buffers':>7} | "
+           f"{'Before Median|Δ|(B)':>20} | {'Before Fwd%':>11} | "
+           f"{'After Median|Δ|(B)':>19} | {'After Fwd%':>10} | "
+           f"{'Defrag Ratio':>12} | {'Max Fanout':>10}")
+    print(hdr)
+    print("-"*W)
+
+    for name, stages in sorted(seen.items()):
+        u = stages.get('unopt')
+        o = stages.get('opt')
+        if not u or not o:
+            continue
+        ratio = u['median_delta'] / o['median_delta'] if o['median_delta'] > 0 else float('inf')
+        short = name.split('(')[0].strip()[:22]
+        print(f"{short:<22} | {u['n_buffers']:>7,} | "
+              f"{u['median_delta']:>20,.0f} | {u['fwd_pct']:>10.1f}% | "
+              f"{o['median_delta']:>19,.0f} | {o['fwd_pct']:>9.1f}% | "
+              f"{ratio:>11,.0f}x | {o['max_fanout']:>10,}")
+
+    print("="*W + "\n")
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description='Circuit Geometry Analyzer')
-    parser.add_argument('target', nargs='?', type=str, help='Path to a .v/.json file or directory containing them')
+    parser = argparse.ArgumentParser(description='Circuit Geometry Analyzer (JSON-based)')
+    parser.add_argument('target', nargs='?', type=str, help='Path to a .json file or directory containing .json files')
     parser.add_argument('--dump', action='store_true', help='Dump output to time-stamped txt in test_result')
     parser.add_argument('--plot', action='store_true', help='Generate plots in test_result')
     args = parser.parse_args()
 
     target = args.target
     if not target:
-        target = input("Enter path to .v or .json file or directory: ").strip()
+        target = input("Enter path to .json file or directory: ").strip()
 
     target = os.path.abspath(target)
     if not os.path.exists(target):
@@ -306,17 +273,27 @@ if __name__ == "__main__":
 
     circuit_files = []
     if os.path.isdir(target):
-        for ext in ("*.v", "*.json"):
-            circuit_files.extend(glob.glob(os.path.join(target, ext)))
+        circuit_files = glob.glob(os.path.join(target, "*.json"))
         if not circuit_files:
-            for ext in ("*.v", "*.json"):
-                circuit_files.extend(glob.glob(os.path.join(target, "**", ext), recursive=True))
+            circuit_files = glob.glob(os.path.join(target, "**", "*.json"), recursive=True)
         if not circuit_files:
-            print(f"No .v or .json files found in directory '{target}'.")
+            print(f"No .json files found in directory '{target}'.")
             sys.exit(1)
         circuit_files = sorted(list(set(circuit_files)))
     elif os.path.isfile(target):
-        circuit_files = [target]
+        if target.endswith('.v'):
+            json_alt = target[:-2] + '.json'
+            if os.path.exists(json_alt):
+                print(f"[Note] Geometry is permanently JSON-based. Automatically using '{os.path.basename(json_alt)}' instead.")
+                circuit_files = [json_alt]
+            else:
+                print(f"Error: Geometry is permanently JSON-based (.v files are not supported). No matching '{json_alt}' found.")
+                sys.exit(1)
+        elif target.endswith('.json'):
+            circuit_files = [target]
+        else:
+            print(f"Error: Target file '{target}' must be a .json file.")
+            sys.exit(1)
     else:
         print(f"Invalid target: '{target}'")
         sys.exit(1)
@@ -360,6 +337,7 @@ if __name__ == "__main__":
                 
         if len(results) > 0:
             print_batch_summary(results)
+            print_heap_summary(results)
         
         if plots_dir:
             print(f"Saved plots to: {plots_dir}")

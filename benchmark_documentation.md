@@ -732,7 +732,7 @@ usage: geometry.py [-h] [--dump] [--plot] [target]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `target` | Positional | `None` | Path to `.v` or `.json` file, or directory. |
+| `target` | Positional | `None` | Path to `.json` file, or directory containing `.json` circuits. |
 | `--dump` | Flag | `False` | Save report to `test_result/geometry/datas/geometry_<timestamp>.txt`. |
 | `--plot` | Flag | `False` | Generate logarithmic histogram images in `test_result/geometry/plots/`. |
 
@@ -746,7 +746,7 @@ python tests/geometry.py tests/EPFL_large_parsed --dump
 python tests/geometry.py tests/EPFL_mammoth_parsed --dump
 
 # Generate cache locality histogram plots
-python tests/geometry.py tests/ISCAS85/c7552.v --plot
+python tests/geometry.py tests/ISCAS85/c7552.json --plot
 ```
 
 ---
@@ -1278,7 +1278,7 @@ python scripts/iwls_parser.py --max-size-mb 5 --skip-existing
 | [`iscas_parser.py`](file:///home/farhan/Github/darion-logic-sim/scripts/iscas_parser.py) | How do we pre-serialize ISCAS Verilog netlists into JSON? | N/A (Utility) | ISCAS-85, ISCAS-89 (`.v` -> `.json`) | `--random`, `path` |
 | [`iwls_parser.py`](file:///home/farhan/Github/darion-logic-sim/scripts/iwls_parser.py) | How do we pre-serialize standard-cell IWLS Verilog netlists into JSON? | N/A (Utility) | IWLS 2005 (`itc99`, `opencores`, `faraday`) | `--random`, `--optimize`, `--max-size-mb`, `--skip-existing` |
 | [`load.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/load.py) | What is the true RAM footprint (RSS in MB) of loading circuits? | Engine, Reactor, Icarus, Verilator | Any `.v` or `.json` (Comb & Seq) | `--dump`, `--json`, `--no-engine` |
-| [`geometry.py`](file:///home/farhan/Github/darion-logic-sim/tests/geometry.py) | What are the physical memory hop distances & cache locality profiles? | Cython Reactor | Any `.v` or `.json` (Comb & Seq) | `--dump`, `--plot` |
+| [`geometry.py`](file:///home/farhan/Github/darion-logic-sim/tests/geometry.py) | What are the physical memory hop distances & cache locality profiles? | Cython Reactor | `.json` (Comb & Seq) | `--dump`, `--plot` |
 | [`verifier.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/verifier.py) | Do combinational outputs match bit-for-bit across all engines? | 6 backends | ISCAS-85, EPFL (`.v`) | `--vectors`, `--seed`, `--output`, `--dump` |
 | [`verifier_89.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/verifier_89.py) | Do sequential DFF outputs match bit-for-bit across all engines? | 6 backends | ISCAS-89 (`.v`, `.json`) | `--vectors`, `--seed`, `--output`, `--dump` |
 | [`verifier_iwls.py`](file:///home/farhan/Github/darion-logic-sim/tests/src/verifier_iwls.py) | Do sequential DFF outputs match bit-for-bit on IWLS standard-cell circuits? | 6 backends | IWLS 2005 (`itc99`, `opencores`, `faraday`) | `--vectors`, `--seed`, `--output`, `--dump` |
