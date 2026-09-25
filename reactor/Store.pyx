@@ -85,6 +85,7 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, list gate_verse):
             gate.info.flags |= LOGIC_2# high>0
             gate.info.seed = 1
         else:
+            gate.info.flags |= LOGIC_3  # parity: output = (logic & 1) ^ (flags & 1)
             gate.info.seed = 1
             
         gate.info.flags |= (choice & 1) & (choice != VARIABLE_ID)

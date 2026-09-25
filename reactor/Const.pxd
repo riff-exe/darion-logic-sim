@@ -43,6 +43,7 @@ cpdef enum:
     FLAG_VALID=1<<1
     LOGIC_1=1<<4
     LOGIC_2=1<<5
+    LOGIC_3=1<<6
     # FLAG_OTHER=1<<6
 
     LUT= 0x254

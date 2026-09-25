@@ -135,6 +135,26 @@ cdef class Circuit:
         '''Get all ICs in the circuit'''
         return [gate for gate in self.objlist[IC_ID] if gate is not None]
 
+    cpdef list hitlist_mem_layout(self):
+        '''DEBUG: Return list of (gate_index, hitlist_buf_addr, hitlist_size) for every gate.
+        hitlist_buf_addr is the actual C++ heap address of the std::vector<Profile> backing buffer.
+        Use before/after optimize() to see if hitlist buffers become more linearly laid out.'''
+        cdef int n = self.gate_infolist.size()
+        cdef CPP_Gate* gate_infolist = self.gate_infolist.data()
+        cdef CPP_Gate* info
+        cdef int i
+        result = []
+        for i in range(n):
+            info = &gate_infolist[i]
+            if info.hitlist.size() > 0:
+                result.append((
+                    i,                                      # gate index in gate_infolist
+                    <Py_ssize_t>info.hitlist.data(),        # actual C++ heap addr of buffer
+                    <int>info.hitlist.size(),               # number of Profile entries
+                    <int>info.hitlist.capacity(),           # allocated capacity
+                ))
+        return result
+
     cpdef void listComponent(self):
         '''List all components in the circuit'''
         cdef int i = 0
@@ -886,6 +906,7 @@ cdef class Circuit:
             if new_gate_infolist[i].hitlist.size()>1:
                 sort(new_gate_infolist[i].hitlist.begin(), new_gate_infolist[i].hitlist.end())
                 
+
         self.gate_infolist.swap(new_gate_infolist)
         cdef list new_gate_verse = []
         cdef Gate gate
@@ -1393,7 +1414,7 @@ cdef class Circuit:
         cdef Profile* profile
         cdef Profile* end
         cdef uint8_t target_output
-        cdef Py_ssize_t back_edges = 0
+        cdef Py_ssize_t back_edges = 0,new_output=0
         cdef Py_ssize_t eval = 0
         cdef Py_ssize_t i
         cdef CPP_Gate* curr_gate
@@ -1408,6 +1429,7 @@ cdef class Circuit:
         for i in range(end_point):
             curr_gate = self.queue[0][i]
             curr_gate.flags &= ~FLAG_MARK
+            new_output=curr_gate.output
             if not (curr_gate.flags & FLAG_UPDATE):
                 self.visual_queue.push_back(<int>(curr_gate - gate_infolist))
                 curr_gate.flags |= FLAG_UPDATE
@@ -1417,9 +1439,9 @@ cdef class Circuit:
 
             while profile < end:
                 target = profile.target
-                target.logic += (curr_gate.output == target.seed) - (profile.output == target.seed)
+                target.logic += (new_output == target.seed) - (profile.output == target.seed)
                 target_output = target.output
-                if curr_gate.output == UNKNOWN:
+                if new_output == UNKNOWN:
                     target.output = UNKNOWN
                 else:
                     target.compute()
@@ -1431,7 +1453,7 @@ cdef class Circuit:
                     if threshold == NULL or target > threshold:
                         threshold = target
 
-                profile.output = curr_gate.output
+                profile.output = new_output
                 profile += 1
 
         # If none of the immediate targets changed, no sweep is required
@@ -1449,12 +1471,12 @@ cdef class Circuit:
                 profile = curr.hitlist.data()
                 end = profile + curr.hitlist.size()
                 eval += curr.hitlist.size()
-
+                new_output=curr.output
                 while profile < end:
                     target = profile.target
-                    target.logic += (curr.output == target.seed) - (profile.output == target.seed)
+                    target.logic += (new_output == target.seed) - (profile.output == target.seed)
                     target_output = target.output
-                    if curr.output == UNKNOWN:
+                    if new_output == UNKNOWN:
                         target.output = UNKNOWN
                     else:
                         target.compute()
@@ -1466,7 +1488,7 @@ cdef class Circuit:
                         if target > threshold:
                             threshold = target
 
-                    profile.output = curr.output
+                    profile.output = new_output
                     profile += 1
             curr += 1
 

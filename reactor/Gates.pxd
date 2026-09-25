@@ -31,6 +31,7 @@ cdef extern from "<vector>" namespace "std" nogil:
         int capacity()
         iterator begin()
         iterator end()
+        void swap(vector[T]&)
 
 cdef class Gate
 cdef class Variable

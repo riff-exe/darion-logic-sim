@@ -42,6 +42,7 @@ cdef class Circuit:
     cpdef list get_components(self)
     cpdef list get_variables(self)
     cpdef list get_ics(self)
+    cpdef list hitlist_mem_layout(self)
     cpdef void listComponent(self)
     cpdef void listVar(self)
     cpdef bint setlimits(self, Gate gate, int size)

@@ -109,21 +109,41 @@ def _heap_stats(layout):
     """Compute physical hitlist buffer address stats from hitlist_mem_layout() output."""
     if not layout:
         return None
-    addrs = np.array([a for _, a, _, _ in layout], dtype=np.int64)
-    sizes = np.array([s for _, _, s, _ in layout], dtype=np.int64)
-    deltas = np.diff(addrs)
-    MB = 1024 * 1024
+    # Sort by address so consecutive deltas reflect true heap geometry,
+    # not gate-topological order (which can jump between sbrk and mmap regions).
+    raw_addrs = np.array([a for _, a, _, _ in layout], dtype=np.int64)
+    sizes     = np.array([s for _, _, s, _ in layout], dtype=np.int64)
+    addrs     = np.sort(raw_addrs)
+    deltas    = np.diff(addrs)          # always positive since sorted
+    MB  = 1024 * 1024
+    GB  = 1024 * MB
+    # Buffers whose address is > 1 TB above the minimum are mmap-backed by glibc
+    # (sbrk heap is always < a few GB above the binary base; mmap starts at ~0x7f...).
+    # Their cross-region gap to sbrk buffers is ~45 TB of virtual space — a kernel
+    # layout artifact, not heap fragmentation. Filter them out of the delta stats.
+    mmap_threshold = 1 * 1024 * GB   # 1 TB
+    mmap_bufs = int(np.sum(addrs > addrs[0] + mmap_threshold))
+    real_deltas = deltas[deltas < mmap_threshold]  # exclude the one sbrk→mmap jump
+    if len(real_deltas) == 0:
+        real_deltas = deltas
     if len(deltas) == 0:
         return None
     return {
-        'n_buffers':   len(addrs),
-        'total_edges': int(sizes.sum()),
-        'span_mb':     float((addrs.max() - addrs.min()) / MB),
-        'mean_delta':  float(np.mean(np.abs(deltas))),
-        'median_delta':float(np.median(np.abs(deltas))),
-        'fwd_pct':     float(np.sum(deltas > 0) / len(deltas) * 100),
-        'max_fanout':  int(sizes.max()),
-        'mean_fanout': float(sizes.mean()),
+        'n_buffers':    len(addrs),
+        'total_edges':  int(sizes.sum()),
+        'span_mb':      float((addrs[-1] - addrs[0]) / MB),
+        'mean_delta':   float(np.mean(real_deltas)),
+        'median_delta': float(np.median(real_deltas)),
+        'p75_delta':    float(np.percentile(real_deltas, 75)),
+        'p95_delta':    float(np.percentile(real_deltas, 95)),
+        'p99_delta':    float(np.percentile(real_deltas, 99)),
+        'max_delta':    float(np.max(real_deltas)),
+        'huge_1mb':     int(np.sum(real_deltas > MB)),
+        'huge_64kb':    int(np.sum(real_deltas > 65536)),
+        'mmap_bufs':    mmap_bufs,
+        'fwd_pct':      float(np.sum(np.diff(raw_addrs) > 0) / len(deltas) * 100),
+        'max_fanout':   int(sizes.max()),
+        'mean_fanout':  float(sizes.mean()),
     }
 
 
@@ -211,48 +231,48 @@ def print_batch_summary(results):
 
 def print_heap_summary(results):
     """Print physical hitlist buffer heap locality before vs after optimize()."""
-    # Only show rows that have heap data and come in (Unopt, Opt) pairs
     heap_rows = [(r['circuit'].replace(' (Unopt)', '').replace(' (Opt)', ''), r)
                  for r in results if 'heap' in r]
     if not heap_rows:
         return
 
-    # Group by base circuit name
     seen = {}
     for name, r in heap_rows:
         seen.setdefault(name, {})
         stage = 'unopt' if 'Unopt' in r['circuit'] else 'opt'
         seen[name][stage] = r['heap']
 
-    W = 130
-    print("\n" + "="*W)
-    print(" HITLIST PHYSICAL HEAP LOCALITY REPORT")
-    print("="*W)
-    print(" Measures actual C++ hitlist.data() buffer addresses (via hitlist_mem_layout()).")
-    print(" Median|Δ|: median byte distance between consecutive hitlist buffers in traversal order.")
-    print(" FwdAddr%:  % of consecutive buffer pairs where next_addr > prev_addr (100% = fully linear alloc).")
-    print(" Defrag ratio = Before_median / After_median  (higher = more dramatic compaction from optimize()).")
-    print("-"*W)
-    hdr = (f"{'Circuit':<22} | {'Buffers':>7} | "
-           f"{'Before Median|Δ|(B)':>20} | {'Before Fwd%':>11} | "
-           f"{'After Median|Δ|(B)':>19} | {'After Fwd%':>10} | "
-           f"{'Defrag Ratio':>12} | {'Max Fanout':>10}")
-    print(hdr)
-    print("-"*W)
+    def fmt(v):
+        if v is None: return 'N/A'
+        if v >= 1e9:  return f'{v/1e9:.1f}GB'
+        if v >= 1e6:  return f'{v/1e6:.1f}MB'
+        if v >= 1e3:  return f'{v/1e3:.1f}KB'
+        return f'{v:.0f}B'
+
+    W = 165
+    print('\n' + '='*W)
+    print(' HITLIST PHYSICAL HEAP LOCALITY — FULL DELTA DISTRIBUTION')
+    print('='*W)
+    print(' Each row = before / after optimize(). Δ = |consecutive hitlist.data() address difference| (sorted, mmap gaps excluded).')
+    print(f" {'Circuit':<22}  {'N':>6}  {'Stage':<6}  {'Median':>8}  {'p75':>8}  {'p95':>9}  {'p99':>9}  {'Max':>9}  {'>64KB':>5}  {'>1MB':>4}  {'mmap':>4}  {'Fwd%':>5}  {'MaxFO':>5}")
+    print('-'*W)
 
     for name, stages in sorted(seen.items()):
-        u = stages.get('unopt')
-        o = stages.get('opt')
-        if not u or not o:
-            continue
-        ratio = u['median_delta'] / o['median_delta'] if o['median_delta'] > 0 else float('inf')
         short = name.split('(')[0].strip()[:22]
-        print(f"{short:<22} | {u['n_buffers']:>7,} | "
-              f"{u['median_delta']:>20,.0f} | {u['fwd_pct']:>10.1f}% | "
-              f"{o['median_delta']:>19,.0f} | {o['fwd_pct']:>9.1f}% | "
-              f"{ratio:>11,.0f}x | {o['max_fanout']:>10,}")
+        for stage_key, label in [('unopt', 'Before'), ('opt', 'After')]:
+            h = stages.get(stage_key)
+            if not h:
+                continue
+            print(f"  {short:<22}  {h['n_buffers']:>6,}  {label:<6}  "
+                  f"{fmt(h['median_delta']):>8}  {fmt(h['p75_delta']):>8}  "
+                  f"{fmt(h['p95_delta']):>9}  {fmt(h['p99_delta']):>9}  "
+                  f"{fmt(h['max_delta']):>9}  {h['huge_64kb']:>5,}  {h['huge_1mb']:>4,}  "
+                  f"{h.get('mmap_bufs',0):>4,}  {h['fwd_pct']:>4.1f}%  {h['max_fanout']:>5,}")
+        print()
 
-    print("="*W + "\n")
+    print('='*W + '\n')
+
+
 
 if __name__ == "__main__":
     import argparse
