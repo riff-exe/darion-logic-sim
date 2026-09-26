@@ -5,7 +5,11 @@
 #include <cstdint> // Modern C++ header for fixed-width integers
 
 // Include your header file here
+#if defined(_WIN32)
 #include "D:\Github\darion-logic-sim\reactor\Profile.h"
+#else
+#include "../reactor/Profile.h"
+#endif
 
 // ─── Helper Macros ──────────────────────────────────────────────────────────
 
@@ -27,6 +31,7 @@ void analyze_profile() {
     std::cout << "Total Size: " << sizeof(Profile) << " bytes\n";
     std::cout << "------------------------------------------\n";
     PRINT_FIELD(Profile, target);
+    PRINT_FIELD(Profile, next);
     PRINT_FIELD(Profile, index);
     PRINT_FIELD(Profile, output);
     std::cout << "\n";
@@ -48,17 +53,15 @@ void analyze_cpp_gate() {
     std::cout << "------------------------------------------\n";
     
     // Standard variables
-    PRINT_FIELD(CPP_Gate, hitlist);
-    // PRINT_FIELD(CPP_Gate, delay_book);
-    PRINT_FIELD(CPP_Gate, target_time);
-    PRINT_FIELD(CPP_Gate, book);
     PRINT_FIELD(CPP_Gate, type);
     PRINT_FIELD(CPP_Gate, output);
     PRINT_FIELD(CPP_Gate, inputlimit);
-    
-    // Bit-field variables (packed into the final byte)
-    // std::cout << "  --- Bit-Fields (Packed into 1 Byte) ---\n";
     PRINT_FIELD(CPP_Gate, flags);
+    PRINT_FIELD(CPP_Gate, logic);
+    PRINT_FIELD(CPP_Gate, seed);
+    PRINT_FIELD(CPP_Gate, hitlist_count);
+    PRINT_FIELD(CPP_Gate, target_time);
+    PRINT_FIELD(CPP_Gate, hitlist);
 
     
     std::cout << "\n";

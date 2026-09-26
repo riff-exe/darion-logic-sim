@@ -17,7 +17,7 @@ cdef tuple namelist=(
     'IC',
 )
 
-cdef object get(int choice, vector[CPP_Gate]& gate_infolist, list gate_verse):
+cdef object get(int choice, vector[CPP_Gate]& gate_infolist, vector[Profile]& profiles, list gate_verse):
     '''Get a gate of a given type and add it to the gate_infolist and gate_verse
     for ICs, it does not add to gate_infolist or gate_verse, but instead just returns an IC object'''
     cdef Gate gate
@@ -27,17 +27,17 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, list gate_verse):
     cdef CPP_Gate* old_base
     cdef CPP_Gate* new_base
     cdef Py_ssize_t diff
-    cdef CPP_Gate* info
-    cdef Profile* profile
-    cdef Profile* end
+    cdef size_t i
 
     if choice==IC_ID:
         ic = IC(choice,namelist[choice])
         ic.gate_infolist_ptr = &gate_infolist
+        ic.profiles_ptr = &profiles
         ic.gate_verse = gate_verse
         return ic
     else:
         gate = Gate(choice,namelist[choice])
+        gate.profiles = &profiles
         if choice==VARIABLE_ID: lim=0
         elif choice>=SINGLE_INPUT_ID: lim=1
         else: lim=2
@@ -54,13 +54,9 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, list gate_verse):
                 if (<Gate>g).info != NULL:
                     (<Gate>g).info = (<Gate>g).info + diff
                     
-            for i in range(gate_infolist.size()):
-                info = &gate_infolist[i]
-                profile = info.hitlist.data()
-                end = profile + info.hitlist.size()
-                while profile < end:
-                    profile.target = profile.target + diff
-                    profile += 1
+            for i in range(profiles.size()):
+                if profiles[i].target != NULL:
+                    profiles[i].target = profiles[i].target + diff
             
         gate_infolist.emplace_back(CPP_Gate(choice, lim))
         gate.location = gate_infolist.size()-1

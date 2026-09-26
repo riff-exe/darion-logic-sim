@@ -1,6 +1,6 @@
 # distutils: language = c++
 from Const cimport HIGH, LOW, ERROR, UNKNOWN, DESIGN, SIMULATE, MODE
-from libc.stdint cimport uint8_t,uint8_t,int8_t
+from libc.stdint cimport uint8_t,int8_t,uint16_t
 from libcpp.unordered_map cimport unordered_map
 from libcpp.deque cimport deque
 cdef extern from "<vector>" namespace "std" nogil:
@@ -39,10 +39,12 @@ cdef class Variable
 cdef extern from "Profile.h":
     cdef cppclass Profile:
         CPP_Gate* target
-        int index
-        int output
+        int next
+        uint8_t index
+        uint8_t output
         Profile()
         Profile(CPP_Gate* target, int pin_index, int output)
+        Profile(CPP_Gate* target, int pin_index, int output, int next)
     cdef cppclass Task:
         int gate_loc
         unsigned int time
@@ -57,9 +59,9 @@ cdef extern from "Profile.h":
         uint8_t flags
         uint8_t logic
         uint8_t seed
-        uint8_t reserved
+        uint16_t hitlist_count
         unsigned int target_time
-        vector[Profile] hitlist
+        int hitlist
         CPP_Gate()
         CPP_Gate(uint8_t t, uint8_t lim)
         void compute() noexcept nogil
@@ -70,15 +72,17 @@ cdef enum GateFlags:
     FLAG_MARK      = 1 << 2
     FLAG_UPDATE    = 1 << 3
 
-cdef void hide(Profile& profile, CPP_Gate* gate_infolist, list gate_verse)
-cdef void reveal(Profile& profile, Gate source, list gate_verse)
-cdef void pop(vector[Profile]& hitlist, CPP_Gate* gate_infolist, CPP_Gate* target, int pin_index)
+cdef void hide(int p_idx, vector[Profile]& profiles, CPP_Gate* gate_infolist, list gate_verse)
+cdef void reveal(int p_idx, vector[Profile]& profiles, Gate source, list gate_verse)
+cdef void pop(int& head, uint16_t& count, vector[Profile]& profiles, CPP_Gate* gate_infolist, CPP_Gate* target, int pin_index)
+cdef void add_profile(int& head, uint16_t& count, vector[Profile]& profiles, CPP_Gate* target, int pin_index, uint8_t output)
 
 cdef class Gate:
 # --- 4-BYTE ALIGNED (HOT C-TYPES) ---
     cdef public int8_t id
     cdef public int location
     cdef CPP_Gate* info
+    cdef vector[Profile]* profiles
     # --- 8-BYTE ALIGNED (COLD PYTHON OBJECTS) ---
     cdef public list _sources
     cdef public list gate_verse

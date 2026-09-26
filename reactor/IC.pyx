@@ -4,7 +4,7 @@
 # cython: initializedcheck=False
 # cython: cdivision=True
 # cython: nonecheck=False
-from Gates cimport Gate, Probe, Profile, CPP_Gate, hide, reveal, pop, vector,CPP_Gate,vector
+from Gates cimport Gate, Probe, Profile, CPP_Gate, hide, reveal, pop, add_profile, vector
 from Store cimport get, decode
 from Const cimport *
 from cpython.list cimport PyList_GET_SIZE, PyList_GET_ITEM
@@ -13,6 +13,9 @@ from libcpp.unordered_map cimport unordered_map
 cdef class IC:
     def __cinit__(self):
         self.id = IC_ID
+        self.gate_infolist_ptr = NULL
+        self.profiles_ptr = NULL
+
     def __init__(self, int id, str name):
         self.inputs = []
         self.internal = []
@@ -25,7 +28,8 @@ cdef class IC:
         self.tag = ''
         self.description = ''
         self.pin_orientations = [[], []]
-        self.gate_infolist_ptr=NULL
+        self.gate_infolist_ptr = NULL
+        self.profiles_ptr = NULL
 
     def __repr__(self):
         return self.codename if self.custom_name == '' else self.custom_name
@@ -35,7 +39,7 @@ cdef class IC:
 
     cpdef object getcomponent(self, int choice):
         '''Get a gate from the store and register it under the right pin group'''
-        cdef object gt = get(choice, self.gate_infolist_ptr[0],self.gate_verse)
+        cdef object gt = get(choice, self.gate_infolist_ptr[0], self.profiles_ptr[0], self.gate_verse)
         if gt:
             if gt.id == IC_INPUT_PIN_ID:
                 rank = len(self.inputs)
@@ -148,56 +152,58 @@ cdef class IC:
 
     cpdef void hide(self):
         '''Cut the IC out of the live graph — disconnects output targets and drops input registrations'''
-        cdef Gate pin_out, pin_in, src
+        cdef Gate pin_out, pin_in
         cdef CPP_Gate* pin_out_info
         cdef CPP_Gate* src_info
-        cdef Profile* hitlist
-        cdef int index
-        cdef size_t i, sz
+        cdef int index, p_idx
+        cdef CPP_Gate* gate_infolist = self.gate_infolist_ptr[0].data()
+        cdef Profile* p_base = self.profiles_ptr[0].data() if self.profiles_ptr != NULL and self.profiles_ptr[0].size() > 0 else NULL
 
         # Disconnect outputs from external targets
-        cdef CPP_Gate* gate_infolist = self.gate_infolist_ptr[0].data()
-        for pin_out in self.outputs:
-            pin_out_info = &gate_infolist[pin_out.location]
-            hitlist = pin_out_info.hitlist.data()
-            sz = pin_out_info.hitlist.size()
-            for i in range(sz):
-                hide(hitlist[i],gate_infolist, self.gate_verse)
+        if p_base != NULL:
+            for pin_out in self.outputs:
+                pin_out_info = &gate_infolist[pin_out.location]
+                p_idx = pin_out_info.hitlist
+                while p_idx != -1:
+                    hide(p_idx, self.profiles_ptr[0], gate_infolist, self.gate_verse)
+                    p_idx = p_base[p_idx].next
 
         # Disconnect inputs from external sources
         for pin_in in self.inputs:
             for index, source_loc in enumerate(<list>pin_in._sources):
                 if source_loc != -1:
                     src_info = &gate_infolist[source_loc]
-                    pop(src_info.hitlist,gate_infolist, &gate_infolist[pin_in.location], index)
+                    pop(src_info.hitlist, src_info.hitlist_count, self.profiles_ptr[0], gate_infolist, &gate_infolist[pin_in.location], index)
 
     cpdef void reveal(self):
         '''Plug the IC back into the live graph — re-registers inputs and reconnects output targets'''
-        cdef Gate pin_in, pin_out, source
+        cdef Gate pin_in, pin_out
         cdef CPP_Gate* pin_in_info
         cdef CPP_Gate* pin_out_info
         cdef CPP_Gate* src_info
-        cdef Profile* hitlist
-        cdef size_t i, sz
+        cdef int source_loc, p_idx
         cdef CPP_Gate* gate_infolist = self.gate_infolist_ptr[0].data()
-        # Re-register in external source hitlists
+        cdef Profile* p_base = self.profiles_ptr[0].data() if self.profiles_ptr != NULL and self.profiles_ptr[0].size() > 0 else NULL
 
-        cdef int source_loc
+        # Re-register in external source hitlists
         for pin_in in self.inputs:
             pin_in_info = &gate_infolist[pin_in.location]
             source_loc = pin_in._sources[0]
             if source_loc != -1:
                 src_info = &gate_infolist[source_loc]
-                src_info.hitlist.emplace_back(&gate_infolist[pin_in.location], 0, src_info.output)
+                add_profile(src_info.hitlist, src_info.hitlist_count, self.profiles_ptr[0], &gate_infolist[pin_in.location], 0, src_info.output)
+                pin_in_info.logic += (src_info.output == pin_in_info.seed)
             pin_in.process()
 
         # Reconnect output targets via hitlist
-        for pin_out in self.outputs:
-            pin_out_info = &gate_infolist[pin_out.location]
-            hitlist = pin_out_info.hitlist.data()
-            sz = pin_out_info.hitlist.size()
-            for i in range(sz):
-                reveal(hitlist[i], pin_out, self.gate_verse)
+        p_base = self.profiles_ptr[0].data() if self.profiles_ptr != NULL and self.profiles_ptr[0].size() > 0 else NULL
+        if p_base != NULL:
+            for pin_out in self.outputs:
+                pin_out_info = &gate_infolist[pin_out.location]
+                p_idx = pin_out_info.hitlist
+                while p_idx != -1:
+                    reveal(p_idx, self.profiles_ptr[0], pin_out, self.gate_verse)
+                    p_idx = p_base[p_idx].next
 
     cpdef void reset(self):
         '''Reset all internal gates back to unknown state'''
@@ -223,9 +229,9 @@ cdef class IC:
         '''Print the IC's inputs, internals, and outputs with their connections'''
         cdef Gate pin
         cdef CPP_Gate* pin_info
-        cdef Profile* p
-        cdef Profile* pend
+        cdef int p_idx
         cdef list gate_verse = self.gate_verse
+        cdef Profile* p_base = self.profiles_ptr[0].data() if self.profiles_ptr != NULL and self.profiles_ptr[0].size() > 0 else NULL
         print(f"\n  IC: {self.codename} (Code: {self.code})")
         print("  " + "-" * 40)
         cdef CPP_Gate* gate_infolist = self.gate_infolist_ptr[0].data()
@@ -234,11 +240,12 @@ cdef class IC:
             for pin in self.inputs:
                 targets = []
                 pin_info = &gate_infolist[pin.location]
-                p = pin_info.hitlist.data()
-                pend = p + pin_info.hitlist.size()
-                while p < pend:
-                    targets.append(str(<Gate>PyList_GET_ITEM(gate_verse, p.target - gate_infolist)))
-                    p += 1
+                p_idx = pin_info.hitlist
+                if p_base != NULL:
+                    while p_idx != -1:
+                        if p_base[p_idx].target != NULL:
+                            targets.append(str(<Gate>PyList_GET_ITEM(gate_verse, p_base[p_idx].target - gate_infolist)))
+                        p_idx = p_base[p_idx].next
                 print(f"    {pin.codename}: out={pin.getoutput()}, to={', '.join(targets) if targets else 'None'}")
 
         if self.internal:
@@ -251,11 +258,12 @@ cdef class IC:
                     ch_str = f"val:{pin.sources}"
                 tgt = []
                 pin_info = &gate_infolist[pin.location]
-                p = pin_info.hitlist.data()
-                pend = p + pin_info.hitlist.size()
-                while p < pend:
-                    tgt.append(str(<Gate>PyList_GET_ITEM(gate_verse, p.target - gate_infolist)))
-                    p += 1
+                p_idx = pin_info.hitlist
+                if p_base != NULL:
+                    while p_idx != -1:
+                        if p_base[p_idx].target != NULL:
+                            tgt.append(str(<Gate>PyList_GET_ITEM(gate_verse, p_base[p_idx].target - gate_infolist)))
+                        p_idx = p_base[p_idx].next
                 tgt_str = ", ".join(tgt) if tgt else "None"
                 print(f"    {pin.codename}: out={pin.getoutput()}, sources={ch_str}, targets={tgt_str}")
 

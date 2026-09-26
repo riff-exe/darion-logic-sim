@@ -9,10 +9,11 @@ struct CPP_Gate;
 
 struct Profile {
   CPP_Gate *target;
+  int next;
   uint8_t index;
   uint8_t output;
-  Profile() : target(nullptr), index(0), output(0) {}
-  Profile(CPP_Gate *t, uint8_t i, uint8_t o) : target(t), index(i), output(o) {}
+  Profile() : target(nullptr), next(-1), index(0), output(0) {}
+  Profile(CPP_Gate *t, uint8_t i, uint8_t o, int n = -1) : target(t), next(n), index(i), output(o) {}
   bool operator<(const Profile &other) const { return target < other.target; }
 };
 
@@ -41,32 +42,27 @@ static constexpr uint8_t GATE_LOGIC_3 =
     1 << 6; // 64  — dual-mode       (XOR, XNOR)
 
 struct CPP_Gate {
-  // ── HOT SCALARS (12 B, all read in the inner propagate/sweep loop) ────────
-  // Packed into bytes 0–11 so a single 64-B cache-line fetch covers every
-  // field needed before touching hitlist.
+  // ── HOT SCALARS (16 B total, exactly 4 gates fit in a 64-byte cache line) ──
   //
-  //   offset  0: type         (int8_t,  1 B)
-  //   offset  1: output       (uint8_t, 1 B)
-  //   offset  2: inputlimit   (uint8_t, 1 B)
-  //   offset  3: flags        (uint8_t, 1 B)
-  //   offset  4: logic        (uint8_t, 1 B)
-  //   offset  5: seed         (uint8_t, 1 B)
-  //   offset  6: reserved     (uint8_t, 1 B)
-  //   offset  7: invalid      (uint8_t, 1 B)
+  //   offset  0: type         (int8_t,   1 B)
+  //   offset  1: output       (uint8_t,  1 B)
+  //   offset  2: inputlimit   (uint8_t,  1 B)
+  //   offset  3: flags        (uint8_t,  1 B)
+  //   offset  4: logic        (uint8_t,  1 B)
+  //   offset  5: seed         (uint8_t,  1 B)
+  //   offset  6: hitlist_count(uint16_t, 2 B)
   //   offset  8: target_time  (uint32_t, 4 B)
-  //   offset 12: [4 B natural padding to align 8-B hitlist pointer]
-  // ── COLD / LARGE (offset 16) ──────────────────────────────────────────────
-  //   offset 16: hitlist      (std::vector<Profile>, 24 B: ptr+size+capacity)
-  //   → hitlist.data() lives on the heap; prefetch it explicitly.
+  //   offset 12: hitlist      (int32_t,  4 B) -> head index in profiles vector (-1 if none)
+  // ──────────────────────────────────────────────────────────────────────────
   int8_t type;
   uint8_t output;
   uint8_t inputlimit;
   uint8_t flags;
   uint8_t logic;
   uint8_t seed;
-  uint8_t reserved;             // Keep padding for size alignment
-  unsigned int target_time;     // moved before hitlist — stays in hot cacheline
-  std::vector<Profile> hitlist; // 24 B; out-of-line data prefetched separately
+  uint16_t hitlist_count;
+  unsigned int target_time;
+  int hitlist;
 
   inline void compute() noexcept {
     if (inputlimit) {
@@ -84,15 +80,18 @@ struct CPP_Gate {
   // flag is 8 means it's not going to support the ui, 0 means supported
   CPP_Gate()
       : type(0), output(2), inputlimit(2), flags(0), logic(0), seed(1),
-        reserved(0), target_time(0), hitlist() {}
+        hitlist_count(0), target_time(0), hitlist(-1) {}
   CPP_Gate(uint8_t t, uint8_t lim)
       : type(t), output(2), inputlimit(lim), flags(0), logic(0),
-        seed(t < 2 ? 0 : 1), reserved(0), target_time(0), hitlist() {}
+        seed(t < 2 ? 0 : 1), hitlist_count(0), target_time(0), hitlist(-1) {}
 };
 
-// Compile-time assertion: hot scalars must all fit before the hitlist pointer.
+// Compile-time assertion: hot scalars must all fit before the hitlist index.
 // If the struct layout ever drifts, this will fail at compile time.
 static_assert(
     offsetof(CPP_Gate, hitlist) >= 12,
     "CPP_Gate: hot scalars overflowed into hitlist — check field order");
+static_assert(
+    sizeof(CPP_Gate) == 16,
+    "CPP_Gate must be 16 bytes for cache line packing");
 #endif
