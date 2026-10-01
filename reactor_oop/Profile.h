@@ -67,13 +67,12 @@ struct CPP_Gate {
     uint8_t              scheduled;
     uint8_t              logic;       // count of inputs matching seed
     uint8_t              seed;        // triggering input value for this gate type
-    unsigned int         target_time;
     std::vector<Profile> hitlist;
 
     CPP_Gate() : gate(nullptr), type(0), output(LOGIC_UNKNOWN),
-                 inputlimit(2), mark(0), update(1), value(0), scheduled(0), logic(0), seed(1), target_time(0) {}
+                 inputlimit(2), mark(0), update(1), value(0), scheduled(0), logic(0), seed(1) {}
     CPP_Gate(void* g, int8_t t, uint8_t lim) : gate(g), type(t), output(LOGIC_UNKNOWN),
-              inputlimit(lim), mark(0), update(1), value(0), scheduled(0), logic(0), seed(1), target_time(0) {}
+              inputlimit(lim), mark(0), update(1), value(0), scheduled(0), logic(0), seed(1) {}
 
     virtual void compute() noexcept { output = LOGIC_UNKNOWN; }
     virtual ~CPP_Gate() = default;

@@ -39,8 +39,8 @@ cdef class Variable
 cdef extern from "Profile.h":
     cdef cppclass Profile:
         CPP_Gate* target
-        int index
         int output
+        int index
         Profile()
         Profile(CPP_Gate* target, int pin_index, int output)
     cdef cppclass Task:
@@ -51,18 +51,18 @@ cdef extern from "Profile.h":
         Task(int gate_loc, unsigned int time, int location) nogil
         bint operator>(const Task& other) nogil
     cdef cppclass CPP_Gate:
-        int8_t type
+        uint8_t flags
         uint8_t output
         uint8_t inputlimit
-        uint8_t flags
+        uint8_t mask
         uint8_t logic
         uint8_t seed
+        int8_t type
         uint8_t reserved
-        unsigned int target_time
         vector[Profile] hitlist
         CPP_Gate()
         CPP_Gate(uint8_t t, uint8_t lim)
-        void compute() noexcept nogil
+        void evaluate() noexcept nogil
 
 cdef enum GateFlags:
     FLAG_VALUE     = 1 << 0

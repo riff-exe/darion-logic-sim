@@ -878,7 +878,7 @@ python tests/verifier_iwls.py tests/IWLS2005/itc99 --vectors 100 --dump
 - **Chaotic:** Random 100% heap shuffle prior to wiring (worst-case pathological cache misses).
 - **Realistic:** Allocated in 64-gate modular chunks and shuffled (mirrors human sub-circuit design).
 - **Linear:** Allocated strictly in signal dependency order.
-- **Homogeneous:** Long chains of identical gates (`AND`, `NAND`, `OR`, `NOR`, `XOR`, `XNOR`, `NOT`).
+- **Homogeneous:** Long chains of identical gates (`AND`, `NAND`, `OR`, `NOR`, `XOR`, `XNOR`, `BUFFER`, `NOT`).
 
 Tests scale geometrically from 100 to 2,000,000+ gates, profiling unoptimized fragmented memory vs. topologically sorted memory in a single execution.
 
@@ -886,7 +886,7 @@ Tests scale geometrically from 100 to 2,000,000+ gates, profiling unoptimized fr
 ```text
 usage: cache_test.py [-h] [--engine] [--reactor_oop] [--chaotic] [--realistic]
                      [--mixed] [--and] [--nand] [--or] [--nor] [--xor]
-                     [--xnor] [--not] [--dump] [--plot]
+                     [--xnor] [--buffer] [--not] [--dump] [--plot]
                      [--perf-size PERF_SIZE]
                      [--perf-pass {unopt,opt,sweep,oop}]
                      [--perf-fifo PERF_FIFO]
@@ -896,10 +896,10 @@ usage: cache_test.py [-h] [--engine] [--reactor_oop] [--chaotic] [--realistic]
 |------|-------------|
 | `--engine` | Use Python Engine backend instead of Cython Reactor. |
 | `--reactor_oop` | Use Cython OOP backend. |
-| `--chaotic` | Run worst-case chaotic shuffled memory test. |
-| `--realistic` | Run realistic modular chunk shuffled test. |
+| `--chaotic` | Run worst-case chaotic shuffled memory test (all 8 gate types mixed). |
+| `--realistic` | Run realistic modular chunk shuffled test (all 8 gate types mixed). |
 | `--mixed` | Run both chaotic and realistic tests. |
-| `--and`, `--or`, `--not`, ... | Run homogeneous gate chain tests. |
+| `--and`, `--nand`, `--or`, `--nor`, `--xor`, `--xnor`, `--buffer`, `--not` | Run homogeneous single-type gate chain tests. |
 | `--dump` | Dump output to timestamped file in `test_result/`. |
 | `--plot` | Generate performance scaling plots. |
 | `--perf-size`, `--perf-pass`, `--perf-fifo` | Synchronize with hardware `perf` profiler via named pipe FIFO. |

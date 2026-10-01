@@ -17,7 +17,7 @@ cdef tuple namelist=(
     'IC',
 )
 
-cdef object get(int choice, vector[CPP_Gate]& gate_infolist, list gate_verse):
+cdef object get(int choice, vector[CPP_Gate]& gate_infolist, vector[unsigned int]& gate_clocks, list gate_verse):
     '''Get a gate of a given type and add it to the gate_infolist and gate_verse
     for ICs, it does not add to gate_infolist or gate_verse, but instead just returns an IC object'''
     cdef Gate gate
@@ -34,6 +34,7 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, list gate_verse):
     if choice==IC_ID:
         ic = IC(choice,namelist[choice])
         ic.gate_infolist_ptr = &gate_infolist
+        ic.gate_clocks_ptr = &gate_clocks
         ic.gate_verse = gate_verse
         return ic
     else:
@@ -47,6 +48,7 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, list gate_verse):
         if new_size > old_cap:
             old_base = gate_infolist.data()
             gate_infolist.reserve(old_cap * 2 if old_cap > 0 else 8)
+            gate_clocks.reserve(old_cap * 2 if old_cap > 0 else 8)
             new_base = gate_infolist.data()
             diff = new_base - old_base
             
@@ -63,33 +65,38 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, list gate_verse):
                     profile += 1
             
         gate_infolist.emplace_back(CPP_Gate(choice, lim))
+        gate_clocks.push_back(0)
         gate.location = gate_infolist.size()-1
         gate.info = &gate_infolist[gate.location]
-        
-        if choice == AND_ID:
-            gate.info.flags |= LOGIC_1# low==0
-            gate.info.seed = 0
-        elif choice == NAND_ID:
-            gate.info.flags |= LOGIC_2# low>0
-            gate.info.seed = 0
-        elif choice ==OR_ID:
-            gate.info.flags |= LOGIC_2# high>0
-            gate.info.seed = 1
-        elif choice == NOR_ID:
-            gate.info.flags |= LOGIC_1#high==0
-            gate.info.seed = 1
-        elif choice == NOT_ID:
-            gate.info.flags |= LOGIC_2# low>0
-            gate.info.seed = 0
-        elif choice>=BUFFER_ID:
-            gate.info.flags |= LOGIC_2# high>0
-            gate.info.seed = 1
-        else:
-            gate.info.flags |= LOGIC_3  # parity: output = (logic & 1) ^ (flags & 1)
-            gate.info.seed = 1
-            
-        gate.info.flags |= (choice & 1) & (choice != VARIABLE_ID)
-        
+        if choice!= VARIABLE_ID:                
+            if choice == AND_ID:
+                gate.info.flags |= FLAG_NEGATE # low == 0
+                gate.info.seed = 0
+                gate.info.mask = 0xFF
+            elif choice == NAND_ID:
+                gate.info.seed = 0
+                gate.info.mask = 0xFF
+            elif choice == OR_ID:
+                gate.info.seed = 1
+                gate.info.mask = 0xFF
+            elif choice == NOR_ID:
+                gate.info.flags |= FLAG_NEGATE # high == 0
+                gate.info.seed = 1
+                gate.info.mask = 0xFF
+            elif choice == NOT_ID:
+                gate.info.seed = 0
+                gate.info.mask = 0xFF
+            elif choice >= BUFFER_ID:
+                gate.info.seed = 1
+                gate.info.mask = 0xFF
+            elif choice == XOR_ID:
+                gate.info.seed = 1
+                gate.info.mask = 1
+            elif choice == XNOR_ID:
+                gate.info.flags |= FLAG_NEGATE
+                gate.info.seed = 1
+                gate.info.mask = 1
+
         if not UI_MODE:
             gate.info.flags |= FLAG_UPDATE
             

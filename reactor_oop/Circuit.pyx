@@ -18,6 +18,9 @@ cdef class Circuit:
     def __cinit__(self):
         self.counter = 0
         self.eval_count = 0
+        self.queue.resize(2)
+        self.queue[0].resize(LIMIT)
+        self.queue[1].resize(LIMIT)
     def __init__(self):
         set_MODE(DESIGN)
         self.objlist = [[] for i in range(TOTAL)]
@@ -129,6 +132,7 @@ cdef class Circuit:
                 pass
 
         start = time.perf_counter_ns()
+        self.sync_queue_size()
         for i in range(0, n, batch_size):
             end_point = 0
             for j in range(batch_size):
@@ -188,7 +192,7 @@ cdef class Circuit:
         cdef Gate pin
         cdef IC ic
         cdef Py_ssize_t end_point = 0
-        cdef CPP_Gate** read_queue = self.queue[0]
+        cdef CPP_Gate** read_queue = self.queue[0].data()
         for gate in reversed(gatelist):
             if gate.id == IC_ID:
                 ic = <IC>gate
@@ -657,9 +661,10 @@ cdef class Circuit:
 
     cpdef void simulate(self, int Mod):
         set_MODE(Mod)
+        self.sync_queue_size()
         cdef Gate variable
         cdef Py_ssize_t end_point = 0
-        cdef CPP_Gate** read_queue = self.queue[0]
+        cdef CPP_Gate** read_queue = self.queue[0].data()
         for variable in self.objlist[VARIABLE_ID]:
             if variable is not None:
                 variable.info.output = variable.info.value
@@ -672,7 +677,7 @@ cdef class Circuit:
         '''simulate from a pre-collected list of variable Gate objects'''
         cdef Gate variable
         cdef Py_ssize_t end_point = 0
-        cdef CPP_Gate** read_queue = self.queue[0]
+        cdef CPP_Gate** read_queue = self.queue[0].data()
         for variable in varlist:
             variable.info.output = variable.info.value
             read_queue[end_point] = <CPP_Gate*>variable.info
@@ -740,7 +745,17 @@ cdef class Circuit:
             read_queue, write_queue = write_queue, read_queue
         self.eval_count += eval
 
+    cdef void sync_queue_size(self):
+        cdef size_t active_gates = self.counter if self.counter > 0 else 0
+        if unlikely(active_gates > self.queue[0].size()):
+            self.queue[0].resize(active_gates)
+            self.queue[1].resize(active_gates)
+
     cdef void propagate(self, Py_ssize_t end_point):
+        cdef size_t wave_limit = self.counter if self.counter > 0 else 0
+        if unlikely(wave_limit > self.queue[0].size()):
+            self.sync_queue_size()
+
         cdef CPP_Gate* gate_info
         cdef CPP_Gate* target_info
         cdef Profile* profile
@@ -749,8 +764,8 @@ cdef class Circuit:
         cdef Py_ssize_t index = 0, size = 0
         cdef unsigned long long counter = 0
         cdef unsigned long long eval = 0
-        cdef CPP_Gate** read_queue = self.queue[0]
-        cdef CPP_Gate** write_queue = self.queue[1]
+        cdef CPP_Gate** read_queue = self.queue[0].data()
+        cdef CPP_Gate** write_queue = self.queue[1].data()
 
         if unlikely(end_point == 1 and read_queue[0].output == UNKNOWN and read_queue[0].type >= BUFFER_ID):
             self.burn(0, 1, read_queue, write_queue)

@@ -99,16 +99,19 @@ class IWLSVerilogRunner:
     either the Python Engine or Cython Reactor.
     """
 
-    def __init__(self, v_file_path, circuit_cls, const_mod, is_reactor=True, is_oop=False, mode="engine", use_optimize=True):
+    def __init__(self, v_file_path, circuit_cls, const_mod, is_reactor=True, is_oop=False, mode="engine", use_optimize=True, sim_mode="simulate"):
         self.filepath = v_file_path
         self.mode = mode
         self.Circuit = circuit_cls
+        self.circuit_cls = circuit_cls
         self.const   = const_mod
-        self.circuit = self.Circuit()
-        self.circuit.simulate(self.const.DESIGN)
         self.is_reactor = is_reactor
         self.is_oop = is_oop
         self.use_optimize = use_optimize
+        self.sim_mode = sim_mode
+        self.const.set_MODE(self.const.DESIGN)
+        self.circuit = self.Circuit()
+        self.circuit.simulate(self.const.DESIGN)
         self.const_1_node = None
         self.const_0_node = None
 
@@ -260,6 +263,9 @@ class IWLSVerilogRunner:
                 else:
                     self.nodes[name_str] = comp
 
+            target_mod = self.const.COMPILE if (not self.is_reactor or self.sim_mode == "compile") else self.const.SIMULATE
+            self.circuit.simulate(target_mod)
+            self.const.set_MODE(target_mod)
             if self.use_optimize and hasattr(self.circuit, 'optimize'):
                 self.circuit.optimize()
             return
@@ -809,7 +815,11 @@ class IWLSVerilogRunner:
                     sn_node = get_const_node("1'b1")
                 self.circuit.connect(dff_inst.inputs[3], sn_node, 0)
 
-        pass
+        target_mod = self.const.COMPILE if (not self.is_reactor or self.sim_mode == "compile") else self.const.SIMULATE
+        self.circuit.simulate(target_mod)
+        self.const.set_MODE(target_mod)
+        if self.use_optimize and hasattr(self.circuit, 'optimize'):
+            self.circuit.optimize()
 
     def build_batches(self, raw_logical_vectors):
         batches = []
@@ -1007,25 +1017,30 @@ class IWLSVerilogRunner:
         )
         if has_sweep and rx_sweep:
             try:
-                self.circuit.simulate(self.const.COMPILE)
-                self.const.set_MODE(self.const.COMPILE)
+                self.const.set_MODE(self.const.DESIGN)
+                sweep_runner = IWLSVerilogRunner(
+                    self.filepath, self.circuit_cls, self.const,
+                    is_reactor=self.is_reactor, is_oop=self.is_oop,
+                    mode=self.mode, use_optimize=use_optimize,
+                    sim_mode="compile"
+                )
 
-                reset_batches = self.build_reset_batches(50)
-                sweep_warmup_batches = self.build_batches(warmup_raw)
-                sweep_measured_batches = self.build_batches(measured_raw)
+                reset_batches = sweep_runner.build_reset_batches(50)
+                sweep_warmup_batches = sweep_runner.build_batches(warmup_raw)
+                sweep_measured_batches = sweep_runner.build_batches(measured_raw)
 
-                flat_reset_batches = [item for sublist in reset_batches for item in sublist]
-                flat_warmup_batches = [item for sublist in sweep_warmup_batches for item in sublist]
-                flat_measured_batches = [item for sublist in sweep_measured_batches for item in sublist]
+                flat_reset_batches = sweep_runner.flatten_batches(reset_batches)
+                flat_warmup_batches = sweep_runner.flatten_batches(sweep_warmup_batches)
+                flat_measured_batches = sweep_runner.flatten_batches(sweep_measured_batches)
 
                 if flat_reset_batches:
-                    self.circuit.batch_toggle(flat_reset_batches, batch_size)
+                    sweep_runner.circuit.batch_toggle(flat_reset_batches, batch_size)
 
                 if flat_warmup_batches:
-                    self.circuit.batch_toggle(flat_warmup_batches, batch_size)
+                    sweep_runner.circuit.batch_toggle(flat_warmup_batches, batch_size)
 
                 gc.collect()
-                self.circuit.eval_count = 0
+                sweep_runner.circuit.eval_count = 0
                 gc.disable()
 
                 perf_proc = None
@@ -1043,7 +1058,7 @@ class IWLSVerilogRunner:
                     time.sleep(0.1)
 
                 send_perf_ctrl("enable")
-                sweep_ms = self.circuit.batch_toggle(flat_measured_batches, batch_size) if flat_measured_batches else 0.0
+                sweep_ms = sweep_runner.circuit.batch_toggle(flat_measured_batches, batch_size) if flat_measured_batches else 0.0
                 send_perf_ctrl("disable")
 
                 if use_perf and perf_proc:
@@ -1058,17 +1073,15 @@ class IWLSVerilogRunner:
 
                 gc.enable()
 
-                sweep_evals = getattr(self.circuit, 'eval_count',
-                                      len(flat_measured_batches) // batch_size * len(self.nodes))
-                self.circuit.simulate(self.const.SIMULATE)
-                self.const.set_MODE(self.const.SIMULATE)
+                sweep_evals = getattr(sweep_runner.circuit, 'eval_count',
+                                      len(flat_measured_batches) // batch_size * len(sweep_runner.nodes))
                 sweep_meps  = (sweep_evals / (sweep_ms / 1000.0)) / 1_000_000.0 if sweep_ms > 0 else 0.0
                 result["sweep_ms"]    = sweep_ms
                 result["sweep_evals"] = sweep_evals
                 result["sweep_meps"]  = sweep_meps
+                del sweep_runner
+                gc.collect()
             except Exception as exc:
-                self.circuit.simulate(self.const.SIMULATE)
-                self.const.set_MODE(self.const.SIMULATE)
                 result["sweep_error"] = str(exc)
 
         return result

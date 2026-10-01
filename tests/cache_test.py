@@ -44,9 +44,11 @@ parser.add_argument('--or', dest='gate_or', action='store_true', help='Run homog
 parser.add_argument('--nor', dest='gate_nor', action='store_true', help='Run homogeneous NOR test')
 parser.add_argument('--xor', dest='gate_xor', action='store_true', help='Run homogeneous XOR test')
 parser.add_argument('--xnor', dest='gate_xnor', action='store_true', help='Run homogeneous XNOR test')
+parser.add_argument('--buffer', '--buf', dest='gate_buffer', action='store_true', help='Run homogeneous BUFFER test')
 parser.add_argument('--not', dest='gate_not', action='store_true', help='Run homogeneous NOT test')
 parser.add_argument('--dump', action='store_true', help='Dump output to time-stamped txt in test_result')
 parser.add_argument('--plot', action='store_true', help='Generate plots in test_result')
+parser.add_argument('--tree', '--binary-tree', dest='tree', action='store_true', help='Wire circuit as a complete binary tree (MST) instead of a linear chain')
 parser.add_argument('--perf-size', type=int, default=None, help='Target size to run for perf profiling')
 parser.add_argument('--perf-iters', type=int, default=None, help='Target iterations for perf profiling')
 parser.add_argument('--perf-pass', type=str, choices=['unopt', 'opt', 'sweep', 'oop'], default=None, help='Target pass to profile')
@@ -119,32 +121,34 @@ def get_cpu_info():
 # ---------------------------------------------------------------------------
 
 # Maps a gate type to (needs_second_input, second_input_value)
-# NOT is unary; all others need a second constant input.
+# NOT and BUFFER are unary; all others need a second constant input.
 _GATE_META = {
-    Const.AND_ID:  (True,  Const.HIGH),   # AND  : keep second input HIGH
-    Const.NAND_ID: (True,  Const.HIGH),   # NAND : keep second input HIGH
-    Const.OR_ID:   (True,  Const.LOW),    # OR   : keep second input LOW
-    Const.NOR_ID:  (True,  Const.LOW),    # NOR  : keep second input LOW
-    Const.XOR_ID:  (True,  Const.LOW),    # XOR  : keep second input LOW
-    Const.XNOR_ID: (True,  Const.LOW),    # XNOR : keep second input LOW
-    Const.NOT_ID:  (False, None),          # NOT  : unary, no second input
+    Const.AND_ID:    (True,  Const.HIGH),   # AND    : keep second input HIGH
+    Const.NAND_ID:   (True,  Const.HIGH),   # NAND   : keep second input HIGH
+    Const.OR_ID:     (True,  Const.LOW),    # OR     : keep second input LOW
+    Const.NOR_ID:    (True,  Const.LOW),    # NOR    : keep second input LOW
+    Const.XOR_ID:    (True,  Const.LOW),    # XOR    : keep second input LOW
+    Const.XNOR_ID:   (True,  Const.LOW),    # XNOR   : keep second input LOW
+    Const.BUFFER_ID: (False, None),         # BUFFER : unary, no second input
+    Const.NOT_ID:    (False, None),         # NOT    : unary, no second input
 }
 
 GATE_NAMES = {
-    Const.AND_ID:  "AND",
-    Const.NAND_ID: "NAND",
-    Const.OR_ID:   "OR",
-    Const.NOR_ID:  "NOR",
-    Const.XOR_ID:  "XOR",
-    Const.XNOR_ID: "XNOR",
-    Const.NOT_ID:  "NOT",
+    Const.AND_ID:    "AND",
+    Const.NAND_ID:   "NAND",
+    Const.OR_ID:     "OR",
+    Const.NOR_ID:    "NOR",
+    Const.XOR_ID:    "XOR",
+    Const.XNOR_ID:   "XNOR",
+    Const.BUFFER_ID: "BUFFER",
+    Const.NOT_ID:    "NOT",
 }
 
 ALL_GATE_TYPES = [
     Const.AND_ID, Const.NAND_ID,
     Const.OR_ID,  Const.NOR_ID,
     Const.XOR_ID, Const.XNOR_ID,
-    Const.NOT_ID,
+    Const.BUFFER_ID, Const.NOT_ID,
 ]
 
 def _connect_gate(c, g, g_type, prev_gate, const_high, const_low):
@@ -306,8 +310,8 @@ def measure_hitlist_randomness(c):
     }
 
 
-def build_chain(active_size, mode='chaotic'):
-    """Builds a mixed-gate chain with configurable memory allocation modes."""
+def build_chain(active_size, mode='chaotic', tree=False):
+    """Builds a mixed-gate chain or binary tree with configurable memory allocation modes."""
     c = Circuit()
     if hasattr(Const, 'set_MODE'):
         Const.set_MODE(Const.SIMULATE)
@@ -319,11 +323,16 @@ def build_chain(active_size, mode='chaotic'):
     c.toggle(const_high, Const.HIGH)
     c.toggle(const_low,  Const.LOW)
 
-    gate_types = [Const.AND_ID, Const.OR_ID, Const.XOR_ID, Const.NOT_ID]
+    gate_types = [
+        Const.AND_ID, Const.NAND_ID,
+        Const.OR_ID,  Const.NOR_ID,
+        Const.XOR_ID, Const.XNOR_ID,
+        Const.BUFFER_ID, Const.NOT_ID,
+    ]
     active_gates = []
 
     for i in range(active_size - 1):
-        g_type = gate_types[i % 4]
+        g_type = gate_types[i % len(gate_types)]
         g = c.getcomponent(g_type)
         active_gates.append((g, g_type))
 
@@ -335,17 +344,24 @@ def build_chain(active_size, mode='chaotic'):
         random.shuffle(chunks)
         active_gates = [gate for chunk in chunks for gate in chunk]
 
-    prev_gate = first_gate
-    for g, g_type in active_gates:
-        _connect_gate(c, g, g_type, prev_gate, const_high, const_low)
-        prev_gate = g
+    if tree:
+        if active_gates:
+            _connect_gate(c, active_gates[0][0], active_gates[0][1], first_gate, const_high, const_low)
+            for i in range(1, len(active_gates)):
+                parent_gate = active_gates[(i - 1) // 2][0]
+                _connect_gate(c, active_gates[i][0], active_gates[i][1], parent_gate, const_high, const_low)
+    else:
+        prev_gate = first_gate
+        for g, g_type in active_gates:
+            _connect_gate(c, g, g_type, prev_gate, const_high, const_low)
+            prev_gate = g
 
     init_simulation(c, first_gate)
     return c, first_gate
 
 
-def build_homogeneous_chain(active_size, gate_type):
-    """Builds a chain made entirely of one gate type, with chaotic allocation order."""
+def build_homogeneous_chain(active_size, gate_type, tree=False):
+    """Builds a chain or binary tree made entirely of one gate type, with chaotic allocation order."""
     c = Circuit()
     if hasattr(Const, 'set_MODE'):
         Const.set_MODE(Const.SIMULATE)
@@ -362,10 +378,17 @@ def build_homogeneous_chain(active_size, gate_type):
     gates = [c.getcomponent(gate_type) for _ in range(active_size - 1)]
     random.shuffle(gates)
 
-    prev_gate = first_gate
-    for g in gates:
-        _connect_gate(c, g, gate_type, prev_gate, const_high, const_low)
-        prev_gate = g
+    if tree:
+        if gates:
+            _connect_gate(c, gates[0], gate_type, first_gate, const_high, const_low)
+            for i in range(1, len(gates)):
+                parent_gate = gates[(i - 1) // 2]
+                _connect_gate(c, gates[i], gate_type, parent_gate, const_high, const_low)
+    else:
+        prev_gate = first_gate
+        for g in gates:
+            _connect_gate(c, g, gate_type, prev_gate, const_high, const_low)
+            prev_gate = g
 
     init_simulation(c, first_gate)
     return c, first_gate
@@ -396,7 +419,10 @@ def benchmark_pass(c, start_node, size, iterations, is_sweep=False, const=None):
 
     best_time_ns = float('inf')
     best_evals = 0
-    num_passes = 3 if size >= 100000 else 5
+    # For hardware PMU profiling passes (or when perf FIFO control is active),
+    # use exactly 1 pass so perf stat accumulates counts for exactly 1 pass of 'iterations'
+    # without artificial 5x/3x scaling or cliffs at 100,000 gates.
+    num_passes = 1 if (args.perf_pass is not None or args.perf_fifo) else (3 if size >= 100000 else 5)
 
     for _ in range(num_passes):
         start_evals = c.eval_count if hasattr(c, 'eval_count') else 0
@@ -432,8 +458,9 @@ def benchmark_pass(c, start_node, size, iterations, is_sweep=False, const=None):
 
 async def run_profiler_suite(mode_name):
     """Mixed-gate chaotic/realistic fragmentation profiler (Unopt BFS vs Opt BFS)."""
+    topology_name = "BINARY TREE" if getattr(args, 'tree', False) else "CHAIN"
     print("=" * 145)
-    print(f"  [{mode_name.upper()} FRAGMENTATION — MIXED GATE CHAIN]")
+    print(f"  [{mode_name.upper()} FRAGMENTATION — MIXED GATE {topology_name}]")
     print("=" * 145)
 
     test_sizes = []
@@ -464,7 +491,7 @@ async def run_profiler_suite(mode_name):
     gc.disable()
 
     for size in test_sizes:
-        c, start_node = build_chain(size, mode=mode_name)
+        c, start_node = build_chain(size, mode=mode_name, tree=getattr(args, 'tree', False))
         current_ram = get_ram_mb() - base_ram
 
         def get_iters():
@@ -500,12 +527,11 @@ async def run_profiler_suite(mode_name):
         # PASS 2: OPTIMIZED (BFS)
         opt_jump = 0.0
         opt_hl = None
-        if args.perf_pass in [None, 'opt', 'sweep']:
-            c.optimize()
+        if args.perf_pass in [None, 'opt']:
             init_simulation(c, start_node)
+            c.optimize()
             opt_jump = get_chain_jump(start_node)
             opt_hl = measure_hitlist_randomness(c)
-        if args.perf_pass in [None, 'opt']:
             opt_ms, opt_ev = benchmark_pass(c, start_node, size, iterations, const=Const)
         else:
             opt_ms, opt_ev = 0.0, 0
@@ -515,15 +541,17 @@ async def run_profiler_suite(mode_name):
         has_sweep = (
             hasattr(Const, 'COMPILE')
             and hasattr(Const, 'set_MODE')
-            and hasattr(c, 'simulate')
             and not use_reactor_oop
         )
         if has_sweep:
             if args.perf_pass in [None, 'sweep']:
-                c.simulate(Const.COMPILE)
+                c_swp, start_swp = build_chain(size, mode=mode_name, tree=getattr(args, 'tree', False))
+                c_swp.simulate(Const.COMPILE)
                 Const.set_MODE(Const.COMPILE)
-                sweep_ms, sweep_ev = benchmark_pass(c, start_node, size, iterations, is_sweep=True, const=Const)
+                c_swp.optimize()
+                sweep_ms, sweep_ev = benchmark_pass(c_swp, start_swp, size, iterations, is_sweep=True, const=Const)
                 Const.set_MODE(Const.SIMULATE)
+                del c_swp
                 
         if args.perf_size is not None and args.perf_pass is not None:
             if args.perf_pass == 'unopt':
@@ -616,8 +644,9 @@ async def run_profiler_suite(mode_name):
 async def run_homogeneous_suite(gate_type):
     """Chaotic chain made of a single gate type — Unopt BFS vs Opt BFS."""
     gate_name = GATE_NAMES[gate_type]
+    topology_name = "BINARY TREE" if getattr(args, 'tree', False) else "CHAIN"
     print("=" * 145)
-    print(f"  [HOMOGENEOUS CHAOTIC — {gate_name} GATE CHAIN]")
+    print(f"  [HOMOGENEOUS CHAOTIC — {gate_name} GATE {topology_name}]")
     print("=" * 145)
 
     test_sizes = []
@@ -648,45 +677,82 @@ async def run_homogeneous_suite(gate_type):
     gc.disable()
 
     for size in test_sizes:
-        c, start_node = build_homogeneous_chain(size, gate_type)
+        c, start_node = build_homogeneous_chain(size, gate_type, tree=getattr(args, 'tree', False))
         current_ram = get_ram_mb() - base_ram
 
-        if getattr(args, 'perf_iters', None) is not None:
-            iterations = args.perf_iters
-        else:
+        def get_iters():
+            if args.perf_iters is not None:
+                if args.perf_size is not None:
+                    print(f"ITERATIONS:{args.perf_iters}", file=sys.stderr)
+                return args.perf_iters
             start_calib = time.perf_counter_ns()
             c.toggle(start_node, Const.HIGH)
             c.toggle(start_node, Const.LOW)
             calib_time = time.perf_counter_ns() - start_calib
-            iterations = max(5, int(50_000_000 / calib_time)) if calib_time > 0 else max(5, 5_000_000 // (size * 2))
-            iterations = min(iterations, 10) if size >= 200000 else iterations
+            if args.perf_size is not None:
+                iters = max(10, int(200_000_000 / calib_time)) if calib_time > 0 else max(10, 20_000_000 // (size * 2))
+                print(f"ITERATIONS:{iters}", file=sys.stderr)
+                return iters
+            else:
+                iters = max(5, int(50_000_000 / calib_time)) if calib_time > 0 else max(5, 5_000_000 // (size * 2))
+                return min(iters, 10) if size >= 200000 else iters
+
+        # Equal evaluation count: compute iterations once on the baseline chain and share across passes
+        iterations = get_iters()
 
         # PASS 1: UNOPTIMIZED (BFS)
-        init_simulation(c, start_node)
-        unopt_ms, unopt_ev = benchmark_pass(c, start_node, size, iterations, const=Const)
+        if args.perf_pass in [None, 'unopt', 'oop']:
+            init_simulation(c, start_node)
+            unopt_ms, unopt_ev = benchmark_pass(c, start_node, size, iterations, const=Const)
+        else:
+            unopt_ms, unopt_ev = 0.0, 0
+
         unopt_jump = get_chain_jump(start_node)
         unopt_hl = measure_hitlist_randomness(c)
 
         # PASS 2: OPTIMIZED (BFS)
-        c.optimize()
-        init_simulation(c, start_node)
-        opt_jump = get_chain_jump(start_node)
-        opt_hl = measure_hitlist_randomness(c)
-        opt_ms, opt_ev = benchmark_pass(c, start_node, size, iterations, const=Const)
+        opt_jump = 0.0
+        opt_hl = None
+        if args.perf_pass in [None, 'opt']:
+            init_simulation(c, start_node)
+            c.optimize()
+            opt_jump = get_chain_jump(start_node)
+            opt_hl = measure_hitlist_randomness(c)
+            opt_ms, opt_ev = benchmark_pass(c, start_node, size, iterations, const=Const)
+        else:
+            opt_ms, opt_ev = 0.0, 0
 
         # PASS 3: OPTIMIZED (SWEEP)
         sweep_ms, sweep_ev = None, None
         has_sweep = (
             hasattr(Const, 'COMPILE')
             and hasattr(Const, 'set_MODE')
-            and hasattr(c, 'simulate')
             and not use_reactor_oop
         )
         if has_sweep:
-            c.simulate(Const.COMPILE)
-            Const.set_MODE(Const.COMPILE)
-            sweep_ms, sweep_ev = benchmark_pass(c, start_node, size, iterations, is_sweep=True, const=Const)
-            Const.set_MODE(Const.SIMULATE)
+            if args.perf_pass in [None, 'sweep']:
+                c_swp, start_swp = build_random_dag(size, mode=mode_name, fanout=args.dag_fanout, seed=args.dag_seed)
+                c_swp.simulate(Const.COMPILE)
+                Const.set_MODE(Const.COMPILE)
+                c_swp.optimize()
+                sweep_ms, sweep_ev = benchmark_pass(c_swp, start_swp, size, iterations, is_sweep=True, const=Const)
+                Const.set_MODE(Const.SIMULATE)
+                del c_swp
+
+        if args.perf_size is not None and args.perf_pass is not None:
+            if args.perf_pass == 'unopt':
+                print(f"TIME_MS:{unopt_ms}", file=sys.stderr)
+                print(f"EVAL_COUNT:{unopt_ev}", file=sys.stderr)
+            elif args.perf_pass == 'opt':
+                print(f"TIME_MS:{opt_ms}", file=sys.stderr)
+                print(f"EVAL_COUNT:{opt_ev}", file=sys.stderr)
+            elif args.perf_pass == 'sweep':
+                print(f"TIME_MS:{sweep_ms}", file=sys.stderr)
+                print(f"EVAL_COUNT:{sweep_ev}", file=sys.stderr)
+            elif args.perf_pass == 'oop':
+                print(f"TIME_MS:{unopt_ms}", file=sys.stderr)
+                print(f"EVAL_COUNT:{unopt_ev}", file=sys.stderr)
+            sys.exit(0)
 
         unopt_meps = (unopt_ev / (unopt_ms / 1000.0)) / 1_000_000.0 if unopt_ms > 0 else 0.0
         opt_meps = (opt_ev / (opt_ms / 1000.0)) / 1_000_000.0 if opt_ms > 0 else 0.0
@@ -826,15 +892,16 @@ def generate_cache_plot(data_chaotic, data_realistic, cpu_name, output_dir):
     )
 
 
-# Colour palette for the 7 gate types on the homogeneous overview plot
+# Colour palette for the 8 gate types on the homogeneous overview plot
 _GATE_COLOURS = {
-    "AND":  "#FF3366",
-    "NAND": "#FF9933",
-    "OR":   "#FFFF33",
-    "NOR":  "#33FF99",
-    "XOR":  "#33CCFF",
-    "XNOR": "#CC66FF",
-    "NOT":  "#FF66CC",
+    "AND":    "#FF3366",
+    "NAND":   "#FF9933",
+    "OR":     "#FFFF33",
+    "NOR":    "#33FF99",
+    "XOR":    "#33CCFF",
+    "XNOR":   "#CC66FF",
+    "BUFFER": "#00FFAA",
+    "NOT":    "#FF66CC",
 }
 
 
@@ -1165,6 +1232,7 @@ async def main_profile():
         'gate_nor': Const.NOR_ID,
         'gate_xor': Const.XOR_ID,
         'gate_xnor': Const.XNOR_ID,
+        'gate_buffer': Const.BUFFER_ID,
         'gate_not': Const.NOT_ID,
     }
     

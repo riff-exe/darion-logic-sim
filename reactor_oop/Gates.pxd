@@ -58,7 +58,6 @@ cdef extern from "Profile.h":
         uint8_t scheduled
         uint8_t logic    # count of inputs matching seed
         uint8_t seed     # triggering input value for this gate type
-        unsigned int target_time
         vector[Profile] hitlist
         CPP_Gate()
         CPP_Gate(void* g, int8_t t, uint8_t lim)

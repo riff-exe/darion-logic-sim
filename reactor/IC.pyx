@@ -25,7 +25,8 @@ cdef class IC:
         self.tag = ''
         self.description = ''
         self.pin_orientations = [[], []]
-        self.gate_infolist_ptr=NULL
+        self.gate_infolist_ptr = NULL
+        self.gate_clocks_ptr = NULL
 
     def __repr__(self):
         return self.codename if self.custom_name == '' else self.custom_name
@@ -35,7 +36,7 @@ cdef class IC:
 
     cpdef object getcomponent(self, int choice):
         '''Get a gate from the store and register it under the right pin group'''
-        cdef object gt = get(choice, self.gate_infolist_ptr[0],self.gate_verse)
+        cdef object gt = get(choice, self.gate_infolist_ptr[0], self.gate_clocks_ptr[0], self.gate_verse)
         if gt:
             if gt.id == IC_INPUT_PIN_ID:
                 rank = len(self.inputs)
@@ -189,6 +190,7 @@ cdef class IC:
             if source_loc != -1:
                 src_info = &gate_infolist[source_loc]
                 src_info.hitlist.emplace_back(&gate_infolist[pin_in.location], 0, src_info.output)
+                pin_in.info.logic+=(src_info.output==pin_in.info.seed)
             pin_in.process()
 
         # Reconnect output targets via hitlist

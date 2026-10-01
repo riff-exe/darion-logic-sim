@@ -4,6 +4,7 @@
 # cython: initializedcheck=False
 # cython: cdivision=True
 # cython: nonecheck=False
+import os
 import orjson
 import asyncio
 from libcpp.deque cimport deque
@@ -12,7 +13,8 @@ from Const cimport *
 from IC cimport IC
 from Store cimport get, decode
 from cpython.list cimport PyList_GET_SIZE, PyList_GET_ITEM
-from libc.stdint cimport uint8_t,int8_t
+from libc.stdint cimport uint8_t, int8_t, uintptr_t, uint64_t
+from libc.string cimport memset
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector
 from libcpp.deque cimport deque
@@ -31,9 +33,13 @@ cdef class Circuit:
         self.hidden = 0 # the oscillation breaking system
         self.eval_count = 0 # just a metric for evaluating speed
         self.gate_infolist.reserve(500_000)# the cpp_gate list consisting of every single gate's info in c++
+        self.gate_clocks.reserve(500_000)
         self.gate_verse = [] # the gate list in python
         self.runner = None        # asyncio.Task for FLIPFLOP drain loop
         self.Global_Clock = 0
+        self.queue.resize(2)
+        self.queue[0].resize(LIMIT)
+        self.queue[1].resize(LIMIT)
         cdef unsigned int g_delay[12]
         cdef unsigned int fi_delay[12]
         cdef unsigned int fo_delay[12]
@@ -55,6 +61,7 @@ cdef class Circuit:
         self.objlist = [
             [] for i in range(TOTAL)] # list of visible gates and ics, stored according to it's type
         self.copydata = []
+        self.optimization_strategy = 0
 
     def __repr__(self):
         return 'Circuit'
@@ -67,7 +74,7 @@ cdef class Circuit:
     cpdef object getcomponent(self, int choice):
         '''Get object from store, put it in objlist and update its code and codename'''
 
-        gt = get(choice, self.gate_infolist, self.gate_verse) 
+        gt = get(choice, self.gate_infolist, self.gate_clocks, self.gate_verse) 
 
         if gt:
             rank = len(self.objlist[choice])
@@ -258,6 +265,7 @@ cdef class Circuit:
                 pass
 
         start = time.perf_counter_ns()
+        self.sync_queue_size()
         
         for i in range(0, n, batch_size):
             end_point = 0
@@ -616,6 +624,7 @@ cdef class Circuit:
         while n>0 and gate_infolist[n-1].type<0:
             self.gate_verse.pop()
             self.gate_infolist.pop_back()
+            self.gate_clocks.pop_back()
             n-=1
 
     # cpdef void optimize(self):
@@ -756,9 +765,8 @@ cdef class Circuit:
             
     #     self.gate_verse[:] = new_gate_verse
 
-    cpdef void optimize(self):
-        '''Optimize the circuit using topological sort so prefetcher never has to look back. 
-        Also pushes back hidden gates with mutated info type'''
+    cdef void _topological_sort(self, bint is_bfs):
+        '''Pure BFS or DFS topological sort'''
         if self.gate_infolist.empty():
             return
         self.visual_queue_clear()
@@ -803,8 +811,12 @@ cdef class Circuit:
             backup.pop_front()
             queue.push_back(node)
             while not queue.empty():
-                node=queue.back()
-                queue.pop_back()
+                if is_bfs:
+                    node=queue.front()
+                    queue.pop_front()
+                else:
+                    node=queue.back()
+                    queue.pop_back()
                 info=&gate_infolist[node]
                 hash_map[node]=j
                 serial[j]=node
@@ -841,8 +853,12 @@ cdef class Circuit:
                     queue.push_back(node)
                     in_degree[node]=0
                     while not queue.empty():
-                        node=queue.back()
-                        queue.pop_back()
+                        if is_bfs:
+                            node=queue.front()
+                            queue.pop_front()
+                        else:
+                            node=queue.back()
+                            queue.pop_back()
                         info=&gate_infolist[node]
                         hash_map[node]=j
                         serial[j]=node
@@ -870,8 +886,12 @@ cdef class Circuit:
                     queue.push_back(node)
                     in_degree[node]=0
                     while not queue.empty():
-                        node=queue.back()
-                        queue.pop_back()
+                        if is_bfs:
+                            node=queue.front()
+                            queue.pop_front()
+                        else:
+                            node=queue.back()
+                            queue.pop_back()
                         info=&gate_infolist[node]
                         hash_map[node]=j
                         serial[j]=node
@@ -890,7 +910,7 @@ cdef class Circuit:
         # i is location of each hidden gate, it will be pushed to the end of queue
         for i in hidden:
             hash_map[i]=j
-            serial[j]=i    # FIX: was 'node' (last active gate) — must be 'i' (this hidden gate's old index)
+            serial[j]=i
             j+=1
         # create new info_list
         new_gate_infolist.resize(n)
@@ -905,7 +925,6 @@ cdef class Circuit:
                 profile+=1
             if new_gate_infolist[i].hitlist.size()>1:
                 sort(new_gate_infolist[i].hitlist.begin(), new_gate_infolist[i].hitlist.end())
-                
 
         self.gate_infolist.swap(new_gate_infolist)
         cdef list new_gate_verse = []
@@ -922,6 +941,31 @@ cdef class Circuit:
                     sources[index] = hash_map[sources[index]]
             new_gate_verse.append(gate)
         self.gate_verse[:] = new_gate_verse
+
+    cpdef void optimize_dfs(self):
+        '''Pure DFS topological sort (for COMPILE / sweep mode)'''
+        self.optimization_strategy = COMPILE
+        self._topological_sort(False)
+
+    cpdef void optimize_bfs(self):
+        '''Pure BFS topological sort (for SIMULATE / prop mode)'''
+        self.optimization_strategy = SIMULATE
+        self._topological_sort(True)
+
+    cpdef void optimize(self, object mode=None):
+        '''Optimize circuit based on simulation mode: DFS for COMPILE (sweep), BFS for SIMULATE (prop)'''
+        cdef int target_mode = MODE
+        if mode is not None:
+            if isinstance(mode, int):
+                target_mode = <int>mode
+            elif mode in ("compile", "sweep", "dfs"):
+                target_mode = COMPILE
+            elif mode in ("simulate", "prop", "bfs"):
+                target_mode = SIMULATE
+        if target_mode == COMPILE:
+            self.optimize_dfs()
+        else:
+            self.optimize_bfs()
 
     cpdef void generate(self, list circuit):
         '''generate the circuit from the list of info'''
@@ -1161,6 +1205,7 @@ cdef class Circuit:
     cpdef void clearcircuit(self):
         '''clear circuit/ purge every item of circuit'''
         self.gate_infolist.clear()
+        self.gate_clocks.clear()
         self.gate_verse.clear()
         for i in range(TOTAL):
             self.objlist[i].clear()
@@ -1245,6 +1290,7 @@ cdef class Circuit:
         if self.runner is not None and not self.runner.done():
             self.runner.cancel()
         self.runner=None
+        self.sync_queue_size()
         for variable in self.objlist[VARIABLE_ID]:
             if variable is not None:
                 info = &self.gate_infolist[variable.location]
@@ -1293,6 +1339,8 @@ cdef class Circuit:
                 g.reset()
             else:
                 (<IC>i).reset()
+        if not self.gate_clocks.empty():
+            memset(self.gate_clocks.data(), 0, self.gate_clocks.size() * sizeof(unsigned int))
 
     cdef void complete_task(self, Task task) noexcept nogil:
         '''Process one task called from the async drain loop on the main thread.'''
@@ -1301,16 +1349,18 @@ cdef class Circuit:
         cdef Profile* profile
         cdef Profile* end
         cdef uint8_t target_output
-        cdef unsigned int next_time
+        cdef unsigned int next_time, calc_time
+        cdef int target_loc
         cdef CPP_Gate* self_info
         cdef CPP_Gate* target
 
         cdef CPP_Gate* gate_infolist = self.gate_infolist.data()
+        cdef unsigned int* gate_clocks = self.gate_clocks.data()
         self_info = &gate_infolist[origin]
         if self_info.type == -1: return
         
         if self_info.type != VARIABLE_ID:
-            if task.time < self_info.target_time:
+            if task.time < gate_clocks[origin]:
                 return
             if self.recording and self_info.type == BUFFER_ID:
                 with gil:
@@ -1334,45 +1384,59 @@ cdef class Circuit:
             target = profile.target
             target.logic += (self_info.output == target.seed) - (profile.output == target.seed)
             target_output = target.output
-            if self_info.output == UNKNOWN:
-                target.output = UNKNOWN
+            if self_info.output != UNKNOWN:
+                target.evaluate()
             else:
-                target.compute()
+                target.output = UNKNOWN
             if target_output != target.output:
-                target.target_time = self.Global_Clock + self.Global_delay[target.type] + (self.FanIn_delay[target.type] * target.inputlimit) + (self.FanOut_delay[target.type] * target.hitlist.size())
-                self.time_queue.push(Task(profile.target - gate_infolist, target.target_time, profile.target - gate_infolist))
+                target_loc = <int>(profile.target - gate_infolist)
+                calc_time = self.Global_Clock + self.Global_delay[target.type] + (self.FanIn_delay[target.type] * target.inputlimit) + (self.FanOut_delay[target.type] * target.hitlist.size())
+                gate_clocks[target_loc] = calc_time
+                self.time_queue.push(Task(target_loc, calc_time, target_loc))
             profile.output = self_info.output
             profile += 1
         if self_info.inputlimit == INFINITE:
             with gil:
                 next_time = self.Global_Clock + (<Gate>PyList_GET_ITEM(self.gate_verse, origin)).delay_book[self_info.output]
-            self_info.target_time = next_time
+            gate_clocks[origin] = next_time
             self.time_queue.push(Task(origin, next_time, origin))
             self.time_limit.push(next_time + (self.FanOut_delay[self_info.type] * self_info.hitlist.size()))
 
+    cdef void sync_queue_size(self) noexcept nogil:
+        cdef size_t active_gates = self.gate_infolist.size() - self.hidden
+        if unlikely(active_gates > self.queue[0].size()):
+            self.queue[0].resize(active_gates)
+            self.queue[1].resize(active_gates)
+
     cdef void propagate(self, Py_ssize_t end_point) noexcept nogil:
         '''propagate the output of a gate to its targets'''
+        cdef Py_ssize_t wave_limit = self.gate_infolist.size() - self.hidden
+        if unlikely(wave_limit > self.queue[0].size()):
+            self.sync_queue_size()
+
         cdef Profile* profile
         cdef Profile* end
         cdef uint8_t target_output
         cdef Py_ssize_t index = 0, size = 0
         cdef Py_ssize_t eval = 0
-        cdef CPP_Gate** read_queue = self.queue[0]
-        cdef CPP_Gate** write_queue = self.queue[1]
+        cdef CPP_Gate** read_queue = self.queue[0].data()
+        cdef CPP_Gate** write_queue = self.queue[1].data()
         cdef CPP_Gate* self_info
         cdef CPP_Gate* target
-        cdef int i
+        cdef int i, loc
+        cdef unsigned int calc_time
 
         cdef CPP_Gate* gate_infolist = self.gate_infolist.data()            
-        cdef Py_ssize_t wave_limit = self.gate_infolist.size() - self.hidden
         while end_point > 0:
             if unlikely(wave_limit < 0):
                 self.eval_count += eval
                 for i in range(end_point):
                     self_info = read_queue[i]
+                    loc = <int>(read_queue[i] - gate_infolist)
                     self_info.flags &= ~FLAG_MARK
-                    self_info.target_time = self.Global_Clock + self.Global_delay[self_info.type] + (self.FanIn_delay[self_info.type] * self_info.inputlimit) + (self.FanOut_delay[self_info.type] * self_info.hitlist.size())
-                    self.time_queue.push(Task(read_queue[i] - gate_infolist, self_info.target_time, read_queue[i] - gate_infolist))
+                    calc_time = self.Global_Clock + self.Global_delay[self_info.type] + (self.FanIn_delay[self_info.type] * self_info.inputlimit) + (self.FanOut_delay[self_info.type] * self_info.hitlist.size())
+                    self.gate_clocks[loc] = calc_time
+                    self.time_queue.push(Task(loc, calc_time, loc))
                 with gil:
                     if self.runner is None or self.runner.done():
                         self.runner = asyncio.create_task(self.task_manager())
@@ -1391,10 +1455,10 @@ cdef class Circuit:
                     target = profile.target
                     target.logic += (self_info.output == target.seed) - (profile.output == target.seed)
                     target_output = target.output
-                    if self_info.output == UNKNOWN:
-                        target.output = UNKNOWN
+                    if self_info.output != UNKNOWN:
+                        target.evaluate()
                     else:
-                        target.compute()
+                        target.output = UNKNOWN
                     write_queue[size] = profile.target
                     size += (((target.flags & FLAG_MARK) == 0) & (target_output != target.output))
                     target.flags |= FLAG_MARK * (target_output != target.output)
@@ -1410,6 +1474,9 @@ cdef class Circuit:
         '''propagate the output of a gate to its targets using readqueue and dynamic threshold sweep'''
         if unlikely(end_point <= 0):
             return
+        cdef size_t active_gates = self.gate_infolist.size() - self.hidden
+        if unlikely(active_gates > self.queue[0].size()):
+            self.sync_queue_size()
 
         cdef Profile* profile
         cdef Profile* end
@@ -1421,13 +1488,13 @@ cdef class Circuit:
         cdef CPP_Gate* target
 
         cdef CPP_Gate* gate_infolist = self.gate_infolist.data()
-        cdef CPP_Gate** read_queue = self.queue[0]
+        cdef CPP_Gate** read_queue = self.queue[0].data()
         cdef CPP_Gate* curr = NULL
         cdef CPP_Gate* threshold = NULL
 
         # Phase 1: Evaluate inputs from read_queue, configure starting and ending threshold
         for i in range(end_point):
-            curr_gate = self.queue[0][i]
+            curr_gate = read_queue[i]
             curr_gate.flags &= ~FLAG_MARK
             new_output=curr_gate.output
             if not (curr_gate.flags & FLAG_UPDATE):
@@ -1441,10 +1508,10 @@ cdef class Circuit:
                 target = profile.target
                 target.logic += (new_output == target.seed) - (profile.output == target.seed)
                 target_output = target.output
-                if new_output == UNKNOWN:
-                    target.output = UNKNOWN
+                if new_output != UNKNOWN:
+                    target.evaluate()
                 else:
-                    target.compute()
+                    target.output = UNKNOWN
 
                 if  ((target.flags & FLAG_MARK)==0) & (target_output != target.output):
                     target.flags |= FLAG_MARK
@@ -1476,10 +1543,10 @@ cdef class Circuit:
                     target = profile.target
                     target.logic += (new_output == target.seed) - (profile.output == target.seed)
                     target_output = target.output
-                    if new_output == UNKNOWN:
-                        target.output = UNKNOWN
+                    if new_output != UNKNOWN:
+                        target.evaluate()
                     else:
-                        target.compute()
+                        target.output = UNKNOWN
                     if ((target.flags & FLAG_MARK) == 0) & (target_output != target.output):
                         target.flags |= FLAG_MARK
                         if target <= curr:

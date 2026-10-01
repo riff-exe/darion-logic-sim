@@ -24,7 +24,8 @@ cdef class Circuit:
     cdef priority_queue[Task, vector[Task], greater[Task]] time_queue
     cdef priority_queue[unsigned int, vector[unsigned int], greater[unsigned int]] time_limit
     cdef unsigned int Global_Clock
-    cdef CPP_Gate* queue[2][LIMIT]
+    cdef vector[vector[CPP_Gate*]] queue
+    cdef void sync_queue_size(self)
     cpdef object getcomponent(self, int choice)
     cpdef object getobj(self, tuple code)
     cpdef list get_components(self)

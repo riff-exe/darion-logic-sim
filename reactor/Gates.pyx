@@ -220,7 +220,7 @@ cdef class Gate:
             if not has_known:
                 info.output = UNKNOWN
                 return
-            info.compute()
+            info.evaluate()
 
     cpdef void rename(self, str name):
         '''Give the gate a display name'''
@@ -270,7 +270,6 @@ cdef class Gate:
             info.logic = 0
         info.output = UNKNOWN
         info.flags &= ~FLAG_SCHEDULED
-        info.target_time = 0
         cdef Profile* profile = info.hitlist.data()
         cdef Profile* end = profile + info.hitlist.size()
         while profile < end:
