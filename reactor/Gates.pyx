@@ -12,14 +12,14 @@ from Store cimport decode
 from libc.stdint cimport uint8_t
 from libcpp.unordered_map cimport unordered_map
 
-cdef inline void pop(vector[Profile]& hitlist,CPP_Gate* gate_infolist, int target, int pin_index):
+cdef inline void pop(vector[Profile]& hitlist,CPP_Gate* gate_infolist, CPP_Gate* target, int pin_index):
     '''Remove a specific entry from a hitlist by target gate and pin index'''
     cdef Profile* profile = hitlist.data()
     cdef Profile* end = profile + hitlist.size()
     while profile < end:
         if profile.target == target and profile.index == pin_index:
-            if gate_infolist[target].type < VARIABLE_ID:
-                gate_infolist[target].book[profile.output] -= 1
+            if target.type != VARIABLE_ID:
+                target.logic -= (profile.output == target.seed)
             profile[0] = (end-1)[0] # swap and pop
             hitlist.pop_back()
             break
@@ -27,22 +27,22 @@ cdef inline void pop(vector[Profile]& hitlist,CPP_Gate* gate_infolist, int targe
 
 cdef inline void hide(Profile& profile, CPP_Gate* gate_infolist, list gate_verse):
     '''Sever one outgoing connection and zero out the target's source slot'''
-    cdef CPP_Gate* target_info = &gate_infolist[profile.target]
-    if target_info.type < VARIABLE_ID:
-        target_info.book[profile.output] -= 1
-    target_info.invalid += 1
-    cdef Gate target_gate = <Gate>gate_verse[profile.target]
+    cdef CPP_Gate* target_info = profile.target
+    if target_info.type != VARIABLE_ID:
+        target_info.logic -= (profile.output == target_info.seed)
+    target_info.inputlimit += 1
+    cdef int target_loc = target_info - gate_infolist
+    cdef Gate target_gate = <Gate>gate_verse[target_loc]
     target_gate._sources[profile.index] = -1
     profile.output = UNKNOWN
 
 cdef inline void reveal(Profile& profile, Gate source, list gate_verse):
     '''Restore one outgoing connection and re-register the source in the target's book'''
-    cdef CPP_Gate* gate_infolist=source.location_ptr[0].data()
-    cdef CPP_Gate* target_info = &gate_infolist[profile.target]
-    if target_info.type < VARIABLE_ID:
-        target_info.book[UNKNOWN] += 1
-    target_info.invalid -= 1
-    cdef Gate target_gate = <Gate>gate_verse[profile.target]
+    cdef CPP_Gate* gate_infolist=(source.info - source.location)
+    cdef CPP_Gate* target_info = profile.target
+    target_info.inputlimit -= 1
+    cdef int target_loc = target_info - gate_infolist
+    cdef Gate target_gate = <Gate>gate_verse[target_loc]
     target_gate._sources[profile.index] = source.location
 
 
@@ -51,7 +51,7 @@ cdef class Gate:
         self.codename = name
         self.location = -1
         self.id = id
-        if id >= VARIABLE_ID:
+        if id >= SINGLE_INPUT_ID:
             self._sources = [-1]
         else:
             self._sources = [-1, -1]
@@ -69,7 +69,7 @@ cdef class Gate:
         if self.location == -1:
             output = UNKNOWN
         else:
-            output = self.location_ptr[0][self.location].output
+            output = self.info.output
         if output == LOW: return f'\033[94m{name}\033[0m'
         elif output == HIGH: return f'\033[92m{name}\033[0m'
         else: return f'\033[97m{name}\033[0m'
@@ -80,63 +80,94 @@ cdef class Gate:
     def hitlist(self):
         '''All gates this gate currently drives'''
         cdef list targets = []
-        cdef CPP_Gate* base = self.location_ptr[0].data()
+        cdef CPP_Gate* base = (self.info - self.location)
         cdef CPP_Gate* info=base+self.location
         cdef Profile* profile = info.hitlist.data()
         cdef Profile* end = profile + info.hitlist.size()
         cdef list gate_verse = self.gate_verse
         while profile < end:
-            targets.append(<Gate>(PyList_GET_ITEM(gate_verse, profile.target)))
+            targets.append(<Gate>(PyList_GET_ITEM(gate_verse, profile.target - base)))
             profile += 1
         return targets
 
     @property
+    def edge_profiles(self):
+        '''Outgoing connections: list of (target_loc, profile.output, pin_index)'''
+        cdef list res = []
+        cdef CPP_Gate* base = (self.info - self.location)
+        cdef CPP_Gate* info = base + self.location
+        cdef Profile* profile = info.hitlist.data()
+        cdef Profile* end = profile + info.hitlist.size()
+        while profile < end:
+            res.append((profile.target - base, profile.output, profile.index))
+            profile += 1
+        return res
+
+    @property
     def book(self):
         '''Input tally: counts of LOW, HIGH, UNKNOWN sources'''
-        cdef CPP_Gate* info = &self.location_ptr[0][self.location]
-        return [info.book[0], info.book[1], info.book[2]]
+        cdef CPP_Gate* gate_infolist = self.info - self.location
+        cdef int low = 0, high = 0, unknown = 0
+        cdef int s, out
+        for s in self._sources:
+            if s == -1:
+                unknown += 1
+            else:
+                out = gate_infolist[s].output
+                if out == LOW: low += 1
+                elif out == HIGH: high += 1
+                else: unknown += 1
+        return [low, high, unknown]
+
+    @property
+    def logic(self):
+        return self.info.logic
+
+    @property
+    def seed(self):
+        return self.info.seed
 
     @property
     def inputlimit(self):
         '''How many inputs this gate accepts'''
-        return self.location_ptr[0][self.location].inputlimit
+        return self.info.inputlimit
     @property 
     def scheduled(self):
         '''Whether this gate is already queued for propagation this tick'''
-        return bool(self.location_ptr[0][self.location].flags & FLAG_SCHEDULED)
+        return bool(self.info.flags & FLAG_SCHEDULED)
     
     @scheduled.setter
     def scheduled(self, bint val):
-        if val: self.location_ptr[0][self.location].flags |= FLAG_SCHEDULED
-        else: self.location_ptr[0][self.location].flags &= ~FLAG_SCHEDULED
+        if val: self.info.flags |= FLAG_SCHEDULED
+        else: self.info.flags &= ~FLAG_SCHEDULED
 
     @property
     def mark(self):
-        return bool(self.location_ptr[0][self.location].flags & FLAG_MARK)
+        return bool(self.info.flags & FLAG_MARK)
         
     @mark.setter
     def mark(self, bint val):
-        if val: self.location_ptr[0][self.location].flags |= FLAG_MARK
-        else: self.location_ptr[0][self.location].flags &= ~FLAG_MARK
+        if val: self.info.flags |= FLAG_MARK
+        else: self.info.flags &= ~FLAG_MARK
 
     @property
     def update(self):
-        return bool(self.location_ptr[0][self.location].flags & FLAG_UPDATE)
+        return bool(self.info.flags & FLAG_UPDATE)
         
     @update.setter
     def update(self, bint val):
-        if val: self.location_ptr[0][self.location].flags |= FLAG_UPDATE
-        else: self.location_ptr[0][self.location].flags &= ~FLAG_UPDATE
+        if val: self.info.flags |= FLAG_UPDATE
+        else: self.info.flags &= ~FLAG_UPDATE
 
     @property
     def output(self):
         '''Current output value of this gate'''
-        return self.location_ptr[0][self.location].output
+        return self.info.output
 
     @property
     def value(self):
         '''Stored toggle value, only meaningful for variables'''
-        return bool(self.location_ptr[0][self.location].flags & FLAG_VALUE)
+        return bool(self.info.flags & FLAG_VALUE)
     
     @property
     def sources(self):
@@ -151,60 +182,45 @@ cdef class Gate:
         return source_list
     @output.setter
     def output(self, int val):
-        self.location_ptr[0][self.location].output = val
+        self.info.output = val
     @value.setter
     def value(self, int val):
-        if val: self.location_ptr[0][self.location].flags |= FLAG_VALUE
-        else: self.location_ptr[0][self.location].flags &= ~FLAG_VALUE
+        if val: self.info.flags |= FLAG_VALUE
+        else: self.info.flags &= ~FLAG_VALUE
     @inputlimit.setter
     def inputlimit(self, int val):
-        self.location_ptr[0][self.location].inputlimit = val
-        self.location_ptr[0][self.location].invalid = val
+        self.info.inputlimit = val
         
-    @property
-    def invalid(self):
-        '''How many unconnected input pins this gate has'''
-        return self.location_ptr[0][self.location].invalid
     cdef void process(self):
         '''Recompute this gate's output from its current inputs and type
         a slower yet safer method of updating output'''
-        cdef CPP_Gate* gate_infolist=self.location_ptr[0].data()
+        cdef CPP_Gate* gate_infolist=(self.info - self.location)
         cdef CPP_Gate* info = &gate_infolist[self.location]
         cdef CPP_Gate* src_info
-        cdef uint8_t* book
         cdef int gate_type = info.type
-        cdef int limit = info.inputlimit
-        cdef int high, low, realsource
+        cdef int limit = len(self._sources)
         cdef int source_loc # Changed from Gate source to int source_loc
+        cdef bint has_known = False
 
         if MODE == DESIGN:
             info.output = UNKNOWN
             return
 
-        if gate_type >= VARIABLE_ID:
-            if gate_type == VARIABLE_ID:
-                info.output = info.flags& FLAG_VALUE
-            else:
-                source_loc = self._sources[0]
-                if source_loc == -1:
-                    info.output = UNKNOWN
-                else:
-                    src_info = &gate_infolist[source_loc]
-                    if src_info.output == UNKNOWN:
-                        info.output = UNKNOWN
-                    else:
-                        info.output = src_info.output ^ (gate_type == NOT_ID)
+        if gate_type == VARIABLE_ID:
+            info.output = info.flags & FLAG_VALUE
         else:
-            book = info.book
-            high = book[HIGH]
-            low  = book[LOW]
-            realsource = high + low
-            if likely(realsource == limit) or unlikely(realsource and realsource + book[UNKNOWN] == limit):
-                if gate_type <= NAND_ID:   info.output = (low == 0) ^ (gate_type & 1)
-                elif gate_type <= NOR_ID:  info.output = (high > 0) ^ (gate_type & 1)
-                else:                      info.output = (high & 1) ^ (gate_type & 1)
-            else:
+            if info.inputlimit > 0:
                 info.output = UNKNOWN
+                return
+            has_known = False
+            for source_loc in self._sources:
+                if source_loc != -1 and gate_infolist[source_loc].output != UNKNOWN:
+                    has_known = True
+                    break
+            if not has_known:
+                info.output = UNKNOWN
+                return
+            info.evaluate()
 
     cpdef void rename(self, str name):
         '''Give the gate a display name'''
@@ -213,11 +229,12 @@ cdef class Gate:
     cpdef void deregister(self):
         '''Remove the gate from the global list and mark its slot as deleted'''
         self.all_gates[self.location] = None
-        self.location_ptr[0][self.location].type = -1
+        self.info.type = -1
+        self.info.flags &= ~FLAG_SCHEDULED
 
     cdef void connect(self, int source, int index):
         '''Wire a source gate into this gate's input slot at index'''
-        cdef CPP_Gate* gate_infolist=self.location_ptr[0].data()
+        cdef CPP_Gate* gate_infolist=(self.info - self.location)
         cdef CPP_Gate* self_info = &gate_infolist[self.location]
         if self_info.type == VARIABLE_ID or self._sources[index] != -1:
             return
@@ -226,37 +243,33 @@ cdef class Gate:
         if src_info.output == UNKNOWN:
             (<Gate>PyList_GET_ITEM(self.gate_verse, source)).process()
             
-        src_info.hitlist.emplace_back(self.location, index, src_info.output)
+        src_info.hitlist.emplace_back(&gate_infolist[self.location], index, src_info.output)
         self._sources[index] = source
-        self_info.invalid -= 1
-        if self.id<VARIABLE_ID:
-            self_info.book[src_info.output] += 1
+        self_info.inputlimit -= 1
+        if self.id!=VARIABLE_ID:
+            self_info.logic += (src_info.output == self_info.seed)
         self.process()
 
     cdef void disconnect(self, int index):
         '''Remove whatever is wired into input slot at index and clear the output'''
-        cdef CPP_Gate* gate_infolist=self.location_ptr[0].data()
+        cdef CPP_Gate* gate_infolist=(self.info - self.location)
         cdef CPP_Gate* self_info = &gate_infolist[self.location]
         if self_info.type == VARIABLE_ID or self._sources[index] == -1:
             return
         cdef int src_loc = self._sources[index]
         cdef CPP_Gate* src_info = &gate_infolist[src_loc]
-        pop(src_info.hitlist, gate_infolist, self.location, index)
+        pop(src_info.hitlist, gate_infolist, &gate_infolist[self.location], index)
         self._sources[index] = -1
-        self_info.invalid += 1
+        self_info.inputlimit += 1
         self_info.output = UNKNOWN
 
     cdef void reset(self):
         '''Move all counted inputs back to unknown and set output to unknown'''
-        cdef CPP_Gate* info = &self.location_ptr[0][self.location]
-        cdef uint8_t* book
-        if info.type < VARIABLE_ID:
-            book = info.book
-            book[2] += book[0] + book[1]
-            book[0] = book[1] =  0
+        cdef CPP_Gate* info = self.info
+        if info.type != VARIABLE_ID:
+            info.logic = 0
         info.output = UNKNOWN
         info.flags &= ~FLAG_SCHEDULED
-        info.target_time = 0
         cdef Profile* profile = info.hitlist.data()
         cdef Profile* end = profile + info.hitlist.size()
         while profile < end:
@@ -271,10 +284,9 @@ cdef class Gate:
         cdef list sources
         cdef int source_loc
         cdef CPP_Gate* src_info
-        cdef uint8_t* book
         cdef Py_ssize_t n
         cdef Profile* hitlist
-        cdef CPP_Gate* gate_infolist=self.location_ptr[0].data()
+        cdef CPP_Gate* gate_infolist=(self.info - self.location)
         cdef CPP_Gate* info = &gate_infolist[self.location]
         n = info.hitlist.size()
         hitlist = info.hitlist.data()
@@ -288,13 +300,12 @@ cdef class Gate:
                 source_loc = sources[i]
                 if source_loc != -1:
                     src_info = &gate_infolist[source_loc]
-                    pop(src_info.hitlist,gate_infolist, self.location, i)
+                    pop(src_info.hitlist,gate_infolist, &gate_infolist[self.location], i)
 
         # 3. Zero out own state
         info.output = UNKNOWN
-        if info.type < VARIABLE_ID:
-            book = info.book
-            book[0] = book[1] = book[2] = 0
+        if info.type != VARIABLE_ID:
+            info.logic = 0
 
     cdef void reveal(self):
         '''Re-attach this gate to the live graph and recompute its output'''
@@ -303,15 +314,15 @@ cdef class Gate:
         cdef Py_ssize_t n = len(sources)
         cdef int source_loc
         cdef CPP_Gate* src_info
-        cdef CPP_Gate* gate_infolist=self.location_ptr[0].data()
+        cdef CPP_Gate* gate_infolist=(self.info - self.location)
         cdef CPP_Gate* info = &gate_infolist[self.location]
         if info.type != VARIABLE_ID:
             for i in range(n):
                 source_loc = sources[i]
                 if source_loc != -1:
                     src_info = &gate_infolist[source_loc]
-                    src_info.hitlist.emplace_back(self.location, i, src_info.output)
-                    info.book[src_info.output] += 1
+                    src_info.hitlist.emplace_back(&gate_infolist[self.location], i, src_info.output)
+                    info.logic += (src_info.output == info.seed)
 
         n = info.hitlist.size()
         cdef Profile* hitlist = info.hitlist.data()
@@ -322,18 +333,17 @@ cdef class Gate:
 
     cpdef bint setlimits(self, int size):
         '''Resize the input list; returns False if slots are in use and can't be trimmed'''
-        cdef CPP_Gate* info = &self.location_ptr[0][self.location]
+        cdef CPP_Gate* info = self.info
         cdef int i
         cdef int current
-        if size < 2 or info.type >= VARIABLE_ID:
+        if size < 2 or info.type >= SINGLE_INPUT_ID:
             return False
-        current = info.inputlimit
+        current = len(self._sources)
 
         if size > current:
             for _ in range(size - current):
                 self._sources.append(-1)
-            info.inputlimit = size
-            info.invalid += (size - current)
+            info.inputlimit += (size - current)
             self.process()
             return True
         elif size < current:
@@ -342,40 +352,39 @@ cdef class Gate:
                     return False
             for i in range(current - size):
                 self._sources.pop()
-            info.inputlimit = size
-            info.invalid -= (current - size)
+            info.inputlimit -= (current - size)
             self.process()
             return True
         return False
 
     cpdef str getoutput(self):
         '''Return the output as a human-readable character: T, F, E, or X'''
-        cdef int output=self.location_ptr[0][self.location].output
+        cdef int output=self.info.output
         if output == HIGH: return 'T'
         elif output == LOW: return 'F'
         else: return 'X'
         
     cpdef list full_data(self):
         '''Serialise the gate with full connection info, used for saving the circuit'''
-        cdef CPP_Gate* info = &self.location_ptr[0][self.location]
+        cdef CPP_Gate* info = self.info
         cdef list dictionary = [
             self.custom_name,
             self.id,
             self.location,
-            info.inputlimit,
+            len(self._sources) if self.id!=VARIABLE_ID else self.inputlimit,
             bool(info.flags & FLAG_VALUE) if info.type == VARIABLE_ID else list(self._sources),
             ]
         return dictionary
 
     cpdef list partial_data(self):
         '''Serialise the gate with only the in-cluster connections, for copy/paste and IC export'''
-        cdef CPP_Gate* gate_infolist=self.location_ptr[0].data()
+        cdef CPP_Gate* gate_infolist=(self.info - self.location)
         cdef CPP_Gate* info = &gate_infolist[self.location]
         cdef list dictionary = [
             self.custom_name,
             self.id,
             self.location,
-            info.inputlimit,
+            len(self._sources) if self.id!=VARIABLE_ID else self.inputlimit,
             bool(info.flags & FLAG_VALUE) if info.type == VARIABLE_ID else [src_loc if src_loc != -1 and (gate_infolist[src_loc].flags & FLAG_MARK) else -1 for src_loc in self._sources],
             ]
         return dictionary
@@ -383,7 +392,7 @@ cdef class Gate:
     cdef void clone(self, list dictionary, unordered_map[int, int]& pseudo):
         '''Restore gate state from serialised data, remapping source locations via pseudo'''
         self.custom_name = dictionary[CUSTOM_NAME]
-        cdef CPP_Gate* info = &self.location_ptr[0][self.location]
+        cdef CPP_Gate* info = self.info
         if info.type == VARIABLE_ID:
             if dictionary[VALUE]: info.flags |= FLAG_VALUE
             else: info.flags &= ~FLAG_VALUE
@@ -396,7 +405,7 @@ cdef class Gate:
     cpdef void load_to_cluster(self, list cluster):
         '''Mark this gate as scheduled and add it to the copy cluster'''
         cluster.append(self.location)
-        self.location_ptr[0][self.location].flags |= FLAG_MARK
+        self.info.flags |= FLAG_MARK
 
     cpdef bint set_pulse(self, int val, int time_type):
         if self.id != VARIABLE_ID or time_type < 0 or time_type > 2 or val < 0 or val > 65535:
@@ -407,7 +416,7 @@ cdef class Gate:
     cpdef bint clock(self):
         if self.id != VARIABLE_ID:
             return False
-        self.location_ptr[0][self.location].inputlimit = 0
+        self.info.inputlimit = INFINITE
         return True
 
 cdef class Variable(Gate):

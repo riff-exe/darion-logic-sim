@@ -16,3 +16,10 @@ cpdef void set_DELAY(double delay):
 
 cpdef double get_DELAY():
     return DELAY
+
+cpdef void set_UI_MODE(bint mode):
+    global UI_MODE
+    UI_MODE = mode
+
+cpdef bint get_UI_MODE():
+    return UI_MODE

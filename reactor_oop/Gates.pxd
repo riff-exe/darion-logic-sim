@@ -1,0 +1,148 @@
+# distutils: language = c++
+from Const cimport HIGH, LOW, UNKNOWN, DESIGN, SIMULATE, MODE
+from libc.stdint cimport uint16_t, uint8_t, int8_t
+cdef extern from "<vector>" namespace "std" nogil:
+    cdef cppclass vector[T, ALLOCATOR=*]:
+        cppclass iterator:
+            T& operator*()
+            iterator operator++()
+            bint operator!=(iterator)
+            bint operator==(iterator)
+
+        vector()
+        T& operator[](int)
+        T& at(int)
+        T& front()
+        T& back()
+        T* data()
+        void push_back(T&)
+        void emplace_back(...)
+        void pop_back()
+        void clear()
+        void reserve(int)
+        void resize(int)
+        bint empty()
+        int size()
+        int capacity()
+        iterator begin()
+        iterator end()
+
+cdef class Gate
+cdef class Variable
+
+cdef extern from "Profile.h":
+    cdef cppclass Profile:
+        CPP_Gate* target
+        uint8_t index
+        uint8_t output
+        Profile()
+        Profile(CPP_Gate* target, uint8_t pin_index, uint8_t output)
+    cdef cppclass Task:
+        int gate_loc
+        unsigned int time
+        int location
+        Task() nogil
+        Task(int gate_loc, unsigned int time, int location) nogil
+        bint operator>(const Task& other) nogil
+    # Polymorphic gate base — subclasses override compute() per gate type.
+    # Cython accesses fields by name (ptr->field); the vtable pointer is
+    # invisible to named member access and causes no offset issue.
+    cdef cppclass CPP_Gate:
+        void* gate
+        int8_t type
+        uint8_t output
+        uint8_t inputlimit
+        uint8_t mark
+        uint8_t update
+        uint8_t value
+        uint8_t scheduled
+        uint8_t logic    # count of inputs matching seed
+        uint8_t seed     # triggering input value for this gate type
+        vector[Profile] hitlist
+        CPP_Gate()
+        CPP_Gate(void* g, int8_t t, uint8_t lim)
+        void compute() nogil          # virtual dispatch to typed subclass
+    CPP_Gate* make_gate(void* g, int8_t type_id, uint8_t lim) nogil
+
+cdef void hide(Profile& profile)
+cdef void reveal(Profile& profile, Gate source)
+cdef void pop(vector[Profile]& hitlist, CPP_Gate* target, int pin_index)
+
+cdef class Gate:
+    cdef public uint8_t id
+    cdef public int location
+    cdef CPP_Gate* info        # points to a typed subclass (AND_Gate, NOT_Gate…)
+
+    cdef public list sources
+
+    cdef public tuple code
+    cdef public str codename
+    cdef public str custom_name
+
+    cdef void process(self)
+    cdef void compute(self)
+    cpdef void rename(self, str name)
+    cdef void connect(self, Gate source, int index)
+    cdef void disconnect(self, int index)
+    cdef void reset(self)
+    cdef void hide(self)
+    cdef void reveal(self)
+    cpdef bint setlimits(self, int size)
+    cpdef str getoutput(self)
+    cpdef list full_data(self)
+    cpdef list partial_data(self)
+    cpdef void clone(self, list dictionary, dict pseudo)
+    cpdef void load_to_cluster(self, list cluster)
+
+cdef class MultiInputGate(Gate):
+    cpdef bint setlimits(self, int size)
+
+cdef class AND(MultiInputGate):
+    cdef void compute(self)
+
+cdef class NAND(MultiInputGate):
+    cdef void compute(self)
+
+cdef class OR(MultiInputGate):
+    cdef void compute(self)
+
+cdef class NOR(MultiInputGate):
+    cdef void compute(self)
+
+cdef class XOR(MultiInputGate):
+    cdef void compute(self)
+
+cdef class XNOR(MultiInputGate):
+    cdef void compute(self)
+
+cdef class SingleInputGate(Gate):
+    cpdef bint setlimits(self, int size)
+
+cdef class BUFFER(SingleInputGate):
+    cdef void compute(self)
+
+cdef class Probe(BUFFER):
+    pass
+
+cdef class NOT(SingleInputGate):
+    cdef void compute(self)
+
+cdef class IC_Input(SingleInputGate):
+    cdef void compute(self)
+
+cdef class IC_Output(SingleInputGate):
+    cdef void compute(self)
+
+cdef class Variable(Gate):
+    cdef void process(self)
+    cdef void compute(self)
+    cdef void connect(self, Gate source, int index)
+    cdef void disconnect(self, int index)
+    cdef void reset(self)
+    cdef void hide(self)
+    cdef void reveal(self)
+    cpdef bint setlimits(self, int size)
+    cpdef list full_data(self)
+    cpdef list partial_data(self)
+    cpdef void clone(self, list dictionary, dict pseudo)
+

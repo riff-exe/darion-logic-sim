@@ -140,7 +140,9 @@ class Circuit:
         """Connect source -> target at pin index."""
         prev = target.output
         target.connect(source, index)
-        self.visual_queue.append(source)
+        if not source.update:
+            self.visual_queue.append(source)
+            source.update=True
         if prev != target.output:
             self.propagate(target)
     
@@ -150,7 +152,7 @@ class Circuit:
 
     def toggle(self, target: Variable, value: int):
         """Switch a variable on/off."""
-        if target.scheduled:return
+        if self.clocks_enabled and target.scheduled:return
         if value != target.output:
             target.value = value
             target.output = value if get_MODE() != DESIGN else UNKNOWN
@@ -160,20 +162,19 @@ class Circuit:
         self.clocks_enabled = enable
         if enable:
             for gate in self.objlist[VARIABLE_ID]:
-                if gate is not None and getattr(gate, 'inputlimit', None) == 0:
-                    if not gate.scheduled:
-                        next_time = self.Global_Clock + gate.book[PRIMARY]
-                        gate.target_time = next_time
-                        heapq.heappush(self.time_queue, Task(gate, next_time, gate.location))
-                        gate.scheduled = True
+                if gate is not None and gate.inputlimit == INFINITE:
+                    gate.scheduled=True
+                    next_time = self.Global_Clock + gate.book[PRIMARY]
+                    gate.target_time = next_time
+                    heapq.heappush(self.time_queue, Task(gate, next_time, gate.location))
             if self.runner is None or self.runner.done():
                 self.runner = asyncio.create_task(self.task_manager())
         else:
             for gate in self.objlist[VARIABLE_ID]:
-                if gate is not None and getattr(gate, 'inputlimit', None) == 0:
+                if gate is not None:
                     gate.scheduled = False
 
-    def batch_toggle(self, batch: list, batch_size: int = 0) -> float:
+    def batch_toggle(self, batch: list, batch_size: int = 0, perf_trace: bool = False) -> float:
         """toggles multiple variables for performance"""
         if getattr(self, '_loc_map_counter', -1) != self.counter:
             self._location_map = {g.location: g for g in self.objlist[VARIABLE_ID] if g is not None}
@@ -184,6 +185,14 @@ class Circuit:
         if batch_size <= 0:
             batch_size = n
             
+        if perf_trace:
+            try:
+                fd = os.open("/tmp/rx_perf_ctrl", os.O_WRONLY | getattr(os, 'O_NONBLOCK', 0))
+                os.write(fd, b"enable\n")
+                os.close(fd)
+            except Exception:
+                pass
+
         start = time.perf_counter_ns()
         for i in range(0, n):
                 location, value = batch[i]
@@ -194,6 +203,15 @@ class Circuit:
                     self.propagate(gate)
                     
         end = time.perf_counter_ns()
+
+        if perf_trace:
+            try:
+                fd = os.open("/tmp/rx_perf_ctrl", os.O_WRONLY | getattr(os, 'O_NONBLOCK', 0))
+                os.write(fd, b"disable\n")
+                os.close(fd)
+            except Exception:
+                pass
+
         return (end - start) / 1000000.0
 
     def disconnect(self, target: Gate, index: int):
@@ -288,7 +306,7 @@ class Circuit:
         if outputs is not None:
             gate_list = outputs
         else:
-            gate_list = [item for item in self.objlist[PROBE_ID] if item is not None]
+            gate_list = [item for item in self.objlist[BUFFER_ID] if item is not None]
 
         raw_rows = self.table(variables, gate_list)
 
@@ -481,8 +499,8 @@ class Circuit:
         queue=[]
         index=0
         size=0
-        outputs=[i for i in self.objlist[OUTPUT_PIN_ID] if i is not None]
-        inputs=[i for i in self.objlist[INPUT_PIN_ID] if i is not None]
+        outputs=[i for i in self.objlist[IC_OUTPUT_PIN_ID] if i is not None]
+        inputs=[i for i in self.objlist[IC_INPUT_PIN_ID] if i is not None]
         for gate in outputs+inputs:
             gate.mark=True
             queue.append(gate)
@@ -490,11 +508,11 @@ class Circuit:
         index=len(outputs)
         while index<size:
             gate = queue[index]
-            if gate.id == INPUT_PIN_ID and gate.sources[0] is not None:
+            if gate.id == IC_INPUT_PIN_ID and gate.sources[0] is not None:
                 for profile in gate.hitlist:
                     target = profile.target
                     target.sources[profile.index] = gate.sources[0]
-            elif gate.id==OUTPUT_PIN_ID and gate.hitlist:
+            elif gate.id==IC_OUTPUT_PIN_ID and gate.hitlist:
                 for profile in gate.hitlist:
                     target = profile.target
                     target.sources[profile.index] = gate.sources[0]
@@ -512,7 +530,7 @@ class Circuit:
             my_ic.addgate(output_pin)
         for index in range(pins,size):
             gate = queue[index]
-            if gate.id >= INPUT_PIN_ID:
+            if gate.id >= IC_INPUT_PIN_ID:
                 continue
             my_ic.addgate(gate)
         my_ic.counter = size
@@ -528,16 +546,16 @@ class Circuit:
     def ic_pin_change(self):
         for var in self.objlist[VARIABLE_ID]:
             if var is not None:
-                var.code=(INPUT_PIN_ID,len(self.objlist[INPUT_PIN_ID]))
-                var.id=INPUT_PIN_ID
-                self.objlist[INPUT_PIN_ID].append(var)
+                var.code=(IC_INPUT_PIN_ID,len(self.objlist[IC_INPUT_PIN_ID]))
+                var.id=IC_INPUT_PIN_ID
+                self.objlist[IC_INPUT_PIN_ID].append(var)
         self.objlist[VARIABLE_ID].clear()
-        for probe in self.objlist[PROBE_ID]:
+        for probe in self.objlist[BUFFER_ID]:
             if probe is not None:
-                probe.code=(OUTPUT_PIN_ID,len(self.objlist[OUTPUT_PIN_ID]))
-                probe.id=OUTPUT_PIN_ID
-                self.objlist[OUTPUT_PIN_ID].append(probe)
-        self.objlist[PROBE_ID].clear()
+                probe.code=(IC_OUTPUT_PIN_ID,len(self.objlist[IC_OUTPUT_PIN_ID]))
+                probe.id=IC_OUTPUT_PIN_ID
+                self.objlist[IC_OUTPUT_PIN_ID].append(probe)
+        self.objlist[BUFFER_ID].clear()
 
     def reorder(self,gate:Gate|IC,index:int):
         lst=self.objlist[gate.id]
@@ -558,12 +576,12 @@ class Circuit:
             crct.save_as_ic(location, ic_name, tag, description, pin_orientations=pin_orientations)
             return
 
-        if len(self.objlist[VARIABLE_ID]) or len(self.objlist[PROBE_ID]):
+        if len(self.objlist[VARIABLE_ID]) or len(self.objlist[BUFFER_ID]):
             self.ic_pin_change()
-        for gate in self.objlist[INPUT_PIN_ID]:
+        for gate in self.objlist[IC_INPUT_PIN_ID]:
             if gate and gate.sources[0] is not None:
                 raise ValueError('Input Pin has extra sources')
-        for gate in self.objlist[OUTPUT_PIN_ID]:
+        for gate in self.objlist[IC_OUTPUT_PIN_ID]:
             if gate and gate.hitlist:
                 raise ValueError('Output Pin has extra targets')
 
@@ -704,7 +722,7 @@ class Circuit:
         while self.time_queue:
             n=len(self.time_queue)
             for i in range(n):
-                while self.time_queue and self.time_queue[0].gate.inputlimit==0:
+                while self.time_queue and self.time_queue[0].gate.inputlimit == INFINITE:
                     await asyncio.sleep(Const.DELAY)
                     self.complete_task(heapq.heappop(self.time_queue))
                     if self.time_limit:
@@ -724,16 +742,12 @@ class Circuit:
         # --- 1. TIMESTAMP VALIDATION ---
         
         if gate.id != VARIABLE_ID:
-            # print(f' {gate.codename} is scheduled:{gate.scheduled} output={gate.output}, time={task.time} orig={gate.target_time}')
-
             if task.time < gate.target_time:return # absorb glitch
-            if self.recording and gate.id == PROBE_ID:
+            if self.recording and gate.id == BUFFER_ID:
                 _tracer.record(gate, self.Global_Clock)
         # Root variables/clocks
         else:
-            if not gate.scheduled:
-                return
-            if gate.inputlimit == 0:
+            if gate.scheduled and gate.inputlimit == INFINITE:
                 gate.value ^= 1
                 gate.output = gate.value
                 if self.recording:
@@ -743,7 +757,6 @@ class Circuit:
             gate.update = True
             self.visual_queue.append(gate)
             
-        gate.scheduled = False
         new_output = gate.output
         
         for profile in gate.hitlist:
@@ -758,7 +771,7 @@ class Circuit:
                 limit = target.inputlimit
                 
                 # Logic resolution
-                if gate_type > VARIABLE_ID:
+                if gate_type >= BUFFER_ID:
                     target_output = new_output if new_output > HIGH else new_output ^ (gate_type == NOT_ID)
                 else:
                     book = target.book
@@ -792,7 +805,7 @@ class Circuit:
                     )
                 profile.output = new_output
 
-        if gate.inputlimit == 0:
+        if gate.inputlimit == INFINITE:
             next_time = self.Global_Clock + gate.book[gate.output]
             gate.target_time = next_time
             heapq.heappush(
@@ -804,7 +817,6 @@ class Circuit:
                 self.time_limit, 
                 next_time + (FanOut_delay[gate.id] * len(gate.hitlist))
             )
-            gate.scheduled = True
 
     def propagate(self, origin: Gate):
         """Double-buffer, fixed-size queue — mirrors reactor's queue[2][LIMIT] pattern."""
@@ -820,15 +832,13 @@ class Circuit:
                 for i in range(read_end):
                     gate = read_buf[i]
                     gate.mark=False
-                    if not gate.scheduled:
-                        calc_delay = self.Global_Clock+(
-                            Global_delay[gate.id] + 
-                            (FanIn_delay[gate.id] * gate.inputlimit) + 
-                            (FanOut_delay[gate.id] * len(gate.hitlist))
-                        )
-                        gate.target_time=calc_delay
-                        heapq.heappush(self.time_queue, Task(gate, calc_delay, gate.location))
-                        gate.scheduled = True
+                    calc_delay = self.Global_Clock+(
+                        Global_delay[gate.id] + 
+                        (FanIn_delay[gate.id] * gate.inputlimit) + 
+                        (FanOut_delay[gate.id] * len(gate.hitlist))
+                    )
+                    gate.target_time=calc_delay
+                    heapq.heappush(self.time_queue, Task(gate, calc_delay, gate.location))
                 if self.runner is None or self.runner.done():
                     self.runner=asyncio.create_task(self.task_manager())
                 return
@@ -907,7 +917,7 @@ class Circuit:
                         limit = target.inputlimit
                         if gate_type<0:
                             continue
-                        if gate_type>VARIABLE_ID:
+                        if gate_type>=BUFFER_ID:
                             if new_output>HIGH:target_output = new_output
                             else:target_output = new_output ^ (gate_type == NOT_ID)
                         else:
@@ -955,3 +965,9 @@ class Circuit:
     def visual_queue_size(self) -> int:
         """Return the size of the visual queue."""
         return len(self.visual_queue)
+
+    def activate(self):
+        """Activate or deactivate UI mode."""
+        set_UI_MODE(True)
+
+    

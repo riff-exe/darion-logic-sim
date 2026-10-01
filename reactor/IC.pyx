@@ -25,7 +25,8 @@ cdef class IC:
         self.tag = ''
         self.description = ''
         self.pin_orientations = [[], []]
-        self.gate_infolist_ptr=NULL
+        self.gate_infolist_ptr = NULL
+        self.gate_clocks_ptr = NULL
 
     def __repr__(self):
         return self.codename if self.custom_name == '' else self.custom_name
@@ -35,12 +36,12 @@ cdef class IC:
 
     cpdef object getcomponent(self, int choice):
         '''Get a gate from the store and register it under the right pin group'''
-        cdef object gt = get(choice, self.gate_infolist_ptr[0],self.gate_verse)
+        cdef object gt = get(choice, self.gate_infolist_ptr[0], self.gate_clocks_ptr[0], self.gate_verse)
         if gt:
-            if gt.id == INPUT_PIN_ID:
+            if gt.id == IC_INPUT_PIN_ID:
                 rank = len(self.inputs)
                 self.inputs.append(gt)
-            elif gt.id == OUTPUT_PIN_ID:
+            elif gt.id == IC_OUTPUT_PIN_ID:
                 rank = len(self.outputs)
                 self.outputs.append(gt)
             else:
@@ -53,10 +54,10 @@ cdef class IC:
     cpdef void addgate(self, object source):
         '''Add an already-existing gate into the IC's pin groups
         this is for ic creation'''
-        if source.id == INPUT_PIN_ID:
+        if source.id == IC_INPUT_PIN_ID:
             rank = len(self.inputs)
             self.inputs.append(source)
-        elif source.id == OUTPUT_PIN_ID:
+        elif source.id == IC_OUTPUT_PIN_ID:
             rank = len(self.outputs)
             self.outputs.append(source)
         else:
@@ -169,7 +170,7 @@ cdef class IC:
             for index, source_loc in enumerate(<list>pin_in._sources):
                 if source_loc != -1:
                     src_info = &gate_infolist[source_loc]
-                    pop(src_info.hitlist,gate_infolist, pin_in.location, index)
+                    pop(src_info.hitlist,gate_infolist, &gate_infolist[pin_in.location], index)
 
     cpdef void reveal(self):
         '''Plug the IC back into the live graph — re-registers inputs and reconnects output targets'''
@@ -188,7 +189,8 @@ cdef class IC:
             source_loc = pin_in._sources[0]
             if source_loc != -1:
                 src_info = &gate_infolist[source_loc]
-                src_info.hitlist.emplace_back(pin_in.location, 0, src_info.output)
+                src_info.hitlist.emplace_back(&gate_infolist[pin_in.location], 0, src_info.output)
+                pin_in.info.logic+=(src_info.output==pin_in.info.seed)
             pin_in.process()
 
         # Reconnect output targets via hitlist
@@ -237,7 +239,7 @@ cdef class IC:
                 p = pin_info.hitlist.data()
                 pend = p + pin_info.hitlist.size()
                 while p < pend:
-                    targets.append(str(<Gate>PyList_GET_ITEM(gate_verse, p.target)))
+                    targets.append(str(<Gate>PyList_GET_ITEM(gate_verse, p.target - gate_infolist)))
                     p += 1
                 print(f"    {pin.codename}: out={pin.getoutput()}, to={', '.join(targets) if targets else 'None'}")
 
@@ -254,7 +256,7 @@ cdef class IC:
                 p = pin_info.hitlist.data()
                 pend = p + pin_info.hitlist.size()
                 while p < pend:
-                    tgt.append(str(<Gate>PyList_GET_ITEM(gate_verse, p.target)))
+                    tgt.append(str(<Gate>PyList_GET_ITEM(gate_verse, p.target - gate_infolist)))
                     p += 1
                 tgt_str = ", ".join(tgt) if tgt else "None"
                 print(f"    {pin.codename}: out={pin.getoutput()}, sources={ch_str}, targets={tgt_str}")

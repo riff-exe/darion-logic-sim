@@ -35,17 +35,23 @@ cdef class Circuit:
     cdef priority_queue[Task, vector[Task], greater[Task]] time_queue
     cdef priority_queue[unsigned int, vector[unsigned int], greater[unsigned int]] time_limit
     cdef deque[int] visual_queue   # C++ deque of dirty gate locations for UI consumer
-    cdef int queue[2][LIMIT]
+    cdef vector[vector[CPP_Gate*]] queue
     cdef vector[CPP_Gate] gate_infolist
+    cdef vector[unsigned int] gate_clocks
     cpdef object getcomponent(self, int choice)
     cpdef object getobj(self, tuple code)
     cpdef list get_components(self)
     cpdef list get_variables(self)
     cpdef list get_ics(self)
+    cpdef list hitlist_mem_layout(self)
     cpdef void listComponent(self)
     cpdef void listVar(self)
+    cdef public int optimization_strategy
+    cdef void _topological_sort(self, bint is_bfs)
     cpdef bint setlimits(self, Gate gate, int size)
-    cpdef void optimize(self)
+    cpdef void optimize(self, object mode=*)
+    cpdef void optimize_dfs(self)
+    cpdef void optimize_bfs(self)
     cpdef void connect(self, Gate target, int source, int index)
     cpdef void toggle(self, int target, int value)
     cpdef void enable_all_clocks(self, bint enable=*)
@@ -76,13 +82,14 @@ cdef class Circuit:
     cpdef void copy(self, list components)
     cpdef list paste(self)
     cpdef void transfer_info(self, Gate gate, int id)
-    cdef void complete_task(self, Task task) nogil
-    cdef void propagate(self, int origin) nogil
-    cdef void sweep(self, int origin) nogil
-    cpdef double batch_toggle(self, list batch, int batch_size=*)
+    cdef void complete_task(self, Task task) noexcept nogil
+    cdef void sync_queue_size(self) noexcept nogil
+    cdef void propagate(self, Py_ssize_t end_point) noexcept nogil
+    cdef void sweep(self, Py_ssize_t end_point) noexcept nogil
+    cpdef double batch_toggle(self, list batch, int batch_size=*, bint perf_trace=*)
     cpdef list geometry(self)
-    cdef void batch_propagate(self, Py_ssize_t end_point) nogil
     cpdef bint visual_queue_empty(self)
     cpdef void visual_queue_clear(self)
     cpdef int pop_visual_queue(self)
     cpdef int visual_queue_size(self)
+    cpdef void activate(self)

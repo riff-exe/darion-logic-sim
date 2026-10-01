@@ -9,8 +9,10 @@ PRIMARY = 2
 DESIGN = 0
 SIMULATE = 1
 COMPILE = 3
+BATCH = 4
 
 LIMIT = 500_000
+INFINITE = 255
 
 AND_ID = 0
 NAND_ID = 1
@@ -18,11 +20,11 @@ OR_ID = 2
 NOR_ID = 3
 XOR_ID = 4
 XNOR_ID = 5
-VARIABLE_ID = 6
+BUFFER_ID = 6
 NOT_ID = 7
-PROBE_ID = 8
-INPUT_PIN_ID = 9
-OUTPUT_PIN_ID = 10
+IC_INPUT_PIN_ID =8
+VARIABLE_ID = 9
+IC_OUTPUT_PIN_ID = 10
 IC_ID = 11
 TOTAL = 12
 
@@ -66,3 +68,13 @@ def set_DELAY(delay):
 
 def get_DELAY():
     return DELAY
+
+UI_MODE = False
+
+def set_UI_MODE(mode: bool):
+    global UI_MODE
+    UI_MODE = mode
+
+def get_UI_MODE() -> bool:
+    return UI_MODE
+

@@ -25,7 +25,7 @@ def pop(hitlist: list[Profile], target: Gate, pin_index: int):
     """Linear scan, swap-with-last, pop."""
     for i, p in enumerate(hitlist):
         if p.target is target and p.index == pin_index:
-            if target.id<VARIABLE_ID:
+            if target.id<BUFFER_ID:
                 target.book[p.output]-=1
             hitlist[i] = hitlist[-1]
             hitlist.pop()
@@ -58,7 +58,7 @@ class Gate:
         self.id = id
         self.codename = name
         self.hitlist: list[Profile] = []
-        if id >= VARIABLE_ID:
+        if id >= BUFFER_ID:
             self.inputlimit = 1
             self.sources = [None]
         else:
@@ -152,14 +152,13 @@ class Gate:
 
     def reset(self):
         """Reset to UNKNOWN state."""
-        if self.id<VARIABLE_ID:
+        if self.id<BUFFER_ID:
             book = self.book
             book[UNKNOWN] += book[LOW] + book[HIGH] 
             book[LOW] = book[HIGH] = 0
         self.output = UNKNOWN        
         for profile in self.hitlist:
             profile.output = UNKNOWN
-        self.scheduled = False
         self.target_time = -1.0
 
     def hide(self):
@@ -171,7 +170,7 @@ class Gate:
                 if source is not None:
                     pop(source.hitlist, self, i)
         self.output = UNKNOWN
-        if self.id<VARIABLE_ID:
+        if self.id<BUFFER_ID:
             self.book[:]=[0,0,0]
 
     def reveal(self):
@@ -187,7 +186,7 @@ class Gate:
         self.process()
 
     def setlimits(self, size: int) -> bool:
-        if size < 2 or self.id>=VARIABLE_ID:
+        if size < 2 or self.id>=BUFFER_ID:
             return False
         if size > self.inputlimit:
             for _ in range(size - self.inputlimit):
@@ -256,10 +255,10 @@ class Gate:
         self.book[time_type]=val
         return True
 
-    def clock(self):
+    def clock(self, enable: bool = True):
         if self.id!=VARIABLE_ID:
             return False
-        self.inputlimit=0
+        self.inputlimit=INFINITE
         return True
 
 class Variable(Gate):

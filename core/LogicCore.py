@@ -18,3 +18,4 @@ else:
     from IC import IC
     
 logic = Circuit()
+logic.activate()

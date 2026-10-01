@@ -1,0 +1,630 @@
+"""
+unified_memory.py
+=================
+Universal Memory Benchmark: Measures the true RAM footprint (in MB) of loading 
+ANY ISCAS circuit (Combinational or Sequential/ISCAS89) across 4 simulation engines.
+"""
+
+import os
+import sys
+import re
+import argparse
+import json
+import subprocess
+import shutil
+
+try:
+    import psutil
+except ImportError:
+    print("[-] Error: 'psutil' is required for RAM measurement. Run: pip install psutil")
+    sys.exit(1)
+
+_SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
+_TESTS_DIR    = os.path.dirname(_SCRIPT_DIR)
+_PROJECT_ROOT = os.path.dirname(_TESTS_DIR)
+
+sys.path.insert(0, _SCRIPT_DIR)
+sys.path.insert(0, _TESTS_DIR)
+sys.path.insert(0, _PROJECT_ROOT)
+
+def find_gsclib_path(start_path: str = "") -> str:
+    """Locate GSCLib_3.0.v in the repository."""
+    candidates = [
+        os.path.join(_TESTS_DIR, "IWLS2005", "library", "GSCLib_3.0.v"),
+        os.path.join(_SCRIPT_DIR, "IWLS2005", "library", "GSCLib_3.0.v"),
+        os.path.join(_PROJECT_ROOT, "tests", "IWLS2005", "library", "GSCLib_3.0.v"),
+        os.path.join(_PROJECT_ROOT, "IWLS2005", "library", "GSCLib_3.0.v"),
+    ]
+    if start_path:
+        d = os.path.dirname(os.path.abspath(start_path))
+        while len(d) > 3:
+            cand = os.path.join(d, "library", "GSCLib_3.0.v")
+            if os.path.exists(cand):
+                return os.path.abspath(cand)
+            cand_sub = os.path.join(d, "IWLS2005", "library", "GSCLib_3.0.v")
+            if os.path.exists(cand_sub):
+                return os.path.abspath(cand_sub)
+            parent = os.path.dirname(d)
+            if parent == d:
+                break
+            d = parent
+    for c in candidates:
+        if os.path.exists(c):
+            return os.path.abspath(c)
+    return ""
+
+def is_iwls_netlist(filepath: str, content: str = "") -> bool:
+    """Check if file is an IWLS 2005 netlist or contains GSCLib standard cells."""
+    if "IWLS" in filepath or "gsclib" in filepath.lower():
+        return True
+    if not content and os.path.isfile(filepath):
+        try:
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read(4096)
+        except Exception:
+            return False
+    return bool(re.search(r'\b(AND2X1|INVX1|BUFX1|DFFSRX1|DFFX1|NOR2X1|NAND2X1|AOI21X1|OAI21X1|MX2X1)\b', content))
+
+# ===========================================================================
+# 1. ENGINE / REACTOR RAM LOADER (Universal: Combo + Seq)
+# ===========================================================================
+
+class UniversalLoader:
+    def __init__(self, v_file_path, circuit_cls, const_mod):
+        self.Circuit = circuit_cls
+        self.const = const_mod
+        self.circuit = self.Circuit()
+        self.circuit.simulate(self.const.DESIGN)
+        self.nodes = {}
+        self.dff_connections = []
+        self.dff_crct = None
+
+        # Try to locate DFF.json just in case this is a sequential circuit
+        for p in [os.path.join(_TESTS_DIR, "DFF.json"), os.path.join(_SCRIPT_DIR, "DFF.json"), os.path.join(_PROJECT_ROOT, "DFF.json"), "DFF.json"]:
+            if os.path.exists(p):
+                try:
+                    self.dff_crct = self.circuit.get_ic(p)
+                    break
+                except Exception: pass
+
+        self.VERILOG_GATE_MAP = {
+            'and': self.const.AND_ID, 'nand': self.const.NAND_ID, 'or': self.const.OR_ID,
+            'nor': self.const.NOR_ID, 'xor': self.const.XOR_ID, 'xnor': self.const.XNOR_ID,
+            'not': self.const.NOT_ID, 'buf': self.const.BUFFER_ID,
+        }
+        self._parse_verilog(v_file_path)
+
+    def _parse_verilog(self, filepath):
+        json_path = filepath.replace('.v', '.json')
+        
+        if os.path.exists(json_path) and hasattr(self.circuit, 'readfromjson'):
+            self.circuit.readfromjson(json_path)
+            # Use get_components to avoid direct list access differences between Python and Cython
+            self.nodes = {str(i): c for i, c in enumerate(self.circuit.get_components())}
+            return
+
+        # Check if IWLS circuit (synthesized with GSCLib standard cells)
+        if is_iwls_netlist(filepath):
+            IWLSVerilogRunner = None
+            try:
+                from scripts.iwls_parser import IWLSVerilogRunner
+            except ImportError:
+                try:
+                    from tests.src.benchmark_iwls import IWLSVerilogRunner
+                except ImportError:
+                    try:
+                        from benchmark_iwls import IWLSVerilogRunner
+                    except ImportError:
+                        try:
+                            from tests.benchmark_iwls import IWLSVerilogRunner
+                        except ImportError:
+                            pass
+            if IWLSVerilogRunner:
+                runner = IWLSVerilogRunner(filepath, self.Circuit, self.const)
+                self.circuit = runner.circuit
+                self.nodes = runner.nodes
+                return
+
+        with open(filepath, 'r', encoding='utf-8') as f: content = f.read()
+        
+        # Strip comments
+        content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
+        content = re.sub(r'//.*', '', content)
+
+        # Isolate the main module (ignore inline DFF module definitions if present)
+        module_body = content
+        for m in re.finditer(r'\bmodule\s+([a-zA-Z0-9_]+)(.*?)\bendmodule\b', content, flags=re.DOTALL):
+            if m.group(1).lower() != 'dff':
+                module_body = m.group(0)
+                break
+
+        statements = [s.strip() for s in module_body.split(';') if s.strip()]
+        connections = []
+
+        for stmt in statements:
+            if stmt.startswith('input '):
+                for p in stmt.replace('input', '').strip().split(','):
+                    if p.strip():
+                        var_node = self.circuit.getcomponent(self.const.VARIABLE_ID)
+                        var_node.rename(f"IN_{p.strip()}")
+                        self.nodes[p.strip()] = var_node
+            elif stmt.startswith('output '):
+                for p in stmt.replace('output', '').strip().split(','):
+                    if p.strip():
+                        out_node = self.circuit.getcomponent(self.const.IC_OUTPUT_PIN_ID)
+                        out_node.rename(f"OUT_{p.strip()}")
+                        self.nodes[p.strip() + "_OUTPIN"] = out_node
+                        connections.append((p.strip() + "_OUTPIN", [p.strip()]))
+            elif stmt.startswith(('wire ', 'module ', 'endmodule', 'reg ')):
+                continue
+            else:
+                # FAST STRING PARSING (O(1) lookups instead of Regex backtracking)
+                paren_idx = stmt.find('(')
+                if paren_idx == -1: continue
+                
+                left_part = stmt[:paren_idx].strip().split()
+                if not left_part: continue
+                
+                gate_type = left_part[0].lower()
+                ports_str = stmt[paren_idx+1:stmt.rfind(')')]
+
+                # Handle Sequential DFFs
+                if gate_type.startswith('dff'):
+                    if not self.dff_crct: raise RuntimeError("DFF.json is required for sequential circuits but not found.")
+                    
+                    wires = {}
+                    if '.' in ports_str:
+                        for pm in re.finditer(r'\.\s*([a-zA-Z0-9_]+)\s*\(\s*([a-zA-Z0-9_]+)\s*\)', ports_str):
+                            wires[pm.group(1).upper()] = pm.group(2)
+                        d_wire, clk_wire, q_wire = wires.get('D'), wires.get('CK', wires.get('CLK', wires.get('C'))), wires.get('Q')
+                    else:
+                        pts = [p.strip() for p in ports_str.split(',')]
+                        clk_wire, q_wire, d_wire = (pts[0] if len(pts)>0 else None, pts[1] if len(pts)>1 else None, pts[2] if len(pts)>2 else None)
+
+                    dff_inst = self.circuit.load_ic(self.dff_crct)
+                    if q_wire: self.nodes[q_wire] = dff_inst.outputs[0]
+                    self.dff_connections.append((dff_inst, d_wire, clk_wire))
+                    continue
+
+                # Handle Standard Combinational Gates
+                if gate_type in self.VERILOG_GATE_MAP:
+                    ports = [p.strip() for p in ports_str.split(',')]
+                    out_wire, in_wires = ports[0], ports[1:]
+                    gate_id = self.VERILOG_GATE_MAP[gate_type]
+                    gate = self.circuit.getcomponent(gate_id)
+                    if gate_id < self.const.VARIABLE_ID and hasattr(self.circuit, 'setlimits'):
+                        self.circuit.setlimits(gate, len(in_wires))
+                    self.nodes[out_wire] = gate
+                    connections.append((out_wire, in_wires))
+
+        # Wire Combinational Logic
+        for target_id, source_ids in connections:
+            target_gate = self.nodes.get(target_id)
+            if not target_gate: continue
+            for pin_index, source_id in enumerate(source_ids):
+                source_gate = self.nodes.get(source_id)
+                if source_gate: self.circuit.connect(target_gate, source_gate, pin_index)
+
+        # Wire Sequential Logic (if any)
+        for dff_inst, d_wire, clk_wire in self.dff_connections:
+            if clk_wire and clk_wire in self.nodes and len(dff_inst.inputs) > 0:
+                self.circuit.connect(dff_inst.inputs[0], self.nodes[clk_wire], 0)
+            if d_wire and d_wire in self.nodes and len(dff_inst.inputs) > 1:
+                self.circuit.connect(dff_inst.inputs[1], self.nodes[d_wire], 0)
+
+
+
+def internal_worker_main(filepath: str, mode: str):
+    import gc
+    target_path = os.path.join(_SCRIPT_DIR, mode)
+    if not os.path.exists(target_path): target_path = os.path.join(_PROJECT_ROOT, mode)
+
+    sys.path.insert(0, _PROJECT_ROOT)
+    sys.path.insert(0, target_path)
+    import Circuit
+    import Const
+
+    process = psutil.Process(os.getpid())
+    
+    # 1. Create a blank circuit to trigger any one-time initializations
+    blank_circuit = Circuit.Circuit()
+    gc.collect()
+    
+    # Measure the baseline memory with a blank circuit
+    base_mem = process.memory_info().rss
+    
+    # Clean up the blank circuit (check for destructive clear or abandon)
+
+    blank_circuit.clearcircuit()
+    del blank_circuit
+    gc.collect()
+
+    try:
+        import time
+        t_start = time.perf_counter_ns()
+        loader = UniversalLoader(filepath, Circuit.Circuit, Const)
+        t_loaded = time.perf_counter_ns()
+        load_time_ms = (t_loaded - t_start) / 1_000_000.0
+
+        if hasattr(loader.circuit, 'optimize'):
+            t_opt_start = time.perf_counter_ns()
+            loader.circuit.optimize()
+            t_opt_end = time.perf_counter_ns()
+            opt_time_ms = (t_opt_end - t_opt_start) / 1_000_000.0
+        else:
+            opt_time_ms = 0.0
+        
+        # Extract pure circuit and destroy the parser/loader state
+        pure_circuit = loader.circuit
+        gates = len(loader.nodes)
+        del loader
+        gc.collect()
+        
+        loaded_mem = process.memory_info().rss
+        delta_mb = max((loaded_mem - base_mem) / (1024 * 1024), 0.00)
+        base_mb = base_mem / (1024 * 1024)
+        
+        peak_mb = 0
+        try:
+            with open(f"/proc/{os.getpid()}/status", "r") as f:
+                for line in f:
+                    if line.startswith("VmHWM:"):
+                        peak_mb = int(line.split()[1]) / 1024.0
+                        break
+        except Exception:
+            pass
+
+        print(json.dumps({"prog_mb": base_mb, "circ_mb": delta_mb, "peak_mb": peak_mb, "gates": gates, "load_ms": load_time_ms, "opt_ms": opt_time_ms}))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+# ===========================================================================
+# 2. ICARUS VERILOG RAM LOADER (Zero-wire testbench)
+# ===========================================================================
+def measure_icarus_ram(v_file: str) -> dict:
+    if not shutil.which("iverilog"): return {"error": "iverilog not found"}
+
+    harness_dir = os.path.join(_PROJECT_ROOT, "harness_build")
+    wait_tb = os.path.join(harness_dir, "icarus_memory_wait.v")
+    dff_stub = os.path.join(harness_dir, "icarus_dff_stub.v")
+
+    vvp_file = os.path.splitext(v_file)[0] + "_mem.vvp"
+    empty_vvp_file = os.path.splitext(v_file)[0] + "_empty.vvp"
+    
+    try:
+        # 1. Measure Empty VVP Baseline
+        subprocess.run(["iverilog", "-o", empty_vvp_file, wait_tb], capture_output=True, text=True)
+        
+        p_empty = psutil.Popen(["vvp", empty_vvp_file], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for line in p_empty.stdout:
+            if "READY" in line: break
+        base_mem_mb = p_empty.memory_info().rss / (1024 * 1024)
+        p_empty.kill()
+
+        # 2. Compile and Measure Full Circuit
+        with open(v_file, 'r', encoding='utf-8', errors='ignore') as f: content = f.read()
+        cmd = ["iverilog", "-o", vvp_file, v_file, wait_tb]
+        gsclib = find_gsclib_path(v_file)
+        if is_iwls_netlist(v_file, content) and gsclib:
+            cmd.append(gsclib)
+        elif re.search(r'\bdff', content, re.IGNORECASE) and not re.search(r'\bmodule\s+dff\b', content, re.IGNORECASE):
+            cmd.append(dff_stub)
+            
+        import time
+        t_start = time.perf_counter_ns()
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        t_end = time.perf_counter_ns()
+        load_time_ms = (t_end - t_start) / 1_000_000.0
+        
+        if res.returncode != 0:
+            return {"error": "Compile N/A"}
+        
+        p = psutil.Popen(["vvp", vvp_file], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for line in p.stdout:
+            if "READY" in line: break
+            
+        loaded_mem_mb = p.memory_info().rss / (1024 * 1024)
+        
+        peak_mb = 0
+        try:
+            with open(f"/proc/{p.pid}/status", "r") as f:
+                for line in f:
+                    if line.startswith("VmHWM:"):
+                        peak_mb = int(line.split()[1]) / 1024.0
+                        break
+        except Exception:
+            peak_mb = loaded_mem_mb
+            
+        p.kill()
+        
+        # 3. Calculate true delta (isolated circuit memory)
+        delta_mb = max(loaded_mem_mb - base_mem_mb, 0.01)
+        return {"prog_mb": base_mem_mb, "circ_mb": delta_mb, "peak_mb": peak_mb, "load_ms": load_time_ms, "opt_ms": 0.0}
+        
+    except Exception as e:
+        return {"error": "Subprocess N/A"}
+    finally:
+        for p in (vvp_file, empty_vvp_file):
+            if os.path.exists(p): 
+                try: os.remove(p)
+                except: pass
+
+
+
+# ===========================================================================
+# 3. VERILATOR RAM LOADER
+# ===========================================================================
+def measure_verilator_ram(v_file: str) -> dict:
+    if not shutil.which("verilator"): return {"error": "verilator not found"}
+
+    base_path   = os.path.splitext(v_file)[0]
+    tb_file     = base_path + "_mem_main.cpp"
+    obj_dir     = base_path + "_mem_obj_dir"
+    
+    with open(v_file, 'r', encoding='utf-8') as f:
+        v_content = f.read()
+    
+    module_name = "unknown"
+    for m in re.finditer(r'\bmodule\s+([a-zA-Z0-9_]+)', v_content):
+        m_name = m.group(1).lower()
+        if m_name not in ('dff', 'dffsrx1', 'dffx1', 'sdffsrx1', 'invx1', 'bufx1', 'udp_tlat', 'udp_dff'):
+            module_name = m.group(1)
+            break
+            
+    if module_name == "unknown": return {"error": "No module found"}
+
+    tb = []
+    tb.append(f'#include "V{module_name}.h"')
+    tb.append('#include "verilated.h"')
+    tb.append('#include <unistd.h>')
+    tb.append('int main(int argc, char** argv) {')
+    tb.append('    Verilated::commandArgs(argc, argv);')
+    tb.append(f'    V{module_name}* top = new V{module_name};')
+    tb.append('    write(1, "READY\\n", 6);')
+    tb.append('    char buf[1];')
+    tb.append('    read(0, buf, 1);')
+    tb.append('    delete top;')
+    tb.append('    return 0;')
+    tb.append('}')
+
+    with open(tb_file, 'w', encoding='utf-8') as f:
+        f.write("\n".join(tb))
+
+    try:
+        import time
+        t_start = time.perf_counter_ns()
+        
+        comp_cmd = ["verilator", "-O3", "-Wno-fatal", "--cc", v_file]
+        gsclib = find_gsclib_path(v_file)
+        if is_iwls_netlist(v_file, v_content) and gsclib:
+            comp_cmd.append(gsclib)
+        comp_cmd.extend(["--exe", tb_file, "--top-module", module_name, "--Mdir", obj_dir])
+        comp_res = subprocess.run(comp_cmd, capture_output=True, text=True)
+        if comp_res.returncode != 0: return {"error": "Parse N/A"}
+
+        build_cmd = ["make", "-j", str(os.cpu_count() or 4), "-C", obj_dir, "-f", f"V{module_name}.mk", f"V{module_name}"]
+        build_res = subprocess.run(build_cmd, capture_output=True, text=True)
+        if build_res.returncode != 0: return {"error": "Build N/A"}
+        
+        t_end = time.perf_counter_ns()
+        load_time_ms = (t_end - t_start) / 1_000_000.0
+        
+        exe_path = os.path.join(obj_dir, f"V{module_name}")
+        
+        # Measure Empty Baseline (just a dummy C++ program doing the same wait)
+        dummy_tb_file = base_path + "_dummy.cpp"
+        dummy_exe = base_path + "_dummy_exe"
+        with open(dummy_tb_file, 'w') as f:
+            f.write("#include <unistd.h>\nint main() { write(1, \"READY\\n\", 6); char buf[1]; read(0, buf, 1); return 0; }\n")
+        subprocess.run(["g++", dummy_tb_file, "-o", dummy_exe])
+        
+        p_empty = psutil.Popen([dummy_exe], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for line in p_empty.stdout:
+            if "READY" in line: break
+        base_mem_mb = p_empty.memory_info().rss / (1024 * 1024)
+        p_empty.kill()
+        
+        p = psutil.Popen([exe_path], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for line in p.stdout:
+            if "READY" in line: break
+            
+        loaded_mem_mb = p.memory_info().rss / (1024 * 1024)
+        
+        peak_mb = 0
+        try:
+            with open(f"/proc/{p.pid}/status", "r") as f:
+                for line in f:
+                    if line.startswith("VmHWM:"):
+                        peak_mb = int(line.split()[1]) / 1024.0
+                        break
+        except Exception:
+            peak_mb = loaded_mem_mb
+            
+        p.kill()
+        
+        delta_mb = max(loaded_mem_mb - base_mem_mb, 0.01)
+        return {"prog_mb": base_mem_mb, "circ_mb": delta_mb, "peak_mb": peak_mb, "load_ms": load_time_ms, "opt_ms": 0.0}
+
+    except Exception as e:
+        return {"error": "Subprocess N/A"}
+    finally:
+        for p in (tb_file, base_path + "_dummy.cpp", base_path + "_dummy_exe"):
+            if os.path.exists(p): 
+                try: os.remove(p)
+                except: pass
+        if os.path.exists(obj_dir):
+            try: shutil.rmtree(obj_dir)
+            except: pass
+
+
+def get_v_files(target):
+    if not os.path.exists(target):
+        if os.path.exists(os.path.join(_TESTS_DIR, target)):
+            target = os.path.join(_TESTS_DIR, target)
+        elif os.path.exists(os.path.join(_PROJECT_ROOT, target)):
+            target = os.path.join(_PROJECT_ROOT, target)
+    if os.path.isfile(target) and target.endswith('.v'): return [target]
+    v_files = []
+    for r, _, fs in os.walk(target):
+        for f in fs:
+            if f.endswith('.v') and not f.endswith('_tb.v') and not f.endswith('_helper.v') and f != 'GSCLib_3.0.v':
+                v_files.append(os.path.join(r, f))
+    return sorted(v_files, key=os.path.getsize)
+
+def _parse_mem(res):
+    if res.returncode == 0:
+        try:
+            return json.loads(res.stdout)
+        except: pass
+    return {"error": "N/A"}
+
+def main():
+    parser = argparse.ArgumentParser(description="Universal 4-Engine RAM Footprint Test")
+    parser.add_argument('target', nargs='?', type=str, help="Path to .v file or directory")
+    parser.add_argument('--no-engine', dest='engine', action='store_false', help='Skip Engine memory benchmark')
+    parser.set_defaults(engine=True)
+    parser.add_argument('--no-rx-prop', dest='rx_prop', action='store_false', help='Skip Reactor memory benchmark (compatibility)')
+    parser.set_defaults(rx_prop=True)
+    parser.add_argument('--no-rx-sweep', dest='rx_sweep', action='store_false', help='Skip Reactor memory benchmark (compatibility)')
+    parser.set_defaults(rx_sweep=True)
+    parser.add_argument('--no-rx-oop', '--no-reactor-oop', dest='rx_oop', action='store_false', help='Compatibility flag')
+    parser.set_defaults(rx_oop=True)
+
+    parser.add_argument('--no-icarus', dest='icarus', action='store_false', help='Skip Icarus Verilog benchmark')
+    parser.set_defaults(icarus=True)
+    parser.add_argument('--no-verilator', dest='verilator', action='store_false', help='Skip Verilator benchmark')
+    parser.set_defaults(verilator=True)
+    parser.add_argument('--internal-worker', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--mode', type=str, choices=['engine', 'reactor'], help=argparse.SUPPRESS)
+    parser.add_argument('--dump', action='store_true', help='Only generate final data')
+    parser.add_argument('--json', action='store_true', help='Only generate json output')
+    args = parser.parse_args()
+
+    if args.internal_worker:
+        internal_worker_main(args.target, args.mode)
+        sys.exit(0)
+
+    if not args.target:
+        print("[-] Error: Target required."); sys.exit(1)
+
+    v_files = get_v_files(args.target)
+
+    W = 175
+    cols1 = (
+        f"| {'Circuit':<16} | {'Gates':<10} "
+        f"| {'':<10} | {'':<10} | {'Engine':^10} | {'':<10} "
+        f"| {'':<10} | {'':<10} | {'Reactor':^10} | {'':<10} | {'':<10} "
+        f"| {'':<10} | {'':<10} | {'Icarus':^10} | {'':<10} "
+        f"| {'':<10} | {'':<10} | {'Verilator':^10} | {'':<10} |"
+    )
+    sep = (
+        f"|{'-'*18}|{'-'*12}"
+        f"|{'-'*12}|{'-'*12}|{'-'*12}|{'-'*12}"
+        f"|{'-'*12}|{'-'*12}|{'-'*12}|{'-'*12}|{'-'*12}"
+        f"|{'-'*12}|{'-'*12}|{'-'*12}|{'-'*12}"
+        f"|{'-'*12}|{'-'*12}|{'-'*12}|{'-'*12}|"
+    )
+    cols2 = (
+        f"| {'':<16} | {'':<10} "
+        f"| {'Prog(MB)':>10} | {'Circ(MB)':>10} | {'Peak(MB)':>10} | {'Load(ms)':>10} "
+        f"| {'Prog(MB)':>10} | {'Circ(MB)':>10} | {'Peak(MB)':>10} | {'Load(ms)':>10} | {'Opt(ms)':>10} "
+        f"| {'Prog(MB)':>10} | {'Circ(MB)':>10} | {'Peak(MB)':>10} | {'Comp(ms)':>10} "
+        f"| {'Prog(MB)':>10} | {'Circ(MB)':>10} | {'Peak(MB)':>10} | {'Comp(ms)':>10} |"
+    )
+
+    if not getattr(args, 'json', False):
+        print("=" * W)
+        print("  LOAD FOOTPRINT BENCHMARK (Combinational & Sequential)")
+        print("  All Engines: Reporting Program Memory, Circuit Memory, Load time and compile/optimize times.")
+        print("=" * W)
+        print(cols1)
+        print(sep)
+        print(cols2)
+
+    all_results = []
+    markdown_lines = []
+    markdown_lines.append("# Load Footprint Benchmark")
+    markdown_lines.append("")
+    markdown_lines.append(cols1)
+    markdown_lines.append(sep)
+    markdown_lines.append(cols2)
+
+    for vf in v_files:
+        fn = os.path.basename(vf)
+        
+        if args.engine:
+            res_e = subprocess.run([sys.executable, __file__, "--internal-worker", vf, "--mode", "engine"], capture_output=True, text=True)
+            e_dict = _parse_mem(res_e)
+        else:
+            e_dict = {"error": "N/A"}
+            
+        if args.rx_prop or args.rx_sweep:
+            res_r = subprocess.run([sys.executable, __file__, "--internal-worker", vf, "--mode", "reactor"], capture_output=True, text=True)
+            r_dict = _parse_mem(res_r)
+        else:
+            r_dict = {"error": "N/A"}
+            
+
+        if args.icarus:
+            i_dict = measure_icarus_ram(vf)
+        else:
+            i_dict = {"error": "N/A"}
+            
+        if args.verilator:
+            v_dict = measure_verilator_ram(vf)
+        else:
+            v_dict = {"error": "N/A"}
+
+        def eng_cols(d):
+            if "error" in d: return f"{'N/A':>10} | {'N/A':>10} | {'N/A':>10} | {'N/A':>10}"
+            return f"{d.get('prog_mb',0.0):>10.1f} | {d.get('circ_mb',0.0):>10.1f} | {d.get('peak_mb',0.0):>10.1f} | {d.get('load_ms',0.0):>10.1f}"
+
+        def rx_cols(d):
+            if "error" in d: return f"{'N/A':>10} | {'N/A':>10} | {'N/A':>10} | {'N/A':>10} | {'N/A':>10}"
+            return f"{d.get('prog_mb',0.0):>10.1f} | {d.get('circ_mb',0.0):>10.1f} | {d.get('peak_mb',0.0):>10.1f} | {d.get('load_ms',0.0):>10.1f} | {d.get('opt_ms',0.0):>10.1f}"
+
+        def ic_cols(d):
+            if "error" in d: return f"{'N/A':>10} | {'N/A':>10} | {'N/A':>10} | {'N/A':>10}"
+            return f"{d.get('prog_mb',0.0):>10.1f} | {d.get('circ_mb',0.0):>10.1f} | {d.get('peak_mb',0.0):>10.1f} | {d.get('load_ms',0.0):>10.1f}"
+
+        gates_val = r_dict.get('gates', e_dict.get('gates', 0)) if "gates" in r_dict or "gates" in e_dict else None
+        
+        if args.json:
+            all_results.append({
+                "circuit": fn,
+                "gates": gates_val,
+                "engine": e_dict,
+                "reactor": r_dict,
+                "icarus": i_dict,
+                "verilator": v_dict
+            })
+        else:
+            e_str = eng_cols(e_dict)
+            r_str = rx_cols(r_dict)
+            i_str = ic_cols(i_dict)
+            v_str = ic_cols(v_dict)
+            
+            gates_str = f"{gates_val:,}" if gates_val is not None else "N/A"
+            row_str = f"| {fn:<16} | {gates_str:>10} | {e_str} | {r_str} | {i_str} | {v_str} |" 
+            
+            if not getattr(args, 'json', False):
+                print(row_str)
+            markdown_lines.append(row_str)
+
+    if args.json:
+        print(json.dumps(all_results, indent=4))
+    
+    if args.dump:
+        import datetime
+        dump_dir = os.path.join(_TESTS_DIR, 'test_result', 'load')
+        os.makedirs(dump_dir, exist_ok=True)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        dump_path = os.path.join(dump_dir, f"unified_load_{timestamp}.md")
+        with open(dump_path, 'w', encoding='utf-8') as f:
+            f.write("\n".join(markdown_lines) + "\n")
+        print(f"\n[+] Markdown dump saved to -> {dump_path}")
+
+
+
+if __name__ == '__main__':
+    main()

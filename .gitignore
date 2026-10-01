@@ -15,6 +15,7 @@ __pycache__
 *.json
 !demos/projects/*.json
 !demos/ICs/*.json
+!tests/src/DFF*.json
 
 file.json/
 temp.json/
@@ -30,11 +31,16 @@ dist/
 *dist
 .nuitka*
 blazing_builds/
-reactor/*.html
-reactor/*c
+
+reactor_oop/*.html
+reactor_oop/*.c*
+reactor_oop/*.pyd
+reactor_oop/*.so
 
 *.data
 *.data.old
 
-harness_build/
-tests/
+harness_build/*.vpi
+harness_build/*.o
+tests/*/
+!tests/src/

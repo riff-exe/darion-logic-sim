@@ -10,7 +10,8 @@ cpdef enum:
     SIMULATE = 1
     COMPILE = 3
     
-    LIMIT = 250_000
+    LIMIT = 1024
+    INFINITE = 255
 
     # Gate Flags
     FLAG_VALUE = 1
@@ -26,14 +27,26 @@ cpdef enum:
     NOR_ID = 3
     XOR_ID = 4
     XNOR_ID = 5
-    VARIABLE_ID = 6
+
+    SINGLE_INPUT_ID = 6
+    BUFFER_ID = 6
     NOT_ID = 7
-    PROBE_ID = 8
-    INPUT_PIN_ID = 9
-    OUTPUT_PIN_ID = 10
+
+    IC_INPUT_PIN_ID = 8
+    VARIABLE_ID = 9
+    IC_OUTPUT_PIN_ID = 10
+
     IC_ID = 11
     TOTAL = 12
 
+    FLAG_NEGATE=1<<0
+    FLAG_VALID=1<<1
+    LOGIC_1=1<<4
+    LOGIC_2=1<<5
+    LOGIC_3=1<<6
+    # FLAG_OTHER=1<<6
+
+    LUT= 0x254
     NAME=-1
     CUSTOM_NAME=NAME+1
     ID=NAME+2
@@ -69,3 +82,7 @@ cpdef void set_DEBUG()
 cdef public double DELAY = 0.01
 cpdef void set_DELAY(double delay)
 cpdef double get_DELAY()
+
+cdef public bint UI_MODE = False
+cpdef void set_UI_MODE(bint mode)
+cpdef bint get_UI_MODE()
