@@ -482,10 +482,14 @@ def run_verilator_harness(v_file: str, vectors: int, warmup: int, use_perf: bool
 # ===========================================================================
 
 class VerilogRunner:
-    def __init__(self, v_file_path, circuit_cls, const_mod, is_reactor=True, is_oop=False, use_optimize=True, mode="engine"):
+    def __init__(self, v_file_path, circuit_cls, const_mod, is_reactor=True, is_oop=False, use_optimize=True, mode="engine", sim_mode="simulate"):
         self.Circuit = circuit_cls
+        self.circuit_cls = circuit_cls
+        self.filepath = v_file_path
         self.const = const_mod
         self.use_optimize = use_optimize
+        self.sim_mode = sim_mode
+        self.const.set_MODE(self.const.DESIGN)
         self.circuit = self.Circuit()
         self.circuit.simulate(self.const.DESIGN)
         self.is_reactor = is_reactor
@@ -557,10 +561,11 @@ class VerilogRunner:
                     self.nodes["1'b0"] = gate
                 else:
                     self.nodes[name_str] = gate
+            target_mod = self.const.COMPILE if (not self.is_reactor or self.sim_mode == "compile") else self.const.SIMULATE
+            self.circuit.simulate(target_mod)
+            self.const.set_MODE(target_mod)
             if self.use_optimize and hasattr(self.circuit, 'optimize'):
                 self.circuit.optimize()
-            self.circuit.simulate(self.const.SIMULATE)
-            self.const.set_MODE(self.const.SIMULATE)
             return
 
         with open(filepath, 'r', encoding='utf-8') as f:
@@ -639,10 +644,11 @@ class VerilogRunner:
                 source_gate = self.nodes.get(source_id)
                 if source_gate:
                     self.circuit.connect(target_gate, source_gate, pin_index)
-        if self.use_optimize:
+        target_mod = self.const.COMPILE if (not self.is_reactor or self.sim_mode == "compile") else self.const.SIMULATE
+        self.circuit.simulate(target_mod)
+        self.const.set_MODE(target_mod)
+        if self.use_optimize and hasattr(self.circuit, 'optimize'):
             self.circuit.optimize()
-        self.circuit.simulate(self.const.SIMULATE)
-        self.const.set_MODE(self.const.SIMULATE)
 
     def build_batches(self, raw_vectors):
         """Adapts raw logical PRNG vectors to the circuit's current pin configuration.
@@ -784,20 +790,25 @@ class VerilogRunner:
         )
         if use_optimize and has_sweep and rx_sweep:
             try:
-                self.circuit.simulate(self.const.COMPILE)
-                self.const.set_MODE(self.const.COMPILE)
+                self.const.set_MODE(self.const.DESIGN)
+                sweep_runner = VerilogRunner(
+                    self.filepath, self.circuit_cls, self.const,
+                    is_reactor=self.is_reactor, is_oop=self.is_oop,
+                    use_optimize=use_optimize, mode=self.mode,
+                    sim_mode="compile"
+                )
 
-                # Adapt batches directly to the circuit's current pin configuration
-                sweep_warmup_batches = self.build_batches(warmup_raw)
-                sweep_measured_batches = self.build_batches(measured_raw)
+                # Adapt batches directly to the sweep circuit's pin configuration
+                sweep_warmup_batches = sweep_runner.build_batches(warmup_raw)
+                sweep_measured_batches = sweep_runner.build_batches(measured_raw)
                 flat_sweep_warmup = [item for sublist in sweep_warmup_batches for item in sublist]
                 flat_sweep_measured = [item for sublist in sweep_measured_batches for item in sublist]
 
                 if flat_sweep_warmup:
-                    self.circuit.batch_toggle(flat_sweep_warmup, batch_size)
+                    sweep_runner.circuit.batch_toggle(flat_sweep_warmup, batch_size)
 
                 gc.collect()
-                self.circuit.eval_count = 0
+                sweep_runner.circuit.eval_count = 0
                 gc.disable()
 
                 perf_proc = None
@@ -816,7 +827,7 @@ class VerilogRunner:
                     time.sleep(0.1)
 
                 send_perf_ctrl("enable")
-                sweep_ms = self.circuit.batch_toggle(flat_sweep_measured, batch_size, use_perf) if flat_sweep_measured else 0.0
+                sweep_ms = sweep_runner.circuit.batch_toggle(flat_sweep_measured, batch_size, use_perf) if flat_sweep_measured else 0.0
                 send_perf_ctrl("disable")
 
                 if use_perf and perf_proc:
@@ -831,10 +842,7 @@ class VerilogRunner:
 
                 gc.enable()
 
-                sweep_evals = getattr(self.circuit, 'eval_count', measured * len(self.nodes))
-                # Restore SIMULATE mode so subsequent passes aren't affected.
-                self.circuit.simulate(self.const.SIMULATE)
-                self.const.set_MODE(self.const.SIMULATE)
+                sweep_evals = getattr(sweep_runner.circuit, 'eval_count', measured * len(sweep_runner.nodes))
                 sweep_meps  = (
                     (sweep_evals / (sweep_ms / 1000.0)) / 1_000_000.0
                     if sweep_ms > 0 else 0.0
@@ -842,9 +850,9 @@ class VerilogRunner:
                 result["sweep_ms"]    = sweep_ms
                 result["sweep_evals"] = sweep_evals
                 result["sweep_meps"]  = sweep_meps
+                del sweep_runner
+                gc.collect()
             except Exception as exc:
-                self.circuit.simulate(self.const.SIMULATE)
-                self.const.set_MODE(self.const.SIMULATE)
                 result["sweep_error"] = str(exc)
 
         return result

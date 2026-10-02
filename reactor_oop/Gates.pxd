@@ -56,9 +56,8 @@ cdef extern from "Profile.h":
         uint8_t update
         uint8_t value
         uint8_t scheduled
-        uint8_t high
-        uint8_t low
-        unsigned int target_time
+        uint8_t logic    # count of inputs matching seed
+        uint8_t seed     # triggering input value for this gate type
         vector[Profile] hitlist
         CPP_Gate()
         CPP_Gate(void* g, int8_t t, uint8_t lim)

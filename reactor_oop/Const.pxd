@@ -8,7 +8,7 @@ cpdef enum:
     SIMULATE = 1
     COMPILE = 3
 
-    LIMIT = 500_000
+    LIMIT = 1024
 
     # Gate Flags
     FLAG_VALUE = 1
