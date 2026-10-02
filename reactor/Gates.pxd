@@ -56,6 +56,7 @@ cdef extern from "Profile.h":
         uint8_t limit
         uint8_t logic
         uint8_t seed
+        uint8_t mask
         unsigned int target_time
         vector[CPP_Gate*] hitlist
         vector[CPP_Gate*] sources

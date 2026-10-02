@@ -153,6 +153,7 @@ cdef class Circuit:
         cdef int prev = info.output
         if gate.setlimits(size):
             if prev != info.output:
+                info.output = prev
                 self.queue[0][0] = info
                 self.propagate(1)
             return True
@@ -168,6 +169,7 @@ cdef class Circuit:
             src_info.flags |= FLAG_UPDATE
         target.connect(source, index)
         if prev != info.output:
+            info.output = prev
             self.queue[0][0] = info
             self.propagate(1)
 
@@ -278,6 +280,7 @@ cdef class Circuit:
         cdef int prev = info.output
         target.disconnect(index)
         if prev != info.output:
+            info.output = prev
             self.queue[0][0] = info
             self.propagate(1)
 
@@ -1367,20 +1370,18 @@ cdef class Circuit:
                     self.visual_queue.push_back(read_queue[index] - gate_infolist)   # target changed — mark dirty
                     self_info.flags |= FLAG_UPDATE
                 new_output = self_info.output
-                target_ptr = self_info.hitlist.data()
-                target_end = target_ptr + self_info.hitlist.size()
-                eval += self_info.hitlist.size()
-                while target_ptr < target_end:
-                    target = target_ptr[0]
-                    target_output = target.output
-                    if unlikely(new_output == UNKNOWN):
-                        target.output = UNKNOWN
-                    else:
-                        target.compute()
-                    write_queue[size] = target
-                    size += (((target.flags & FLAG_MARK) == 0) & (target_output != target.output))
-                    target.flags |= FLAG_MARK * (target_output != target.output)
-                    target_ptr += 1
+                if not (self_info.type==VARIABLE_ID):
+                    self_info.compute()
+                if new_output!=self_info.output or self_info.type==VARIABLE_ID:
+                    target_ptr = self_info.hitlist.data()
+                    target_end = target_ptr + self_info.hitlist.size()
+                    eval += self_info.hitlist.size()
+                    while target_ptr < target_end:
+                        target = target_ptr[0]
+                        write_queue[size] = target
+                        size += ((target.flags & FLAG_MARK) == 0)
+                        target.flags |= FLAG_MARK 
+                        target_ptr += 1
             # size is actually the growing size of write_queue
             end_point, size = size, 0
             # buffer switching, read->write and write->read
@@ -1413,26 +1414,21 @@ cdef class Circuit:
                 self.visual_queue.push_back(<int>(curr_gate - gate_infolist))
                 curr_gate.flags |= FLAG_UPDATE
             new_output = curr_gate.output
-            target_ptr = curr_gate.hitlist.data()
-            target_end = target_ptr + curr_gate.hitlist.size()
-            eval += curr_gate.hitlist.size()
+            if not (curr_gate.type == VARIABLE_ID):
+                curr_gate.compute()
+            if new_output != curr_gate.output or curr_gate.type == VARIABLE_ID:
+                target_ptr = curr_gate.hitlist.data()
+                target_end = target_ptr + curr_gate.hitlist.size()
+                eval += curr_gate.hitlist.size()
 
-            while target_ptr < target_end:
-                target = target_ptr[0]
-                target_output = target.output
-                if unlikely(new_output == UNKNOWN):
-                    target.output = UNKNOWN
-                else:
-                    target.compute()
-
-                if target_output != target.output:
+                while target_ptr < target_end:
+                    target = target_ptr[0]
                     target.flags |= FLAG_MARK
                     if curr == NULL or target < curr:
                         curr = target
                     if threshold == NULL or target > threshold:
                         threshold = target
-
-                target_ptr += 1
+                    target_ptr += 1
 
         # If none of the immediate targets changed, no sweep is required
         if curr == NULL:
@@ -1447,19 +1443,15 @@ cdef class Circuit:
                     self.visual_queue.push_back(<int>(curr - gate_infolist))   # target changed — mark dirty
                     curr.flags |= FLAG_UPDATE
                 new_output = curr.output
-                target_ptr = curr.hitlist.data()
-                target_end = target_ptr + curr.hitlist.size()
-                eval += curr.hitlist.size()
+                if not (curr.type == VARIABLE_ID):
+                    curr.compute()
+                if new_output != curr.output or curr.type == VARIABLE_ID:
+                    target_ptr = curr.hitlist.data()
+                    target_end = target_ptr + curr.hitlist.size()
+                    eval += curr.hitlist.size()
 
-                while target_ptr < target_end:
-                    target = target_ptr[0]
-                    target_output = target.output
-                    if unlikely(new_output == UNKNOWN):
-                        target.output = UNKNOWN
-                    else:
-                        target.compute()
-
-                    if target_output != target.output:
+                    while target_ptr < target_end:
+                        target = target_ptr[0]
                         if not (target.flags & FLAG_MARK):
                             target.flags |= FLAG_MARK
                             if target <= curr:
@@ -1468,7 +1460,7 @@ cdef class Circuit:
                         if target > threshold:
                             threshold = target
 
-                    target_ptr += 1
+                        target_ptr += 1
             curr += 1
 
         self.eval_count += eval

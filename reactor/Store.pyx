@@ -66,16 +66,34 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, list gate_verse):
         gate.location = gate_infolist.size()-1
         gate.info = &gate_infolist[gate.location]
         
-        if choice <OR_ID:
-            gate.info.flags |= FLAG_AND
-            gate.info.seed = 0
-        elif choice <XOR_ID:
-            gate.info.flags |= FLAG_OR
-            gate.info.seed = 1
-        else:
-            gate.info.seed = 1
-            
-        gate.info.flags |= (choice & 1) & (choice != VARIABLE_ID)
+        if choice != VARIABLE_ID:
+            if choice == AND_ID:
+                gate.info.flags |= FLAG_NEGATE # low == 0
+                gate.info.seed = 0
+                gate.info.mask = 0xFF
+            elif choice == NAND_ID:
+                gate.info.seed = 0
+                gate.info.mask = 0xFF
+            elif choice == OR_ID:
+                gate.info.seed = 1
+                gate.info.mask = 0xFF
+            elif choice == NOR_ID:
+                gate.info.flags |= FLAG_NEGATE # high == 0
+                gate.info.seed = 1
+                gate.info.mask = 0xFF
+            elif choice == NOT_ID:
+                gate.info.seed = 0
+                gate.info.mask = 0xFF
+            elif choice >= BUFFER_ID:
+                gate.info.seed = 1
+                gate.info.mask = 0xFF
+            elif choice == XOR_ID:
+                gate.info.seed = 1
+                gate.info.mask = 1
+            elif choice == XNOR_ID:
+                gate.info.flags |= FLAG_NEGATE
+                gate.info.seed = 1
+                gate.info.mask = 1
         
         if not UI_MODE:
             gate.info.flags |= FLAG_UPDATE

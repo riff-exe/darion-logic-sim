@@ -42,7 +42,8 @@ struct CPP_Gate {
                    // for clock)
   uint8_t logic;   // offset 4 (1 B): matching input tally
   uint8_t seed;    // offset 5 (1 B): matching target (0 for AND/NAND, 1 for others)
-  // offset 6..7: 2 bytes natural padding for 8-byte aligned hitlist
+  uint8_t mask;    // offset 6 (1 B): masking logic for branchless gate evaluation
+  uint8_t reserved;// offset 7 (1 B): 1 byte natural padding aligning 8-byte hitlist
   // ── HOT VECTORS ──────────────────────────────────────────────────────────
   std::vector<CPP_Gate *> hitlist; // offset  8 (24 B): target gates
   std::vector<CPP_Gate *> sources; // offset 32 (24 B): source gates
@@ -60,23 +61,17 @@ struct CPP_Gate {
     for (auto &src : sources) {
       logic += (src->output == seed);
     }
-    if (flags & 16) {
-      output = (logic == 0) ^ (flags & 1);
-    } else if (flags & 32) {
-      output = (logic > 0) ^ (flags & 1);
-    } else {
-      output = (logic & 1) ^ (flags & 1);
-    }
+    output = bool(logic & mask) ^ (flags & 1);
   }
 
   // flag is 8 means it's not going to support the ui, 0 means supported
   CPP_Gate()
-      : output(2), flags(0), invalid(2), limit(2), logic(0), seed(1),
-        hitlist(), sources(2, nullptr), type(0), target_time(0) {}
+      : output(2), flags(0), invalid(2), limit(2), logic(0), seed(1), mask(0xFF),
+        reserved(0), hitlist(), sources(2, nullptr), type(0), target_time(0) {}
   CPP_Gate(uint8_t t, uint8_t lim)
       : output(2), flags(0), invalid(lim), limit(lim), logic(0),
-        seed(t < 2 ? 0 : 1), hitlist(), sources(lim, nullptr), type(t),
-        target_time(0) {}
+        seed(t < 2 ? 0 : 1), mask(0xFF), reserved(0), hitlist(),
+        sources(lim, nullptr), type(t), target_time(0) {}
 };
 
 static_assert(sizeof(CPP_Gate) == 64, "CPP_Gate must be exactly 64 bytes (1 cache line)");
@@ -86,6 +81,7 @@ static_assert(offsetof(CPP_Gate, invalid) == 2, "invalid at offset 2");
 static_assert(offsetof(CPP_Gate, limit) == 3, "limit at offset 3");
 static_assert(offsetof(CPP_Gate, logic) == 4, "logic at offset 4");
 static_assert(offsetof(CPP_Gate, seed) == 5, "seed at offset 5");
+static_assert(offsetof(CPP_Gate, mask) == 6, "mask at offset 6");
 static_assert(offsetof(CPP_Gate, hitlist) == 8, "hitlist at offset 8");
 static_assert(offsetof(CPP_Gate, sources) == 32, "sources at offset 32");
 static_assert(offsetof(CPP_Gate, type) == 56, "type at offset 56");

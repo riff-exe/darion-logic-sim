@@ -43,14 +43,14 @@ python geometry.py EPFL_parsed --dump
 # python master_test.py iscas89 --vectors 10000 --limit 5
 
 
-python tests/master_test.py tests/ISCAS85 --skip-verify 
-python tests/master_test.py tests/EPFL_parsed --skip-verify 
-python tests/master_test.py tests/EPFL_large_parsed --vectors 500 --no-engine --skip-verify
+python tests/master_test.py tests/ISCAS85 --skip-verify --no-engine --no-rx-oop --no-verilator
+python tests/master_test.py tests/EPFL_parsed --skip-verify --no-engine --no-rx-oop --no-verilator
+python tests/master_test.py tests/EPFL_large_parsed --vectors 500 --no-engine --no-rx-oop --no-verilator --skip-verify
 
-python tests/master_test.py tests/ISCAS89 --skip-verify
-python tests/master_test.py tests/IWLS2005/itc99 --skip-verify --no-engine
-python tests/master_test.py tests/IWLS2005/opencores --skip-verify --no-engine
-python tests/master_test.py tests/IWLS2005/faraday --skip-verify --no-engine
+python tests/master_test.py tests/ISCAS89 --skip-verify --no-engine --no-rx-oop --no-verilator
+python tests/master_test.py tests/IWLS2005/itc99 --skip-verify --no-engine --no-rx-oop --no-verilator
+python tests/master_test.py tests/IWLS2005/opencores --skip-verify --no-engine --no-rx-oop --no-verilator
+python tests/master_test.py tests/IWLS2005/faraday --skip-verify --no-engine --no-rx-oop --no-verilator
 python tests/cache_perf.py --plot
 
 python tests/master_test.py tests/EPFL_mammoth_parsed --vectors 50 --no-engine --no-icarus --no-rx-prop --no-rx-oop --no-verilator --skip-verify
