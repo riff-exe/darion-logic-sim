@@ -1348,7 +1348,7 @@ cdef class Circuit:
         cdef int origin = task.gate_loc
         cdef Profile* profile
         cdef Profile* end
-        cdef uint8_t target_output
+        cdef uint8_t target_output, new_output
         cdef unsigned int next_time, calc_time
         cdef int target_loc
         cdef CPP_Gate* self_info
@@ -1375,16 +1375,17 @@ cdef class Circuit:
         if not (self_info.flags & FLAG_UPDATE):
             self.visual_queue.push_back(origin)
             self_info.flags |= FLAG_UPDATE
+        new_output = self_info.output
         profile = self_info.hitlist.data()
-        end = profile + self_info.hitlist.size()
+        end = profile + self_info.hitlist.size()    
         while profile != end:
-            while profile!=end and profile.output==self_info.output:
+            while profile!=end and profile.output==new_output:
                 profile+=1
             if profile ==end:break
             target = profile.target
-            target.logic += (self_info.output == target.seed) - (profile.output == target.seed)
+            target.logic += (new_output == target.seed) - (profile.output == target.seed)
             target_output = target.output
-            if self_info.output != UNKNOWN:
+            if new_output != UNKNOWN:
                 target.evaluate()
             else:
                 target.output = UNKNOWN
@@ -1393,7 +1394,7 @@ cdef class Circuit:
                 calc_time = self.Global_Clock + self.Global_delay[target.type] + (self.FanIn_delay[target.type] * target.inputlimit) + (self.FanOut_delay[target.type] * target.hitlist.size())
                 gate_clocks[target_loc] = calc_time
                 self.time_queue.push(Task(target_loc, calc_time, target_loc))
-            profile.output = self_info.output
+            profile.output = new_output
             profile += 1
         if self_info.inputlimit == INFINITE:
             with gil:
@@ -1413,10 +1414,10 @@ cdef class Circuit:
         cdef Py_ssize_t wave_limit = self.gate_infolist.size() - self.hidden
         if unlikely(wave_limit > self.queue[0].size()):
             self.sync_queue_size()
-
+        wave_limit*=2
         cdef Profile* profile
         cdef Profile* end
-        cdef uint8_t target_output
+        cdef uint8_t target_output, new_output
         cdef Py_ssize_t index = 0, size = 0
         cdef Py_ssize_t eval = 0
         cdef CPP_Gate** read_queue = self.queue[0].data()
@@ -1451,18 +1452,19 @@ cdef class Circuit:
                 profile = self_info.hitlist.data()
                 end = profile + self_info.hitlist.size()
                 eval += self_info.hitlist.size()
+                new_output = self_info.output
                 while profile < end:
                     target = profile.target
-                    target.logic += (self_info.output == target.seed) - (profile.output == target.seed)
+                    target.logic += (new_output == target.seed) - (profile.output == target.seed)
                     target_output = target.output
-                    if self_info.output != UNKNOWN:
+                    if new_output != UNKNOWN:
                         target.evaluate()
                     else:
                         target.output = UNKNOWN
                     write_queue[size] = profile.target
                     size += (((target.flags & FLAG_MARK) == 0) & (target_output != target.output))
                     target.flags |= FLAG_MARK * (target_output != target.output)
-                    profile.output = self_info.output
+                    profile.output = new_output
                     profile += 1
             # size is actually the growing size of write_queue
             end_point, size = size, 0
