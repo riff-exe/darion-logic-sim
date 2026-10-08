@@ -160,10 +160,11 @@ cdef class IC:
         cdef CPP_Gate* gate_infolist = self.gate_infolist_ptr[0].data()
         for pin_out in self.outputs:
             pin_out_info = &gate_infolist[pin_out.location]
-            hitlist = pin_out_info.hitlist.data()
-            sz = pin_out_info.hitlist.size()
-            for i in range(sz):
-                hide(hitlist[i],gate_infolist, self.gate_verse)
+            hitlist = pin_out_info.hitlist.begin()
+            pend = pin_out_info.hitlist.end()
+            while hitlist < pend:
+                hide(hitlist[0], gate_infolist, self.gate_verse)
+                hitlist += 1
 
         # Disconnect inputs from external sources
         for pin_in in self.inputs:
@@ -196,10 +197,11 @@ cdef class IC:
         # Reconnect output targets via hitlist
         for pin_out in self.outputs:
             pin_out_info = &gate_infolist[pin_out.location]
-            hitlist = pin_out_info.hitlist.data()
-            sz = pin_out_info.hitlist.size()
-            for i in range(sz):
-                reveal(hitlist[i], pin_out, self.gate_verse)
+            hitlist = pin_out_info.hitlist.begin()
+            pend = pin_out_info.hitlist.end()
+            while hitlist < pend:
+                reveal(hitlist[0], pin_out, self.gate_verse)
+                hitlist += 1
 
     cpdef void reset(self):
         '''Reset all internal gates back to unknown state'''
@@ -236,8 +238,8 @@ cdef class IC:
             for pin in self.inputs:
                 targets = []
                 pin_info = &gate_infolist[pin.location]
-                p = pin_info.hitlist.data()
-                pend = p + pin_info.hitlist.size()
+                p = pin_info.hitlist.begin()
+                pend = pin_info.hitlist.end()
                 while p < pend:
                     targets.append(str(<Gate>PyList_GET_ITEM(gate_verse, p.target - gate_infolist)))
                     p += 1
@@ -253,8 +255,8 @@ cdef class IC:
                     ch_str = f"val:{pin.sources}"
                 tgt = []
                 pin_info = &gate_infolist[pin.location]
-                p = pin_info.hitlist.data()
-                pend = p + pin_info.hitlist.size()
+                p = pin_info.hitlist.begin()
+                pend = pin_info.hitlist.end()
                 while p < pend:
                     tgt.append(str(<Gate>PyList_GET_ITEM(gate_verse, p.target - gate_infolist)))
                     p += 1

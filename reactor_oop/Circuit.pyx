@@ -460,29 +460,29 @@ cdef class Circuit:
         cdef Py_ssize_t index = len(outputs)
         while index < size:
             gate = queue[index]
-            if gate.id == IC_INPUT_PIN_ID and gate.sources[0] is not None:
-                profile = (<CPP_Gate*>gate.info).hitlist.data()
-                end = profile + (<CPP_Gate*>gate.info).hitlist.size()
-                while profile != end:
-                    target = <Gate>(<CPP_Gate*>profile.target).gate
-                    target.sources[profile.index] = gate.sources[0]
-                    profile += 1
-            elif gate.id == IC_OUTPUT_PIN_ID and not (<CPP_Gate*>gate.info).hitlist.empty():
-                profile = (<CPP_Gate*>gate.info).hitlist.data()
-                end = profile + (<CPP_Gate*>gate.info).hitlist.size()
-                while profile != end:
-                    target = <Gate>(<CPP_Gate*>profile.target).gate
-                    target.sources[profile.index] = gate.sources[0]
-                    profile += 1
-            profile = (<CPP_Gate*>gate.info).hitlist.data()
-            end = profile + (<CPP_Gate*>gate.info).hitlist.size()
-            while profile != end:
-                target = <Gate>(<CPP_Gate*>profile.target).gate
-                if not target.info.scheduled:
-                    target.info.scheduled = 1
-                    queue.append(target)
-                    size += 1
-                profile += 1
+            # if gate.id == IC_INPUT_PIN_ID and gate.sources[0] is not None:
+            #     profile = (<CPP_Gate*>gate.info).hitlist.data()
+            #     end = profile + (<CPP_Gate*>gate.info).hitlist.size()
+            #     while profile != end:
+            #         target = <Gate>(<CPP_Gate*>profile.target).gate
+            #         target.sources[profile.index] = gate.sources[0]
+            #         profile += 1
+            # elif gate.id == IC_OUTPUT_PIN_ID and not (<CPP_Gate*>gate.info).hitlist.empty():
+            #     profile = (<CPP_Gate*>gate.info).hitlist.data()
+            #     end = profile + (<CPP_Gate*>gate.info).hitlist.size()
+            #     while profile != end:
+            #         target = <Gate>(<CPP_Gate*>profile.target).gate
+            #         target.sources[profile.index] = gate.sources[0]
+            #         profile += 1
+            # profile = (<CPP_Gate*>gate.info).hitlist.data()
+            # end = profile + (<CPP_Gate*>gate.info).hitlist.size()
+            # while profile != end:
+            #     target = <Gate>(<CPP_Gate*>profile.target).gate
+            #     if not target.info.scheduled:
+            #         target.info.scheduled = 1
+            #         queue.append(target)
+            #         size += 1
+            #     profile += 1
             index += 1
         cdef int pins = len(inputs) + len(outputs)
         for input_pin in inputs:
@@ -553,7 +553,7 @@ cdef class Circuit:
             if gate and (<Gate>gate).sources[0] is not None:
                 raise ValueError('Input Pin has extra sources')
         for gate in self.objlist[IC_OUTPUT_PIN_ID]:
-            if gate and (<CPP_Gate*>(<Gate>gate).info).hitlist.size() > 0:
+            if gate and (<CPP_Gate*>(<Gate>gate).info).hitlist.size > 0:
                 raise ValueError('Output Pin has extra targets')
 
         cdef IC my_ic = self.build_ic()
@@ -701,8 +701,8 @@ cdef class Circuit:
         return []
 
     cdef inline void turnoff(self, Gate gate):
-        cdef Profile* profile = (<CPP_Gate*>gate.info).hitlist.data()
-        cdef Profile* end = profile + (<CPP_Gate*>gate.info).hitlist.size()
+        cdef Profile* profile = (<CPP_Gate*>gate.info).hitlist.begin()
+        cdef Profile* end = (<CPP_Gate*>gate.info).hitlist.end()
         cdef CPP_Gate* target_info
         while profile != end:
             target_info = <CPP_Gate*>profile.target
@@ -725,8 +725,8 @@ cdef class Circuit:
             while index < end_point:
                 gate_info = <CPP_Gate*>read_queue[index]
                 gate_info.mark = 0
-                profile = gate_info.hitlist.data()
-                end = profile + gate_info.hitlist.size()
+                profile = gate_info.hitlist.begin()
+                end = gate_info.hitlist.end()
                 gate_info.output = UNKNOWN
                 while profile != end:
                     eval += 1
@@ -782,9 +782,9 @@ cdef class Circuit:
                 gate_info = read_queue[index]
                 gate_info.mark = 0
                 new_output = gate_info.output
-                profile = gate_info.hitlist.data()
-                end = profile + gate_info.hitlist.size()
-                eval += gate_info.hitlist.size()
+                profile = gate_info.hitlist.begin()
+                end = gate_info.hitlist.end()
+                eval += gate_info.hitlist.size
                 while profile < end:
                     profile_output = profile.output
                     target_info = profile.target

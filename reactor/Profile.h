@@ -1,17 +1,21 @@
 // reactor/Profile.h
 #ifndef PROFILE_H
 #define PROFILE_H
+#include <algorithm>
 #include <cstddef> // offsetof
 #include <cstdint>
-#include <stdint.h>
-#include <vector>
+#include <cstdlib>
+#include <cstring>
+#include <utility>
 
 struct CPP_Gate;
 
 struct Profile {
   CPP_Gate *target; // offset 0 (8 B) - HOTTEST: downstream gate pointer
-  uint8_t output;   // offset 8 (1 B) - HOTTEST SCALAR: wire state (read + written)
-  uint8_t index;    // offset 9 (1 B) - COLD: pin index (used only in connect/disconnect)
+  uint8_t
+      output;    // offset 8 (1 B) - HOTTEST SCALAR: wire state (read + written)
+  uint8_t index; // offset 9 (1 B) - COLD: pin index (used only in
+                 // connect/disconnect)
   Profile() : target(nullptr), output(0), index(0) {}
   Profile(CPP_Gate *t, uint8_t i, uint8_t o) : target(t), output(o), index(i) {}
   bool operator<(const Profile &other) const { return target < other.target; }
@@ -32,19 +36,141 @@ struct Task {
 };
 // ──────────────────────────────────────────────────────────────────────────
 
+// ─── HitList (Dynamic Array) ──────────────────────────────────────────────
+struct HitList {
+  Profile *data;
+  uint8_t size;
+  uint8_t capacity;
+
+  HitList() noexcept : data(nullptr), size(0), capacity(0) {}
+
+  ~HitList() noexcept {
+    if (data) {
+      std::free(data);
+      data = nullptr;
+    }
+    size = 0;
+    capacity = 0;
+  }
+
+  HitList(const HitList &other) : data(nullptr), size(0), capacity(0) {
+    if (other.size > 0) {
+      data = static_cast<Profile *>(std::malloc(other.size * sizeof(Profile)));
+      if (data) {
+        std::memcpy(data, other.data, other.size * sizeof(Profile));
+        size = other.size;
+        capacity = other.size;
+      }
+    }
+  }
+
+  HitList &operator=(const HitList &other) {
+    if (this == &other) {
+      return *this;
+    }
+
+    if (capacity < other.size) {
+      Profile *new_data = static_cast<Profile *>(
+          std::realloc(data, other.size * sizeof(Profile)));
+      if (!new_data) {
+        return *this;
+      }
+      data = new_data;
+      capacity = other.size;
+    }
+    if (other.size)
+      std::memcpy(data, other.data, other.size * sizeof(Profile));
+    size = other.size;
+    return *this;
+  }
+
+  HitList &operator=(HitList &&other) noexcept {
+    if (this == &other) {
+      return *this;
+    }
+    if (data) {
+      std::free(data);
+    }
+    data = other.data;
+    size = other.size;
+    capacity = other.capacity;
+    other.capacity = 0;
+    other.size = 0;
+    other.data = nullptr;
+    return *this;
+  }
+  HitList(HitList &&other) noexcept {
+    data = other.data;
+    size = other.size;
+    capacity = other.capacity;
+    other.capacity = 0;
+    other.size = 0;
+    other.data = nullptr;
+  }
+
+  void swap(HitList &other) noexcept {
+    std::swap(data, other.data);
+    std::swap(size, other.size);
+    std::swap(capacity, other.capacity);
+  }
+
+  inline bool empty() const noexcept { return size == 0; }
+  inline Profile *begin() noexcept { return data; }
+  inline const Profile *begin() const noexcept { return data; }
+  inline Profile *end() noexcept { return data + size; }
+  inline const Profile *end() const noexcept { return data + size; }
+
+  inline Profile &operator[](size_t idx) noexcept { return data[idx]; }
+  inline const Profile &operator[](size_t idx) const noexcept {
+    return data[idx];
+  }
+
+  inline void push_back(const Profile &p) {
+    if (size == capacity) {
+      if (capacity == 255)
+        return;
+      else {
+        capacity = (capacity == 0) ? 2 : std::min(capacity * 2, 255);
+        data = static_cast<Profile *>(
+            std::realloc(data, capacity * sizeof(Profile)));
+      }
+    }
+    data[size++] = p;
+  }
+
+  inline void emplace_back(CPP_Gate *t, uint8_t i, uint8_t o) {
+    if (size == capacity) {
+      if (capacity == 255)
+        return;
+      else {
+        capacity = (capacity == 0) ? 2 : std::min(capacity * 2, 255);
+        data = static_cast<Profile *>(
+            std::realloc(data, capacity * sizeof(Profile)));
+      }
+    }
+    data[size++] = Profile(t, i, o);
+  }
+};
+// ──────────────────────────────────────────────────────────────────────────
+
 struct CPP_Gate {
   // ── HOTTEST SCALARS (Bytes 0–7) ───────────────────────────────────────────
-  // Ordered strictly from hottest to coldest based on Linux hardware PMU profiling:
-  //   offset 0: flags       (uint8_t, 1 B) — #1 HOTTEST: mark, update, and negate bits (~35% cycles)
-  //   offset 1: output      (uint8_t, 1 B) — #2 HOTTEST: wire logic state (checked & updated)
-  //   offset 2: inputlimit  (uint8_t, 1 B) — #3 HOT: guard for unresolved inputs / error state
-  //   offset 3: mask        (uint8_t, 1 B) — #4 HOT: masking logic for branchless gate evaluation
-  //   offset 4: logic       (uint8_t, 1 B) — #5 WARM: active input accumulator counter
-  //   offset 5: seed        (uint8_t, 1 B) — #6 WARM: triggering input value invariant
-  //   offset 6: type        (int8_t,  1 B) — #7 COLD: gate type ID (used only in oscillator fallback)
-  //   offset 7: reserved    (uint8_t, 1 B) — [1 B natural padding aligning 8-B hitlist pointer]
-  // ── HITLIST (Bytes 8–31) ─────────────────────────────────────────────────
-  //   offset 8: hitlist     (std::vector<Profile>, 24 B, 8-B aligned)
+  // Ordered strictly from hottest to coldest based on Linux hardware PMU
+  // profiling:
+  //   offset 0: flags       (uint8_t, 1 B) — #1 HOTTEST: mark, update, and
+  //   negate bits (~35% cycles) offset 1: output      (uint8_t, 1 B) — #2
+  //   HOTTEST: wire logic state (checked & updated) offset 2: inputlimit
+  //   (uint8_t, 1 B) — #3 HOT: guard for unresolved inputs / error state offset
+  //   3: mask        (uint8_t, 1 B) — #4 HOT: masking logic for branchless gate
+  //   evaluation offset 4: logic       (uint8_t, 1 B) — #5 WARM: active input
+  //   accumulator counter offset 5: seed        (uint8_t, 1 B) — #6 WARM:
+  //   triggering input value invariant offset 6: type        (int8_t,  1 B) —
+  //   #7 COLD: gate type ID (used only in oscillator fallback) offset 7:
+  //   reserved    (uint8_t, 1 B) — [1 B natural padding aligning 8-B hitlist
+  //   pointer]
+  // ── HITLIST (Bytes 8–23) ─────────────────────────────────────────────────
+  //   offset 8: hitlist     (HitList, 16 B, 8-B aligned: Profile* data [8B],
+  //   uint8_t size [1B], uint8_t capacity [1B], 6B padding)
   uint8_t flags;
   uint8_t output;
   uint8_t inputlimit;
@@ -53,7 +179,7 @@ struct CPP_Gate {
   uint8_t seed;
   int8_t type;
   uint8_t reserved;
-  std::vector<Profile> hitlist; // 24 B; offset 8 (8-byte aligned)
+  HitList hitlist; // 16 B; offset 8 (8-byte aligned)
 
   inline void evaluate() noexcept {
     if (!inputlimit) {
@@ -67,15 +193,15 @@ struct CPP_Gate {
       : flags(0), output(2), inputlimit(2), mask(0xFF), logic(0), seed(1),
         type(0), reserved(0), hitlist() {}
   CPP_Gate(uint8_t t, uint8_t lim)
-      : flags(0), output(2), inputlimit(lim), mask(0xFF), logic(0),
-        seed(1), type(t), reserved(0), hitlist() {}
+      : flags(0), output(2), inputlimit(lim), mask(0xFF), logic(0), seed(1),
+        type(t), reserved(0), hitlist() {}
 };
 
 // Compile-time assertion: hitlist must be 8-byte aligned at offset 8, and total
-// size exactly 32 bytes.
+// size exactly 24 bytes.
 static_assert(
     offsetof(CPP_Gate, hitlist) == 8,
     "CPP_Gate: hitlist must be at offset 8 for optimal 8-byte alignment");
-static_assert(sizeof(CPP_Gate) == 32,
-              "CPP_Gate: struct size must be exactly 32 bytes");
+static_assert(sizeof(CPP_Gate) == 24,
+              "CPP_Gate: struct size must be exactly 24 bytes");
 #endif

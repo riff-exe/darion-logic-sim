@@ -58,8 +58,8 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, vector[unsigned int
                     
             for i in range(gate_infolist.size()):
                 info = &gate_infolist[i]
-                profile = info.hitlist.data()
-                end = profile + info.hitlist.size()
+                profile = info.hitlist.begin()
+                end = info.hitlist.end()
                 while profile < end:
                     profile.target = profile.target + diff
                     profile += 1

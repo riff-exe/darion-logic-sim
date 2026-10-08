@@ -164,11 +164,13 @@ cdef class IC:
         cdef size_t size
         cdef Gate src
         cdef Gate target
+        cdef Profile* pend
         for pin_out in self.outputs:
-            hitlist = (<CPP_Gate*>pin_out.info).hitlist.data()
-            size = (<CPP_Gate*>pin_out.info).hitlist.size()
-            for i in range(size):
-                hide(hitlist[i])
+            hitlist = (<CPP_Gate*>pin_out.info).hitlist.begin()
+            pend = (<CPP_Gate*>pin_out.info).hitlist.end()
+            while hitlist < pend:
+                hide(hitlist[0])
+                hitlist += 1
         for pin_in in self.inputs:
             for index, source in enumerate(pin_in.sources):
                 if source is not None:
@@ -181,6 +183,7 @@ cdef class IC:
         cdef int index
         cdef int loc
         cdef Profile* hitlist
+        cdef Profile* pend
         cdef size_t i
         cdef size_t size
         cdef Gate src
@@ -192,10 +195,11 @@ cdef class IC:
                 (<CPP_Gate*>pin_in.info).inputlimit -= 1
             pin_in.process()
         for pin_out in self.outputs:
-            hitlist = (<CPP_Gate*>pin_out.info).hitlist.data()
-            size = (<CPP_Gate*>pin_out.info).hitlist.size()
-            for i in range(size):
-                reveal(hitlist[i], pin_out)
+            hitlist = (<CPP_Gate*>pin_out.info).hitlist.begin()
+            pend = (<CPP_Gate*>pin_out.info).hitlist.end()
+            while hitlist < pend:
+                reveal(hitlist[0], pin_out)
+                hitlist += 1
 
     cpdef void reset(self):
         for i in self.inputs+self.internal+self.outputs:

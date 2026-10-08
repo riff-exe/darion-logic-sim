@@ -1,9 +1,12 @@
 // reactor_oop/Profile.h
 #ifndef PROFILE_H
 #define PROFILE_H
-#include <vector>
-#include <stdint.h>
+#include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <utility>
 
 // ─── Forward declaration ───────────────────────────────────────────────────────
 struct CPP_Gate;
@@ -21,6 +24,7 @@ struct Profile {
     uint8_t   output;
     Profile() : target(nullptr), index(0), output(LOGIC_UNKNOWN) {}
     Profile(CPP_Gate* t, uint8_t i, uint8_t o) : target(t), index(i), output(o) {}
+    bool operator<(const Profile& other) const { return target < other.target; }
 };
 
 // ─── Task ─────────────────────────────────────────────────────────────────────
@@ -34,6 +38,123 @@ struct Task {
         if (time != other.time) return time > other.time;
         return location > other.location;
     }
+};
+
+// ─── HitList (Dynamic Array) ──────────────────────────────────────────────
+struct HitList {
+  Profile *data;
+  uint8_t size;
+  uint8_t capacity;
+
+  HitList() noexcept : data(nullptr), size(0), capacity(0) {}
+
+  ~HitList() noexcept {
+    if (data) {
+      std::free(data);
+      data = nullptr;
+    }
+    size = 0;
+    capacity = 0;
+  }
+
+  HitList(const HitList &other) : data(nullptr), size(0), capacity(0) {
+    if (other.size > 0) {
+      data = static_cast<Profile *>(std::malloc(other.size * sizeof(Profile)));
+      if (data) {
+        std::memcpy(data, other.data, other.size * sizeof(Profile));
+        size = other.size;
+        capacity = other.size;
+      }
+    }
+  }
+
+  HitList &operator=(const HitList &other) {
+    if (this == &other) {
+      return *this;
+    }
+
+    if (capacity < other.size) {
+      Profile *new_data = static_cast<Profile *>(
+          std::realloc(data, other.size * sizeof(Profile)));
+      if (!new_data) {
+        return *this;
+      }
+      data = new_data;
+      capacity = other.size;
+    }
+    if (other.size)
+      std::memcpy(data, other.data, other.size * sizeof(Profile));
+    size = other.size;
+    return *this;
+  }
+
+  HitList &operator=(HitList &&other) noexcept {
+    if (this == &other) {
+      return *this;
+    }
+    if (data) {
+      std::free(data);
+    }
+    data = other.data;
+    size = other.size;
+    capacity = other.capacity;
+    other.capacity = 0;
+    other.size = 0;
+    other.data = nullptr;
+    return *this;
+  }
+
+  HitList(HitList &&other) noexcept {
+    data = other.data;
+    size = other.size;
+    capacity = other.capacity;
+    other.capacity = 0;
+    other.size = 0;
+    other.data = nullptr;
+  }
+
+  void swap(HitList &other) noexcept {
+    std::swap(data, other.data);
+    std::swap(size, other.size);
+    std::swap(capacity, other.capacity);
+  }
+
+  inline bool empty() const noexcept { return size == 0; }
+  inline Profile *begin() noexcept { return data; }
+  inline const Profile *begin() const noexcept { return data; }
+  inline Profile *end() noexcept { return data + size; }
+  inline const Profile *end() const noexcept { return data + size; }
+
+  inline Profile &operator[](size_t idx) noexcept { return data[idx]; }
+  inline const Profile &operator[](size_t idx) const noexcept {
+    return data[idx];
+  }
+
+  inline void push_back(const Profile &p) {
+    if (size == capacity) {
+      if (capacity == 255)
+        return;
+      else {
+        capacity = (capacity == 0) ? 2 : std::min(capacity * 2, 255);
+        data = static_cast<Profile *>(
+            std::realloc(data, capacity * sizeof(Profile)));
+      }
+    }
+    data[size++] = p;
+  }
+
+  inline void emplace_back(CPP_Gate *t, uint8_t i, uint8_t o) {
+    if (size == capacity) {
+      if (capacity == 255)
+        return;
+      else {
+        capacity = (capacity == 0) ? 2 : std::min(capacity * 2, 255);
+        data = static_cast<Profile *>(
+            std::realloc(data, capacity * sizeof(Profile)));
+      }
+    }
+    data[size++] = Profile(t, i, o);
+  }
 };
 
 // ==============================================================================
@@ -57,7 +178,6 @@ struct Task {
 //            seed=1 (HIGH) for OR/NOR/XOR/XNOR/BUFFER/NOT/IC_Input/IC_Output
 // ==============================================================================
 struct CPP_Gate {
-    void*                gate;        // back-pointer to Python Gate object
     int8_t               type;
     uint8_t              output;
     uint8_t              inputlimit;
@@ -67,12 +187,12 @@ struct CPP_Gate {
     uint8_t              scheduled;
     uint8_t              logic;       // count of inputs matching seed
     uint8_t              seed;        // triggering input value for this gate type
-    std::vector<Profile> hitlist;
+    HitList              hitlist;
 
-    CPP_Gate() : gate(nullptr), type(0), output(LOGIC_UNKNOWN),
-                 inputlimit(2), mark(0), update(1), value(0), scheduled(0), logic(0), seed(1) {}
-    CPP_Gate(void* g, int8_t t, uint8_t lim) : gate(g), type(t), output(LOGIC_UNKNOWN),
-              inputlimit(lim), mark(0), update(1), value(0), scheduled(0), logic(0), seed(1) {}
+    CPP_Gate() : type(0), output(LOGIC_UNKNOWN),
+                 inputlimit(2), mark(0), update(1), value(0), scheduled(0), logic(0), seed(1), hitlist() {}
+    CPP_Gate(int8_t t, uint8_t lim) : type(t), output(LOGIC_UNKNOWN),
+              inputlimit(lim), mark(0), update(1), value(0), scheduled(0), logic(0), seed(1), hitlist() {}
 
     virtual void compute() noexcept { output = LOGIC_UNKNOWN; }
     virtual ~CPP_Gate() = default;
@@ -82,86 +202,86 @@ struct CPP_Gate {
 
 // AND (id=0): HIGH iff no LOW input  → seed=0, HIGH when logic==0
 struct AND_Gate : CPP_Gate {
-    AND_Gate(void* g, uint8_t lim) : CPP_Gate(g, 0, lim) { seed = 0; }
+    AND_Gate(uint8_t lim) : CPP_Gate(0, lim) { seed = 0; }
     inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic == 0); }
 };
 
 // NAND (id=1): LOW iff no LOW input (inverted AND) → seed=0, HIGH when logic>0
 struct NAND_Gate : CPP_Gate {
-    NAND_Gate(void* g, uint8_t lim) : CPP_Gate(g, 1, lim) { seed = 0; }
+    NAND_Gate(uint8_t lim) : CPP_Gate(1, lim) { seed = 0; }
     inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic > 0); }
 };
 
 // OR (id=2): HIGH iff any HIGH input → seed=1, HIGH when logic>0
 struct OR_Gate : CPP_Gate {
-    OR_Gate(void* g, uint8_t lim) : CPP_Gate(g, 2, lim) { seed = 1; }
+    OR_Gate(uint8_t lim) : CPP_Gate(2, lim) { seed = 1; }
     inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic > 0); }
 };
 
 // NOR (id=3): HIGH iff no HIGH input (inverted OR) → seed=1, HIGH when logic==0
 struct NOR_Gate : CPP_Gate {
-    NOR_Gate(void* g, uint8_t lim) : CPP_Gate(g, 3, lim) { seed = 1; }
+    NOR_Gate(uint8_t lim) : CPP_Gate(3, lim) { seed = 1; }
     inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic == 0); }
 };
 
 // XOR (id=4): HIGH iff odd HIGH count → seed=1, HIGH when logic&1
 struct XOR_Gate : CPP_Gate {
-    XOR_Gate(void* g, uint8_t lim) : CPP_Gate(g, 4, lim) { seed = 1; }
+    XOR_Gate(uint8_t lim) : CPP_Gate(4, lim) { seed = 1; }
     inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic & 1); }
 };
 
 // XNOR (id=5): HIGH iff even HIGH count (inverted XOR) → seed=1, HIGH when (logic&1)^1
 struct XNOR_Gate : CPP_Gate {
-    XNOR_Gate(void* g, uint8_t lim) : CPP_Gate(g, 5, lim) { seed = 1; }
+    XNOR_Gate(uint8_t lim) : CPP_Gate(5, lim) { seed = 1; }
     inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : ((logic & 1) ^ 1); }
 };
 
 // BUFFER (id=6): pass-through, 1 input → seed=1, HIGH when logic>0
 struct BUFFER_Gate : CPP_Gate {
-    BUFFER_Gate(void* g) : CPP_Gate(g, 6, 1) { seed = 1; }
+    BUFFER_Gate() : CPP_Gate(6, 1) { seed = 1; }
     inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic > 0); }
 };
 
 // NOT (id=7): inverter, 1 input → seed=1, HIGH when logic==0
 struct NOT_Gate : CPP_Gate {
-    NOT_Gate(void* g) : CPP_Gate(g, 7, 1) { seed = 1; }
+    NOT_Gate() : CPP_Gate(7, 1) { seed = 1; }
     inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic == 0); }
 };
 
 // IC_INPUT_PIN (id=8): internal input pin, pass-through → seed=1, HIGH when logic>0
 struct IC_Input_Gate : CPP_Gate {
-    IC_Input_Gate(void* g) : CPP_Gate(g, 8, 1) { seed = 1; }
+    IC_Input_Gate() : CPP_Gate(8, 1) { seed = 1; }
     inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic > 0); }
 };
 
 // VARIABLE (id=9): driven by value, ignores logic/seed
 struct Variable_Gate : CPP_Gate {
-    Variable_Gate(void* g) : CPP_Gate(g, 9, 1) { seed = 1; }
+    Variable_Gate() : CPP_Gate(9, 1) { seed = 1; }
     inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : value; }
 };
 
 // IC_OUTPUT_PIN (id=10): internal output pin, pass-through → seed=1, HIGH when logic>0
 struct IC_Output_Gate : CPP_Gate {
-    IC_Output_Gate(void* g) : CPP_Gate(g, 10, 1) { seed = 1; }
+    IC_Output_Gate() : CPP_Gate(10, 1) { seed = 1; }
     inline void compute() noexcept override { output = inputlimit ? LOGIC_UNKNOWN : (logic > 0); }
 };
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
 // Returns a heap-allocated typed subclass for polymorphic dispatch via compute().
-inline CPP_Gate* make_gate(void* g, int8_t type_id, uint8_t lim) {
+inline CPP_Gate* make_gate(int8_t type_id, uint8_t lim) {
     switch (type_id) {
-        case 0:  return new AND_Gate      (g, lim);
-        case 1:  return new NAND_Gate     (g, lim);
-        case 2:  return new OR_Gate       (g, lim);
-        case 3:  return new NOR_Gate      (g, lim);
-        case 4:  return new XOR_Gate      (g, lim);
-        case 5:  return new XNOR_Gate     (g, lim);
-        case 6:  return new BUFFER_Gate   (g);
-        case 7:  return new NOT_Gate      (g);
-        case 8:  return new IC_Input_Gate (g);
-        case 9:  return new Variable_Gate (g);
-        case 10: return new IC_Output_Gate(g);
-        default: return new CPP_Gate      (g, type_id, lim);
+        case 0:  return new AND_Gate      (lim);
+        case 1:  return new NAND_Gate     (lim);
+        case 2:  return new OR_Gate       (lim);
+        case 3:  return new NOR_Gate      (lim);
+        case 4:  return new XOR_Gate      (lim);
+        case 5:  return new XNOR_Gate     (lim);
+        case 6:  return new BUFFER_Gate   ();
+        case 7:  return new NOT_Gate      ();
+        case 8:  return new IC_Input_Gate ();
+        case 9:  return new Variable_Gate ();
+        case 10: return new IC_Output_Gate();
+        default: return new CPP_Gate      (type_id, lim);
     }
 }
 

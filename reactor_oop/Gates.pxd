@@ -30,7 +30,7 @@ cdef extern from "<vector>" namespace "std" nogil:
 cdef class Gate
 cdef class Variable
 
-cdef extern from "Profile.h":
+cdef extern from "Profile.h" nogil:
     cdef cppclass Profile:
         CPP_Gate* target
         uint8_t index
@@ -44,11 +44,22 @@ cdef extern from "Profile.h":
         Task() nogil
         Task(int gate_loc, unsigned int time, int location) nogil
         bint operator>(const Task& other) nogil
+    cdef cppclass HitList:
+        Profile* data
+        uint8_t size
+        uint8_t capacity
+        HitList()
+        bint empty()
+        Profile* begin()
+        Profile* end()
+        Profile& operator[](size_t)
+        void push_back(Profile&)
+        void emplace_back(...)
+        void swap(HitList&)
     # Polymorphic gate base — subclasses override compute() per gate type.
     # Cython accesses fields by name (ptr->field); the vtable pointer is
     # invisible to named member access and causes no offset issue.
     cdef cppclass CPP_Gate:
-        void* gate
         int8_t type
         uint8_t output
         uint8_t inputlimit
@@ -58,15 +69,15 @@ cdef extern from "Profile.h":
         uint8_t scheduled
         uint8_t logic    # count of inputs matching seed
         uint8_t seed     # triggering input value for this gate type
-        vector[Profile] hitlist
+        HitList hitlist
         CPP_Gate()
-        CPP_Gate(void* g, int8_t t, uint8_t lim)
+        CPP_Gate(int8_t t, uint8_t lim)
         void compute() nogil          # virtual dispatch to typed subclass
-    CPP_Gate* make_gate(void* g, int8_t type_id, uint8_t lim) nogil
+    CPP_Gate* make_gate(int8_t type_id, uint8_t lim) nogil
 
 cdef void hide(Profile& profile)
 cdef void reveal(Profile& profile, Gate source)
-cdef void pop(vector[Profile]& hitlist, CPP_Gate* target, int pin_index)
+cdef void pop(HitList& hitlist, CPP_Gate* target, int pin_index)
 
 cdef class Gate:
     cdef public uint8_t id

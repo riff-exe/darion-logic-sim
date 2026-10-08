@@ -36,7 +36,7 @@ cdef extern from "<vector>" namespace "std" nogil:
 cdef class Gate
 cdef class Variable
 
-cdef extern from "Profile.h":
+cdef extern from "Profile.h" nogil:
     cdef cppclass Profile:
         CPP_Gate* target
         int output
@@ -50,6 +50,18 @@ cdef extern from "Profile.h":
         Task() nogil
         Task(int gate_loc, unsigned int time, int location) nogil
         bint operator>(const Task& other) nogil
+    cdef cppclass HitList:
+        Profile* data
+        uint8_t size
+        uint8_t capacity
+        HitList()
+        bint empty()
+        Profile* begin()
+        Profile* end()
+        Profile& operator[](size_t)
+        void push_back(Profile&)
+        void emplace_back(...)
+        void swap(HitList&)
     cdef cppclass CPP_Gate:
         uint8_t flags
         uint8_t output
@@ -59,7 +71,7 @@ cdef extern from "Profile.h":
         uint8_t seed
         int8_t type
         uint8_t reserved
-        vector[Profile] hitlist
+        HitList hitlist
         CPP_Gate()
         CPP_Gate(uint8_t t, uint8_t lim)
         void evaluate() noexcept nogil
@@ -72,7 +84,7 @@ cdef enum GateFlags:
 
 cdef void hide(Profile& profile, CPP_Gate* gate_infolist, list gate_verse)
 cdef void reveal(Profile& profile, Gate source, list gate_verse)
-cdef void pop(vector[Profile]& hitlist, CPP_Gate* gate_infolist, CPP_Gate* target, int pin_index)
+cdef void pop(HitList& hitlist, CPP_Gate* gate_infolist, CPP_Gate* target, int pin_index)
 
 cdef class Gate:
 # --- 4-BYTE ALIGNED (HOT C-TYPES) ---

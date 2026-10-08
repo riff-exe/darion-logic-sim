@@ -4,36 +4,38 @@
 # cython: initializedcheck=False
 # cython: cdivision=True
 # cython: nonecheck=False
-from Gates cimport vector, CPP_Gate, Profile, make_gate, pop, hide, reveal
+from Gates cimport vector, CPP_Gate, Profile, make_gate, pop, hide, reveal, HitList
 from cpython.list cimport PyList_GET_SIZE, PyList_GET_ITEM
 from Const cimport *
 from libc.string cimport memmove
 from Store cimport decode
 from libc.stdint cimport uint16_t
 
-cdef inline void pop(vector[Profile]& hitlist, CPP_Gate* target, int pin_index):
-    cdef Profile* profile = hitlist.data()
-    cdef Profile* end = profile + hitlist.size()
+cdef inline void pop(HitList& hitlist, CPP_Gate* target, int pin_index):
+    cdef Profile* profile = hitlist.begin()
+    cdef Profile* end = hitlist.end()
     while profile < end:
         if profile.target == target and profile.index == pin_index:
             profile[0] = (end - 1)[0]
-            hitlist.pop_back()
+            hitlist.size -= 1
             break
         profile += 1
 
 cdef inline void hide(Profile& profile):
-    cdef CPP_Gate* target_info = <CPP_Gate*>profile.target
-    cdef Gate target = <Gate>target_info.gate
-    target_info.logic -= (profile.output == target_info.seed)
-    target_info.inputlimit += 1
-    target.sources[profile.index] = None
-    profile.output = UNKNOWN
+    # cdef CPP_Gate* target_info = <CPP_Gate*>profile.target
+    # cdef Gate target = <Gate>target_info.gate
+    # target_info.logic -= (profile.output == target_info.seed)
+    # target_info.inputlimit += 1
+    # target.sources[profile.index] = None
+    # profile.output = UNKNOWN
+    pass
 
 cdef inline void reveal(Profile& profile, Gate source):
-    cdef CPP_Gate* target_info = <CPP_Gate*>profile.target
-    cdef Gate target = <Gate>target_info.gate
-    target_info.inputlimit -= 1
-    target.sources[profile.index] = source
+    # cdef CPP_Gate* target_info = <CPP_Gate*>profile.target
+    # cdef Gate target = <Gate>target_info.gate
+    # target_info.inputlimit -= 1
+    # target.sources[profile.index] = source
+    pass
 
 cdef class Gate:
     def __init__(self, int id, str name):
@@ -41,7 +43,7 @@ cdef class Gate:
         self.codename = name
         self.location = -1
         cdef uint8_t limit = 1 if id >= BUFFER_ID else 2
-        self.info = make_gate(<void*>self, id, limit)
+        self.info = make_gate(id, limit)
         if id >= BUFFER_ID:
             self.sources = [None]
         else:
@@ -61,13 +63,14 @@ cdef class Gate:
 
     @property
     def hitlist(self):
-        cdef list result = []
-        cdef size_t i
-        cdef size_t size = self.info.hitlist.size()
-        cdef Profile* profile = self.info.hitlist.data()
-        for i in range(size):
-            result.append(<Gate>(<CPP_Gate*>profile[i].target).gate)
-        return result
+        # cdef list result = []
+        # cdef size_t i
+        # cdef size_t size = self.info.hitlist.size()
+        # cdef Profile* profile = self.info.hitlist.data()
+        # for i in range(size):
+        #     result.append(<Gate>(<CPP_Gate*>profile[i].target).gate)
+        # return result
+        return []
 
     cdef void process(self):
         if MODE == DESIGN:
@@ -108,18 +111,18 @@ cdef class Gate:
     cdef void reset(self):
         self.info.logic = 0
         self.info.output = UNKNOWN
-        cdef Profile* profile = self.info.hitlist.data()
-        cdef Profile* end = profile + self.info.hitlist.size()
+        cdef Profile* profile = self.info.hitlist.begin()
+        cdef Profile* end = self.info.hitlist.end()
         while profile < end:
             profile.output = UNKNOWN
             profile += 1
 
     cdef void hide(self):
-        cdef Py_ssize_t i
-        cdef Py_ssize_t n = self.info.hitlist.size()
-        cdef Profile* hitlist = self.info.hitlist.data()
-        for i in range(n):
-            hide(hitlist[i])
+        cdef Profile* hitlist = self.info.hitlist.begin()
+        cdef Profile* end = self.info.hitlist.end()
+        while hitlist < end:
+            hide(hitlist[0])
+            hitlist += 1
         cdef list sources = self.sources
         n = len(sources)
         cdef Gate source
@@ -132,7 +135,8 @@ cdef class Gate:
         self.info.inputlimit = len(sources)
 
     cdef void reveal(self):
-        cdef Profile* hitlist = self.info.hitlist.data()
+        cdef Profile* hitlist = self.info.hitlist.begin()
+        cdef Profile* end = self.info.hitlist.end()
         cdef Py_ssize_t i
         cdef list sources = self.sources
         cdef Py_ssize_t n = len(sources)
@@ -143,9 +147,9 @@ cdef class Gate:
                 source.info.hitlist.emplace_back(<CPP_Gate*>self.info, i, source.info.output)
                 self.info.logic += (source.info.output == self.info.seed)
                 self.info.inputlimit -= 1
-        n = self.info.hitlist.size()
-        for i in range(n):
-            reveal(hitlist[i], self)
+        while hitlist < end:
+            reveal(hitlist[0], self)
+            hitlist += 1
         self.process()
 
     cpdef bint setlimits(self, int size):
@@ -237,7 +241,7 @@ cdef class MultiInputGate(Gate):
         self.id = id
         self.codename = name if name else 'MultiInputGate'
         self.location = -1
-        self.info = make_gate(<void*>self, id, 2)
+        self.info = make_gate(id, 2)
         self.sources = [None, None]
         self.code = ()
         self.custom_name = ''
@@ -308,7 +312,7 @@ cdef class SingleInputGate(Gate):
         self.id = id
         self.codename = name if name else 'SingleInputGate'
         self.location = -1
-        self.info = make_gate(<void*>self, id, 1)
+        self.info = make_gate(id, 1)
         self.sources = [None]
         self.code = ()
         self.custom_name = ''
@@ -353,7 +357,7 @@ cdef class Variable(Gate):
         self.id = id
         self.codename = name
         self.location = -1
-        self.info = make_gate(<void*>self, id, 1)
+        self.info = make_gate(id, 1)
         self.sources = [None]
         self.code = ()
         self.custom_name = ''
@@ -375,26 +379,26 @@ cdef class Variable(Gate):
 
     cdef void reset(self):
         self.info.output = UNKNOWN
-        cdef Profile* profile = self.info.hitlist.data()
-        cdef Profile* end = profile + self.info.hitlist.size()
+        cdef Profile* profile = self.info.hitlist.begin()
+        cdef Profile* end = self.info.hitlist.end()
         while profile < end:
             profile.output = UNKNOWN
             profile += 1
 
     cdef void hide(self):
-        cdef Py_ssize_t i
-        cdef Py_ssize_t n = self.info.hitlist.size()
-        cdef Profile* hitlist = self.info.hitlist.data()
-        for i in range(n):
-            hide(hitlist[i])
+        cdef Profile* hitlist = self.info.hitlist.begin()
+        cdef Profile* end = self.info.hitlist.end()
+        while hitlist < end:
+            hide(hitlist[0])
+            hitlist += 1
         self.info.output = UNKNOWN
 
     cdef void reveal(self):
-        cdef Profile* hitlist = self.info.hitlist.data()
-        cdef Py_ssize_t i
-        cdef Py_ssize_t n = self.info.hitlist.size()
-        for i in range(n):
-            reveal(hitlist[i], self)
+        cdef Profile* hitlist = self.info.hitlist.begin()
+        cdef Profile* end = self.info.hitlist.end()
+        while hitlist < end:
+            reveal(hitlist[0], self)
+            hitlist += 1
         self.process()
 
     cpdef bint setlimits(self, int size):
