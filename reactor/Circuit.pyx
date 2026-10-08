@@ -1429,7 +1429,36 @@ cdef class Circuit:
 
         cdef CPP_Gate* gate_infolist = self.gate_infolist.data()            
         while end_point > 0:
-            if unlikely(wave_limit < 0):
+            if wave_limit>0:
+                wave_limit -= 1
+                for index in range(end_point):
+                    self_info = read_queue[index]
+                    self_info.flags &= ~FLAG_MARK
+                    if not (self_info.flags & FLAG_UPDATE):
+                        self.visual_queue.push_back(read_queue[index] - gate_infolist)   # target changed — mark dirty
+                        self_info.flags |= FLAG_UPDATE
+                    profile = self_info.hitlist.data()
+                    end = profile + self_info.hitlist.size()
+                    eval += self_info.hitlist.size()
+                    new_output = self_info.output
+                    while profile < end:
+                        target = profile.target
+                        target.logic += (new_output == target.seed) - (profile.output == target.seed)
+                        target_output = target.output
+                        if new_output != UNKNOWN:
+                            target.evaluate()
+                        else:
+                            target.output = UNKNOWN
+                        write_queue[size] = profile.target
+                        size += (((target.flags & FLAG_MARK) == 0) & (target_output != target.output))
+                        target.flags |= FLAG_MARK * (target_output != target.output)
+                        profile.output = new_output
+                        profile += 1
+                # size is actually the growing size of write_queue
+                end_point, size = size, 0
+                # buffer switching, read->write and write->read
+                read_queue, write_queue = write_queue, read_queue
+            else:
                 self.eval_count += eval
                 for i in range(end_point):
                     self_info = read_queue[i]
@@ -1442,34 +1471,7 @@ cdef class Circuit:
                     if self.runner is None or self.runner.done():
                         self.runner = asyncio.create_task(self.task_manager())
                     return
-            wave_limit -= 1
-            for index in range(end_point):
-                self_info = read_queue[index]
-                self_info.flags &= ~FLAG_MARK
-                if not (self_info.flags & FLAG_UPDATE):
-                    self.visual_queue.push_back(read_queue[index] - gate_infolist)   # target changed — mark dirty
-                    self_info.flags |= FLAG_UPDATE
-                profile = self_info.hitlist.data()
-                end = profile + self_info.hitlist.size()
-                eval += self_info.hitlist.size()
-                new_output = self_info.output
-                while profile < end:
-                    target = profile.target
-                    target.logic += (new_output == target.seed) - (profile.output == target.seed)
-                    target_output = target.output
-                    if new_output != UNKNOWN:
-                        target.evaluate()
-                    else:
-                        target.output = UNKNOWN
-                    write_queue[size] = profile.target
-                    size += (((target.flags & FLAG_MARK) == 0) & (target_output != target.output))
-                    target.flags |= FLAG_MARK * (target_output != target.output)
-                    profile.output = new_output
-                    profile += 1
-            # size is actually the growing size of write_queue
-            end_point, size = size, 0
-            # buffer switching, read->write and write->read
-            read_queue, write_queue = write_queue, read_queue
+            
         self.eval_count += eval
 
     cdef void sweep(self, Py_ssize_t end_point) noexcept nogil:

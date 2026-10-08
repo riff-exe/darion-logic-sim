@@ -643,12 +643,27 @@ def main():
             c_data["phase3_sim_perf"] = p3
             if not args.json:
                 perf = p3.get("perf", {})
+                sim_res = p3.get("sim", {})
+                r_sim = sim_res.get("r_res", sim_res.get("reactor", sim_res.get("r_opt_res", sim_res.get("reactor_opt", {}))))
+                pr_ev = r_sim.get("total_evals")
+                sw_ev = r_sim.get("sweep_evals")
+
+                ev_parts = []
+                if pr_ev is not None:
+                    ev_parts.append(f"Prop: {fmt_num(pr_ev)}")
+                if sw_ev is not None:
+                    ev_parts.append(f"Sweep: {fmt_num(sw_ev)}")
+                ev_str = f" | Evals: {' / '.join(ev_parts)}" if ev_parts else ""
+
                 rx_p = perf.get("prop", perf.get("prop_opt", perf.get("sweep", perf.get("oop", perf.get("engine", {})))))
                 ipc = rx_p.get("ipc", 0.0)
                 l1_ld = rx_p.get("l1_loads", rx_p.get("l1_load", 0))
                 l1_ms = rx_p.get("l1_misses", rx_p.get("l1_miss", 0))
                 cyc = rx_p.get("cyc", 0)
-                print(f" Done ({t_el:.1f}ms) | IPC: {ipc:.2f} | Cycles: {fmt_num(cyc)} | L1 Load: {fmt_num(l1_ld)} | L1 Miss: {fmt_num(l1_ms)}")
+                if cyc > 0 or l1_ld > 0:
+                    print(f" Done ({t_el:.1f}ms){ev_str} | IPC: {ipc:.2f} | Cycles: {fmt_num(cyc)} | L1 Load: {fmt_num(l1_ld)} | L1 Miss: {fmt_num(l1_ms)}")
+                else:
+                    print(f" Done ({t_el:.1f}ms){ev_str}")
 
             results[c_name] = c_data
         finally:
@@ -763,11 +778,13 @@ def main():
     md.append("|:---|---:|---:|---:|---:|---:|---:|")
 
     speedup_rows = []
+    eval_rows = []
     geo_prop_spds = []
     geo_sweep_spds = []
     geo_oop_spds = []
     geo_eng_spds = []
     geo_ver_spds = []
+    sw_vs_prop_eval_spds = []
     rx_vs_py_spds = []
     sw_vs_py_spds = []
     sw_vs_prop_spds = []
@@ -799,12 +816,49 @@ def main():
                 return (t_ms / m_vecs) * target_vecs
             return t_ms
 
+        def get_norm_evals(res, is_enabled=True, key="total_evals"):
+            if not is_enabled or not res or "error" in res or (key == "sweep_evals" and "sweep_error" in res):
+                return None
+            ev = res.get(key)
+            if ev is None:
+                return None
+            m_vecs = res.get("logical_vectors", res.get("logical_count", res.get("measured_vectors", 0)))
+            p_vecs = res.get("physical_vectors", 0)
+            if p_vecs > 0 and m_vecs == p_vecs and p_vecs == 2 * target_vecs:
+                m_vecs = target_vecs
+            if m_vecs > 0 and target_vecs > 0 and m_vecs != target_vecs:
+                return int(round((ev / m_vecs) * target_vecs))
+            return int(ev)
+
         p_ms  = get_norm_time(r_prop, args.rx_prop)
         sw_ms = get_norm_time(r_prop, args.rx_sweep, key="sweep_ms")
         ro_ms = get_norm_time(ro, args.rx_oop)
         e_ms  = get_norm_time(eng, args.engine)
         i_ms  = get_norm_time(ic, args.icarus)
         v_ms  = get_norm_time(ver, args.verilator)
+
+        p_ev  = get_norm_evals(r_prop, args.rx_prop, key="total_evals")
+        sw_ev = get_norm_evals(r_prop, args.rx_sweep, key="sweep_evals")
+        ro_ev = get_norm_evals(ro, args.rx_oop, key="total_evals")
+        e_ev  = get_norm_evals(eng, args.engine, key="total_evals")
+
+        # Retrieve gate count
+        p1 = data.get("phase1_load") or {}
+        raw_gates = p1.get("gates", r_prop.get("nodes", eng.get("nodes", None)))
+        gate_cnt = raw_gates if isinstance(raw_gates, int) and raw_gates > 0 else None
+        gates_str = f"{gate_cnt:,}" if gate_cnt else (str(raw_gates) if raw_gates is not None else "N/A")
+
+        if p_ev is not None and sw_ev is not None and p_ev > 0:
+            sw_vs_prop_eval_spds.append(sw_ev / p_ev)
+
+        data["evals"] = {
+            "gates": gate_cnt,
+            "target_vectors": target_vecs,
+            "rx_prop": p_ev,
+            "rx_sweep": sw_ev,
+            "rx_oop": ro_ev,
+            "engine": e_ev,
+        }
 
         if i_ms > 0:
             suite_has_icarus = True
@@ -859,12 +913,32 @@ def main():
             fmt_spd(v_spd)
         ))
 
+        def fmt_ev_cell(ev):
+            if ev is None: return "N/A"
+            return f"{ev:,}"
+
+        eval_rows.append((
+            c_name,
+            gates_str,
+            fmt_ev_cell(p_ev),
+            fmt_ev_cell(sw_ev),
+            fmt_ev_cell(ro_ev),
+            fmt_ev_cell(e_ev)
+        ))
+
     base_label = "Icarus" if suite_has_icarus else "rx-prop"
     md.append(f"\n### Speedup Analysis (vs Baseline: {base_label} = 1.00x)\n")
     md.append("| Circuit | rx-prop | rx-sweep | rx-oop | Pure Python | Icarus | Verilator C++ |")
     md.append("|:---|---:|---:|---:|---:|---:|---:|")
     for r in speedup_rows:
         md.append(f"| {r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} | {r[5]} | {r[6]} |")
+
+    # TABLE 3b: Total Gate Evaluations
+    md.append("\n### Total Gate Evaluations\n")
+    md.append("| Circuit | Gates | rx-prop Evals | rx-sweep Evals | rx-oop Evals | Pure Python Evals |")
+    md.append("|:---|---:|---:|---:|---:|---:|")
+    for r in eval_rows:
+        md.append(f"| {r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} | {r[5]} |")
 
     # Geo-mean Speedup Highlights
     md.append(f"\n### Geo-Mean Speedup Highlights (Baseline: {base_label} = 1.00x)\n")
@@ -882,6 +956,16 @@ def main():
         md.append(f"- **Icarus Verilog:** `1.00x (Baseline)`")
     if geo_ver_spds:
         md.append(f"- **Verilator C++:** `{geo_mean(geo_ver_spds):.2f}x`")
+
+    # Total Gate Evaluations Highlights
+    eval_highlights = []
+    if sw_vs_prop_eval_spds:
+        r_sw_prop_ev = geo_mean(sw_vs_prop_eval_spds)
+        eval_highlights.append(f"- **Reactor Sweep vs Propagate Total Evaluations Ratio:** `{r_sw_prop_ev:.2f}x` ({'sweep performed more evaluations' if r_sw_prop_ev > 1 else 'propagate performed more evaluations'})")
+
+    if eval_highlights:
+        md.append("\n### Gate Evaluation Highlights\n")
+        md.extend(eval_highlights)
 
     cross_lines = []
     if rx_vs_py_spds:
