@@ -39,8 +39,8 @@ struct Task {
 // ─── HitList (Dynamic Array) ──────────────────────────────────────────────
 struct HitList {
   Profile *data;
-  uint8_t size;
-  uint8_t capacity;
+  uint32_t size;
+  uint32_t capacity;
 
   HitList() noexcept : data(nullptr), size(0), capacity(0) {}
 
@@ -127,26 +127,18 @@ struct HitList {
 
   inline void push_back(const Profile &p) {
     if (size == capacity) {
-      if (capacity == 255)
-        return;
-      else {
-        capacity = (capacity == 0) ? 2 : std::min(capacity * 2, 255);
-        data = static_cast<Profile *>(
-            std::realloc(data, capacity * sizeof(Profile)));
-      }
+      capacity = (capacity == 0) ? 2 : capacity * 2;
+      data = static_cast<Profile *>(
+          std::realloc(data, capacity * sizeof(Profile)));
     }
     data[size++] = p;
   }
 
   inline void emplace_back(CPP_Gate *t, uint8_t i, uint8_t o) {
     if (size == capacity) {
-      if (capacity == 255)
-        return;
-      else {
-        capacity = (capacity == 0) ? 2 : std::min(capacity * 2, 255);
-        data = static_cast<Profile *>(
-            std::realloc(data, capacity * sizeof(Profile)));
-      }
+      capacity = (capacity == 0) ? 2 : capacity * 2;
+      data = static_cast<Profile *>(
+          std::realloc(data, capacity * sizeof(Profile)));
     }
     data[size++] = Profile(t, i, o);
   }
@@ -157,20 +149,16 @@ struct CPP_Gate {
   // ── HOTTEST SCALARS (Bytes 0–7) ───────────────────────────────────────────
   // Ordered strictly from hottest to coldest based on Linux hardware PMU
   // profiling:
-  //   offset 0: flags       (uint8_t, 1 B) — #1 HOTTEST: mark, update, and
-  //   negate bits (~35% cycles) offset 1: output      (uint8_t, 1 B) — #2
-  //   HOTTEST: wire logic state (checked & updated) offset 2: inputlimit
-  //   (uint8_t, 1 B) — #3 HOT: guard for unresolved inputs / error state offset
-  //   3: mask        (uint8_t, 1 B) — #4 HOT: masking logic for branchless gate
-  //   evaluation offset 4: logic       (uint8_t, 1 B) — #5 WARM: active input
-  //   accumulator counter offset 5: seed        (uint8_t, 1 B) — #6 WARM:
-  //   triggering input value invariant offset 6: type        (int8_t,  1 B) —
-  //   #7 COLD: gate type ID (used only in oscillator fallback) offset 7:
-  //   reserved    (uint8_t, 1 B) — [1 B natural padding aligning 8-B hitlist
-  //   pointer]
+  //   offset 0: flags       (uint8_t, 1 B) — #1 HOTTEST: mark, update, and negate bits (~35% cycles)
+  //   offset 1: output      (uint8_t, 1 B) — #2 HOTTEST: wire logic state (checked & updated)
+  //   offset 2: inputlimit  (uint8_t, 1 B) — #3 HOT: guard for unresolved inputs / error state
+  //   offset 3: mask        (uint8_t, 1 B) — #4 HOT: masking logic for branchless gate evaluation
+  //   offset 4: logic       (uint8_t, 1 B) — #5 WARM: active input accumulator counter
+  //   offset 5: seed        (uint8_t, 1 B) — #6 WARM: triggering input value invariant
+  //   offset 6: type        (int8_t,  1 B) — #7 COLD: gate type ID (used only in oscillator fallback)
+  //   offset 7: reserved    (uint8_t, 1 B) — [1 B natural padding aligning 8-B hitlist pointer]
   // ── HITLIST (Bytes 8–23) ─────────────────────────────────────────────────
-  //   offset 8: hitlist     (HitList, 16 B, 8-B aligned: Profile* data [8B],
-  //   uint8_t size [1B], uint8_t capacity [1B], 6B padding)
+  //   offset 8: hitlist     (HitList, 16 B, 8-B aligned: Profile* data [8B], uint32_t size [4B], uint32_t capacity [4B])
   uint8_t flags;
   uint8_t output;
   uint8_t inputlimit;

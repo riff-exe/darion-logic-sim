@@ -772,7 +772,7 @@ cdef class Circuit:
             return
 
         while end_point > 0:
-            if unlikely(counter > self.counter):
+            if unlikely(counter > wave_limit):
                 self.eval_count += eval
                 self.burn(index, end_point, read_queue, write_queue)
                 return

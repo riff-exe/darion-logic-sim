@@ -43,8 +43,8 @@ struct Task {
 // ─── HitList (Dynamic Array) ──────────────────────────────────────────────
 struct HitList {
   Profile *data;
-  uint8_t size;
-  uint8_t capacity;
+  uint32_t size;
+  uint32_t capacity;
 
   HitList() noexcept : data(nullptr), size(0), capacity(0) {}
 
@@ -132,26 +132,18 @@ struct HitList {
 
   inline void push_back(const Profile &p) {
     if (size == capacity) {
-      if (capacity == 255)
-        return;
-      else {
-        capacity = (capacity == 0) ? 2 : std::min(capacity * 2, 255);
-        data = static_cast<Profile *>(
-            std::realloc(data, capacity * sizeof(Profile)));
-      }
+      capacity = (capacity == 0) ? 2 : capacity * 2;
+      data = static_cast<Profile *>(
+          std::realloc(data, capacity * sizeof(Profile)));
     }
     data[size++] = p;
   }
 
   inline void emplace_back(CPP_Gate *t, uint8_t i, uint8_t o) {
     if (size == capacity) {
-      if (capacity == 255)
-        return;
-      else {
-        capacity = (capacity == 0) ? 2 : std::min(capacity * 2, 255);
-        data = static_cast<Profile *>(
-            std::realloc(data, capacity * sizeof(Profile)));
-      }
+      capacity = (capacity == 0) ? 2 : capacity * 2;
+      data = static_cast<Profile *>(
+          std::realloc(data, capacity * sizeof(Profile)));
     }
     data[size++] = Profile(t, i, o);
   }

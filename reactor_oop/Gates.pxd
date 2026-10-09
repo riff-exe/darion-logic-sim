@@ -1,6 +1,6 @@
 # distutils: language = c++
 from Const cimport HIGH, LOW, UNKNOWN, DESIGN, SIMULATE, MODE
-from libc.stdint cimport uint16_t, uint8_t, int8_t
+from libc.stdint cimport uint32_t, uint16_t, uint8_t, int8_t
 cdef extern from "<vector>" namespace "std" nogil:
     cdef cppclass vector[T, ALLOCATOR=*]:
         cppclass iterator:
@@ -46,8 +46,8 @@ cdef extern from "Profile.h" nogil:
         bint operator>(const Task& other) nogil
     cdef cppclass HitList:
         Profile* data
-        uint8_t size
-        uint8_t capacity
+        uint32_t size
+        uint32_t capacity
         HitList()
         bint empty()
         Profile* begin()

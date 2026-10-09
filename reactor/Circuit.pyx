@@ -1468,8 +1468,12 @@ cdef class Circuit:
                     self.gate_clocks[loc] = calc_time
                     self.time_queue.push(Task(loc, calc_time, loc))
                 with gil:
-                    if self.runner is None or self.runner.done():
-                        self.runner = asyncio.create_task(self.task_manager())
+                    try:
+                        loop = asyncio.get_running_loop()
+                        if self.runner is None or self.runner.done():
+                            self.runner = loop.create_task(self.task_manager())
+                    except RuntimeError:
+                        pass
                     return
             
         self.eval_count += eval
