@@ -13,27 +13,27 @@
 
 | Circuit | Gates | Cython Reactor | Pure Python | Icarus Verilog | Verilator C++ |
 |:---|---:|---:|---:|---:|---:|
-| pci_conf_cyc_addr_dec.v | 184 | 0.61 MB (28.1 MB peak) | N/A | 0.54 MB (8.4 MB peak) | 0.71 MB (4.4 MB peak) |
-| steppermotordrive.v | 258 | 1.10 MB (28.7 MB peak) | N/A | 1.07 MB (8.9 MB peak) | 0.71 MB (4.4 MB peak) |
-| ss_pcm.v | 648 | 2.43 MB (30.0 MB peak) | N/A | 2.07 MB (9.9 MB peak) | 0.70 MB (4.4 MB peak) |
-| usb_phy.v | 715 | 2.61 MB (30.2 MB peak) | N/A | 2.52 MB (10.4 MB peak) | 0.73 MB (4.4 MB peak) |
-| sasc.v | 1,125 | 3.23 MB (30.8 MB peak) | N/A | 2.54 MB (10.5 MB peak) | 0.76 MB (4.5 MB peak) |
-| simple_spi.v | 1,489 | 3.76 MB (31.2 MB peak) | N/A | 4.07 MB (11.9 MB peak) | 0.80 MB (4.5 MB peak) |
-| pci_spoci_ctrl.v | 1,696 | 2.93 MB (30.5 MB peak) | N/A | 5.20 MB (13.0 MB peak) | 0.74 MB (4.4 MB peak) |
-| i2c.v | 1,496 | 3.75 MB (31.3 MB peak) | N/A | 5.37 MB (13.2 MB peak) | 0.73 MB (4.4 MB peak) |
-| systemcdes.v | 4,326 | 10.95 MB (38.5 MB peak) | N/A | 13.68 MB (21.5 MB peak) | 0.80 MB (4.5 MB peak) |
-| spi.v | 4,531 | 8.07 MB (35.7 MB peak) | N/A | 14.91 MB (22.8 MB peak) | 0.81 MB (4.5 MB peak) |
-| wb_dma.v | 5,720 | 15.54 MB (43.1 MB peak) | N/A | 16.00 MB (23.9 MB peak) | 0.89 MB (4.6 MB peak) |
-| des_area.v | 6,445 | 10.13 MB (37.6 MB peak) | N/A | 18.93 MB (26.8 MB peak) | 1.00 MB (4.6 MB peak) |
-| tv80.v | 10,607 | 19.70 MB (47.1 MB peak) | N/A | 31.12 MB (39.0 MB peak) | N/A |
-| systemcaes.v | 14,071 | 23.75 MB (52.2 MB peak) | N/A | 41.02 MB (48.9 MB peak) | 1.16 MB (4.8 MB peak) |
-| mem_ctrl.v | 16,796 | 34.45 MB (63.8 MB peak) | N/A | 53.99 MB (61.9 MB peak) | 1.25 MB (4.9 MB peak) |
-| ac97_ctrl.v | 19,069 | 47.28 MB (74.9 MB peak) | N/A | 65.51 MB (73.3 MB peak) | 1.33 MB (5.0 MB peak) |
-| usb_funct.v | 18,282 | 40.15 MB (67.8 MB peak) | N/A | 59.46 MB (67.3 MB peak) | 1.26 MB (5.0 MB peak) |
-| aes_core.v | 25,565 | 30.72 MB (61.6 MB peak) | N/A | 78.80 MB (86.6 MB peak) | 1.24 MB (4.9 MB peak) |
-| wb_conmax.v | 49,326 | 47.80 MB (80.9 MB peak) | N/A | 144.09 MB (151.9 MB peak) | 1.27 MB (4.9 MB peak) |
-| des_perf.v | 111,781 | 204.78 MB (241.0 MB peak) | N/A | 440.55 MB (448.5 MB peak) | 2.80 MB (6.5 MB peak) |
-| vga_lcd.v | 187,445 | 374.33 MB (415.0 MB peak) | N/A | 592.62 MB (600.5 MB peak) | 3.34 MB (6.9 MB peak) |
+| pci_conf_cyc_addr_dec.v | 184 | 0.62 MB (28.2 MB peak) | N/A | 0.63 MB (8.5 MB peak) | 0.81 MB (4.4 MB peak) |
+| steppermotordrive.v | 258 | 1.11 MB (28.7 MB peak) | N/A | 1.10 MB (9.0 MB peak) | 0.71 MB (4.4 MB peak) |
+| ss_pcm.v | 648 | 2.41 MB (30.0 MB peak) | N/A | 2.16 MB (10.0 MB peak) | 0.73 MB (4.4 MB peak) |
+| usb_phy.v | 715 | 2.62 MB (30.2 MB peak) | N/A | 2.61 MB (10.4 MB peak) | 0.73 MB (4.4 MB peak) |
+| sasc.v | 1,125 | 3.18 MB (30.7 MB peak) | N/A | 2.71 MB (10.6 MB peak) | 0.76 MB (4.5 MB peak) |
+| simple_spi.v | 1,489 | 3.73 MB (31.3 MB peak) | N/A | 4.04 MB (11.9 MB peak) | 0.79 MB (4.5 MB peak) |
+| pci_spoci_ctrl.v | 1,696 | 2.89 MB (30.5 MB peak) | N/A | 5.06 MB (12.9 MB peak) | 0.76 MB (4.5 MB peak) |
+| i2c.v | 1,496 | 3.68 MB (31.2 MB peak) | N/A | 5.41 MB (13.2 MB peak) | 0.76 MB (4.5 MB peak) |
+| systemcdes.v | 4,326 | 7.04 MB (34.6 MB peak) | N/A | 13.72 MB (21.6 MB peak) | 0.82 MB (4.5 MB peak) |
+| spi.v | 4,531 | 8.00 MB (35.5 MB peak) | N/A | 15.05 MB (22.9 MB peak) | 0.83 MB (4.5 MB peak) |
+| wb_dma.v | 5,720 | 14.72 MB (42.2 MB peak) | N/A | 16.09 MB (23.9 MB peak) | 0.89 MB (4.6 MB peak) |
+| des_area.v | 6,445 | 10.09 MB (37.7 MB peak) | N/A | 18.86 MB (26.7 MB peak) | 0.96 MB (4.7 MB peak) |
+| tv80.v | 10,607 | 18.74 MB (46.3 MB peak) | N/A | 31.17 MB (39.0 MB peak) | N/A |
+| systemcaes.v | 14,071 | 24.64 MB (53.0 MB peak) | N/A | 40.84 MB (48.8 MB peak) | 1.11 MB (4.8 MB peak) |
+| mem_ctrl.v | 16,796 | 34.32 MB (63.2 MB peak) | N/A | 54.04 MB (61.9 MB peak) | 1.30 MB (5.0 MB peak) |
+| ac97_ctrl.v | 19,069 | 48.32 MB (75.8 MB peak) | N/A | 65.53 MB (73.4 MB peak) | 1.58 MB (5.3 MB peak) |
+| usb_funct.v | 18,282 | 41.18 MB (68.7 MB peak) | N/A | 59.28 MB (67.2 MB peak) | 1.29 MB (5.0 MB peak) |
+| aes_core.v | 25,565 | 32.27 MB (62.7 MB peak) | N/A | 78.82 MB (86.7 MB peak) | 1.17 MB (4.9 MB peak) |
+| wb_conmax.v | 49,326 | 47.46 MB (80.8 MB peak) | N/A | 144.14 MB (152.0 MB peak) | 1.34 MB (5.0 MB peak) |
+| des_perf.v | 111,781 | 201.67 MB (240.2 MB peak) | N/A | 440.61 MB (448.4 MB peak) | 2.80 MB (6.4 MB peak) |
+| vga_lcd.v | 187,445 | 370.94 MB (414.3 MB peak) | N/A | 592.70 MB (600.6 MB peak) | 3.16 MB (6.9 MB peak) |
 
 ---
 
@@ -41,27 +41,27 @@
 
 | Circuit | Gates | Cython Reactor | Pure Python | Icarus Verilog | Verilator C++ |
 |:---|---:|---:|---:|---:|---:|
-| pci_conf_cyc_addr_dec.v | 184 | 0.16 ms (0.021 ms opt) | N/A | 4.99 ms | 2.53 s |
-| steppermotordrive.v | 258 | 0.44 ms (0.064 ms opt) | N/A | 7.04 ms | 2.60 s |
-| ss_pcm.v | 648 | 1.28 ms (0.147 ms opt) | N/A | 11.44 ms | 2.63 s |
-| usb_phy.v | 715 | 1.51 ms (0.198 ms opt) | N/A | 13.77 ms | 2.59 s |
-| sasc.v | 1,125 | 1.79 ms (0.215 ms opt) | N/A | 13.66 ms | 2.83 s |
-| simple_spi.v | 1,489 | 2.12 ms (0.266 ms opt) | N/A | 19.37 ms | 2.88 s |
-| pci_spoci_ctrl.v | 1,696 | 1.77 ms (0.237 ms opt) | N/A | 23.62 ms | 2.73 s |
-| i2c.v | 1,496 | 2.09 ms (0.298 ms opt) | N/A | 24.92 ms | 2.87 s |
-| systemcdes.v | 4,326 | 5.02 ms (0.637 ms opt) | N/A | 61.70 ms | 3.49 s |
-| spi.v | 4,531 | 5.39 ms (0.595 ms opt) | N/A | 65.50 ms | 3.75 s |
-| wb_dma.v | 5,720 | 9.64 ms (1.024 ms opt) | N/A | 70.22 ms | 5.11 s |
-| des_area.v | 6,445 | 5.74 ms (0.789 ms opt) | N/A | 89.01 ms | 4.27 s |
-| tv80.v | 10,607 | 10.67 ms (1.347 ms opt) | N/A | 151.50 ms | N/A |
-| systemcaes.v | 14,071 | 16.12 ms (2.067 ms opt) | N/A | 204.06 ms | 9.71 s |
-| mem_ctrl.v | 16,796 | 22.45 ms (3.127 ms opt) | N/A | 267.50 ms | 15.39 s |
-| ac97_ctrl.v | 19,069 | 36.97 ms (7.658 ms opt) | N/A | 304.53 ms | 12.26 s |
-| usb_funct.v | 18,282 | 32.51 ms (5.889 ms opt) | N/A | 303.33 ms | 11.20 s |
-| aes_core.v | 25,565 | 24.16 ms (4.893 ms opt) | N/A | 432.71 ms | 9.44 s |
-| wb_conmax.v | 49,326 | 47.57 ms (12.387 ms opt) | N/A | 838.08 ms | 18.28 s |
-| des_perf.v | 111,781 | 307.81 ms (57.502 ms opt) | N/A | 2.39 s | 73.87 s |
-| vga_lcd.v | 187,445 | 616.39 ms (101.132 ms opt) | N/A | 3.29 s | 150.22 s |
+| pci_conf_cyc_addr_dec.v | 184 | 7.80 ms (0.015 ms opt) | N/A | 5.12 ms | 2.52 s |
+| steppermotordrive.v | 258 | 0.66 ms (0.056 ms opt) | N/A | 7.28 ms | 2.52 s |
+| ss_pcm.v | 648 | 1.55 ms (0.129 ms opt) | N/A | 11.20 ms | 2.57 s |
+| usb_phy.v | 715 | 1.68 ms (0.168 ms opt) | N/A | 14.12 ms | 2.60 s |
+| sasc.v | 1,125 | 2.05 ms (0.193 ms opt) | N/A | 13.15 ms | 2.66 s |
+| simple_spi.v | 1,489 | 2.73 ms (0.270 ms opt) | N/A | 19.18 ms | 2.76 s |
+| pci_spoci_ctrl.v | 1,696 | 2.19 ms (0.223 ms opt) | N/A | 23.49 ms | 2.68 s |
+| i2c.v | 1,496 | 2.47 ms (0.278 ms opt) | N/A | 24.36 ms | 2.86 s |
+| systemcdes.v | 4,326 | 5.56 ms (0.594 ms opt) | N/A | 60.18 ms | 3.44 s |
+| spi.v | 4,531 | 13.16 ms (0.586 ms opt) | N/A | 66.45 ms | 3.77 s |
+| wb_dma.v | 5,720 | 9.88 ms (0.971 ms opt) | N/A | 68.77 ms | 5.01 s |
+| des_area.v | 6,445 | 13.47 ms (0.694 ms opt) | N/A | 86.83 ms | 4.35 s |
+| tv80.v | 10,607 | 19.14 ms (1.361 ms opt) | N/A | 141.64 ms | N/A |
+| systemcaes.v | 14,071 | 16.73 ms (1.947 ms opt) | N/A | 197.44 ms | 9.54 s |
+| mem_ctrl.v | 16,796 | 30.52 ms (3.127 ms opt) | N/A | 261.09 ms | 15.23 s |
+| ac97_ctrl.v | 19,069 | 43.56 ms (6.429 ms opt) | N/A | 300.46 ms | 12.07 s |
+| usb_funct.v | 18,282 | 40.00 ms (5.388 ms opt) | N/A | 292.39 ms | 11.10 s |
+| aes_core.v | 25,565 | 31.87 ms (4.141 ms opt) | N/A | 419.07 ms | 9.10 s |
+| wb_conmax.v | 49,326 | 57.00 ms (11.610 ms opt) | N/A | 818.23 ms | 17.83 s |
+| des_perf.v | 111,781 | 318.05 ms (57.419 ms opt) | N/A | 2.32 s | 73.77 s |
+| vga_lcd.v | 187,445 | 627.22 ms (100.690 ms opt) | N/A | 3.18 s | 147.81 s |
 
 ---
 
@@ -71,64 +71,95 @@
 
 | Circuit | rx-prop (ms) | rx-sweep (ms) | rx-oop (ms) | Pure Python (ms) | Icarus (ms) | Verilator (ms) |
 |:---|---:|---:|---:|---:|---:|---:|
-| pci_conf_cyc_addr_dec.v | 22.63 ms | 30.33 ms | N/A | N/A | 874.63 ms | 1.63 ms |
-| steppermotordrive.v | 55.44 ms | 61.56 ms | N/A | N/A | 97.30 ms | 22.04 ms |
-| ss_pcm.v | 258.63 ms | 277.19 ms | N/A | N/A | 581.92 ms | 48.82 ms |
-| usb_phy.v | 269.05 ms | 266.01 ms | N/A | N/A | 414.82 ms | 50.20 ms |
-| sasc.v | 342.31 ms | 348.69 ms | N/A | N/A | 516.51 ms | 59.82 ms |
-| simple_spi.v | 328.94 ms | 322.08 ms | N/A | N/A | 607.31 ms | 96.51 ms |
-| pci_spoci_ctrl.v | 229.49 ms | 241.37 ms | N/A | N/A | 817.67 ms | 62.12 ms |
-| i2c.v | 391.82 ms | 367.23 ms | N/A | N/A | 1118.98 ms | 118.40 ms |
-| systemcdes.v | 2763.04 ms | 2114.37 ms | N/A | N/A | 15.67 s | 231.54 ms |
-| spi.v | 613.01 ms | 719.59 ms | N/A | N/A | 2367.62 ms | 220.02 ms |
-| wb_dma.v | 1579.88 ms | 1660.91 ms | N/A | N/A | 5710.91 ms | 388.55 ms |
-| des_area.v | 2796.09 ms | 2412.41 ms | N/A | N/A | 50.61 s | 358.31 ms |
-| tv80.v | 905.57 ms | 1270.05 ms | N/A | N/A | 1026.86 ms | 433.92 ms |
-| systemcaes.v | 2699.12 ms | 3005.85 ms | N/A | N/A | 20.57 s | 743.00 ms |
-| mem_ctrl.v | 2645.61 ms | 3055.23 ms | N/A | N/A | 7414.74 ms | 959.15 ms |
-| ac97_ctrl.v | 5136.26 ms | 5091.02 ms | N/A | N/A | 4950.78 ms | 1215.02 ms |
-| usb_funct.v | 1914.10 ms | 3121.44 ms | N/A | N/A | 8139.19 ms | 1325.98 ms |
-| aes_core.v | 9737.18 ms | 11.24 s | N/A | N/A | 28.45 s | 973.30 ms |
-| wb_conmax.v | 4713.29 ms | 6461.07 ms | N/A | N/A | 102.20 s | 1744.85 ms |
-| des_perf.v | 124.50 s | 115.56 s | N/A | N/A | 585.88 s | 32.38 s |
-| vga_lcd.v | 51.13 s | 48.87 s | N/A | N/A | 70.97 s | 52.71 s |
+| pci_conf_cyc_addr_dec.v | 23.60 ms | 29.93 ms | 38.23 ms | N/A | 888.86 ms | 1.72 ms |
+| steppermotordrive.v | 57.16 ms | 57.99 ms | 95.10 ms | N/A | 99.20 ms | 12.45 ms |
+| ss_pcm.v | 252.64 ms | 263.55 ms | 404.39 ms | N/A | 575.34 ms | 45.40 ms |
+| usb_phy.v | 268.46 ms | 254.43 ms | 433.34 ms | N/A | 414.82 ms | 49.07 ms |
+| sasc.v | 341.50 ms | 316.79 ms | 555.29 ms | N/A | 511.74 ms | 61.26 ms |
+| simple_spi.v | 322.22 ms | 292.12 ms | 466.35 ms | N/A | 599.01 ms | 93.58 ms |
+| pci_spoci_ctrl.v | 231.92 ms | 211.24 ms | 475.11 ms | N/A | 820.17 ms | 64.41 ms |
+| i2c.v | 382.24 ms | 336.32 ms | 635.35 ms | N/A | 1123.86 ms | 116.97 ms |
+| systemcdes.v | 2793.55 ms | 2019.51 ms | 6446.89 ms | N/A | 15.45 s | 232.05 ms |
+| spi.v | 606.06 ms | 621.49 ms | 895.06 ms | N/A | 2344.02 ms | 225.17 ms |
+| wb_dma.v | 1578.36 ms | 1504.84 ms | 2495.38 ms | N/A | 5873.59 ms | 385.85 ms |
+| des_area.v | 2819.66 ms | 2273.39 ms | 6344.42 ms | N/A | 50.16 s | 297.93 ms |
+| tv80.v | 896.85 ms | 1075.33 ms | 1444.16 ms | N/A | 1006.66 ms | 408.65 ms |
+| systemcaes.v | 2584.88 ms | 2681.16 ms | 4752.06 ms | N/A | 20.36 s | 739.54 ms |
+| mem_ctrl.v | 2528.68 ms | 2729.91 ms | 4415.82 ms | N/A | 7448.39 ms | 942.92 ms |
+| ac97_ctrl.v | 4858.49 ms | 4388.14 ms | 7793.74 ms | N/A | 4930.74 ms | 1200.72 ms |
+| usb_funct.v | 1830.89 ms | 2532.07 ms | 2944.87 ms | N/A | 8005.97 ms | 1285.21 ms |
+| aes_core.v | 9679.41 ms | 10.78 s | 22.26 s | N/A | 28.17 s | 924.96 ms |
+| wb_conmax.v | 4397.52 ms | 5711.75 ms | 7061.60 ms | N/A | 102.55 s | 1702.25 ms |
+| des_perf.v | 116.17 s | 107.71 s | 231.05 s | N/A | 560.08 s | 32.12 s |
+| vga_lcd.v | 42.67 s | 39.55 s | 72.90 s | N/A | 59.34 s | 51.34 s |
 
 ### Speedup Analysis (vs Baseline: Icarus = 1.00x)
 
 | Circuit | rx-prop | rx-sweep | rx-oop | Pure Python | Icarus | Verilator C++ |
 |:---|---:|---:|---:|---:|---:|---:|
-| pci_conf_cyc_addr_dec.v | 38.64x | 28.83x | N/A | N/A | 1.00x | 537.77x |
-| steppermotordrive.v | 1.76x | 1.58x | N/A | N/A | 1.00x | 4.41x |
-| ss_pcm.v | 2.25x | 2.10x | N/A | N/A | 1.00x | 11.92x |
-| usb_phy.v | 1.54x | 1.56x | N/A | N/A | 1.00x | 8.26x |
-| sasc.v | 1.51x | 1.48x | N/A | N/A | 1.00x | 8.63x |
-| simple_spi.v | 1.85x | 1.89x | N/A | N/A | 1.00x | 6.29x |
-| pci_spoci_ctrl.v | 3.56x | 3.39x | N/A | N/A | 1.00x | 13.16x |
-| i2c.v | 2.86x | 3.05x | N/A | N/A | 1.00x | 9.45x |
-| systemcdes.v | 5.67x | 7.41x | N/A | N/A | 1.00x | 67.69x |
-| spi.v | 3.86x | 3.29x | N/A | N/A | 1.00x | 10.76x |
-| wb_dma.v | 3.61x | 3.44x | N/A | N/A | 1.00x | 14.70x |
-| des_area.v | 18.10x | 20.98x | N/A | N/A | 1.00x | 141.26x |
-| tv80.v | 1.13x | 0.81x | N/A | N/A | 1.00x | 2.37x |
-| systemcaes.v | 7.62x | 6.84x | N/A | N/A | 1.00x | 27.68x |
-| mem_ctrl.v | 2.80x | 2.43x | N/A | N/A | 1.00x | 7.73x |
-| ac97_ctrl.v | 0.96x | 0.97x | N/A | N/A | 1.00x | 4.07x |
-| usb_funct.v | 4.25x | 2.61x | N/A | N/A | 1.00x | 6.14x |
-| aes_core.v | 2.92x | 2.53x | N/A | N/A | 1.00x | 29.23x |
-| wb_conmax.v | 21.68x | 15.82x | N/A | N/A | 1.00x | 58.57x |
-| des_perf.v | 4.71x | 5.07x | N/A | N/A | 1.00x | 18.09x |
-| vga_lcd.v | 1.39x | 1.45x | N/A | N/A | 1.00x | 1.35x |
+| pci_conf_cyc_addr_dec.v | 37.66x | 29.70x | 23.25x | N/A | 1.00x | 517.31x |
+| steppermotordrive.v | 1.74x | 1.71x | 1.04x | N/A | 1.00x | 7.97x |
+| ss_pcm.v | 2.28x | 2.18x | 1.42x | N/A | 1.00x | 12.67x |
+| usb_phy.v | 1.55x | 1.63x | 0.96x | N/A | 1.00x | 8.45x |
+| sasc.v | 1.50x | 1.62x | 0.92x | N/A | 1.00x | 8.35x |
+| simple_spi.v | 1.86x | 2.05x | 1.28x | N/A | 1.00x | 6.40x |
+| pci_spoci_ctrl.v | 3.54x | 3.88x | 1.73x | N/A | 1.00x | 12.73x |
+| i2c.v | 2.94x | 3.34x | 1.77x | N/A | 1.00x | 9.61x |
+| systemcdes.v | 5.53x | 7.65x | 2.40x | N/A | 1.00x | 66.59x |
+| spi.v | 3.87x | 3.77x | 2.62x | N/A | 1.00x | 10.41x |
+| wb_dma.v | 3.72x | 3.90x | 2.35x | N/A | 1.00x | 15.22x |
+| des_area.v | 17.79x | 22.06x | 7.91x | N/A | 1.00x | 168.34x |
+| tv80.v | 1.12x | 0.94x | 0.70x | N/A | 1.00x | 2.46x |
+| systemcaes.v | 7.88x | 7.59x | 4.29x | N/A | 1.00x | 27.53x |
+| mem_ctrl.v | 2.95x | 2.73x | 1.69x | N/A | 1.00x | 7.90x |
+| ac97_ctrl.v | 1.01x | 1.12x | 0.63x | N/A | 1.00x | 4.11x |
+| usb_funct.v | 4.37x | 3.16x | 2.72x | N/A | 1.00x | 6.23x |
+| aes_core.v | 2.91x | 2.61x | 1.27x | N/A | 1.00x | 30.45x |
+| wb_conmax.v | 23.32x | 17.95x | 14.52x | N/A | 1.00x | 60.25x |
+| des_perf.v | 4.82x | 5.20x | 2.42x | N/A | 1.00x | 17.44x |
+| vga_lcd.v | 1.39x | 1.50x | 0.81x | N/A | 1.00x | 1.16x |
+
+### Total Gate Evaluations
+
+| Circuit | Gates | rx-prop Evals | rx-sweep Evals | rx-oop Evals | Pure Python Evals |
+|:---|---:|---:|---:|---:|---:|
+| pci_conf_cyc_addr_dec.v | 184 | 5,392,574 | 5,120,319 | 5,392,574 | N/A |
+| steppermotordrive.v | 258 | 23,717,113 | 24,212,742 | 23,717,113 | N/A |
+| ss_pcm.v | 648 | 89,309,054 | 87,884,380 | 89,532,104 | N/A |
+| usb_phy.v | 715 | 94,303,037 | 94,119,059 | 94,354,187 | N/A |
+| sasc.v | 1,125 | 121,402,307 | 112,797,152 | 124,377,711 | N/A |
+| simple_spi.v | 1,489 | 119,413,667 | 114,555,779 | 119,440,293 | N/A |
+| pci_spoci_ctrl.v | 1,696 | 90,088,151 | 70,531,752 | 89,778,069 | N/A |
+| i2c.v | 1,496 | 144,790,757 | 134,518,240 | 145,278,617 | N/A |
+| systemcdes.v | 4,326 | 772,228,933 | 437,185,596 | 788,685,222 | N/A |
+| spi.v | 4,531 | 234,455,249 | 227,095,968 | 234,702,648 | N/A |
+| wb_dma.v | 5,720 | 574,083,385 | 547,433,206 | 578,078,202 | N/A |
+| des_area.v | 6,445 | 737,296,590 | 415,562,551 | 757,389,026 | N/A |
+| tv80.v | 10,607 | 335,979,209 | 334,814,524 | 339,703,774 | N/A |
+| systemcaes.v | 14,071 | 902,122,183 | 816,589,406 | 908,136,485 | N/A |
+| mem_ctrl.v | 16,796 | 936,994,709 | 903,255,740 | 938,916,603 | N/A |
+| ac97_ctrl.v | 19,069 | 1,647,126,400 | 1,637,746,473 | 1,647,138,602 | N/A |
+| usb_funct.v | 18,282 | 582,823,894 | 577,879,277 | 583,041,399 | N/A |
+| aes_core.v | 25,565 | 2,147,934,816 | 1,955,822,064 | 2,180,414,370 | N/A |
+| wb_conmax.v | 49,326 | 1,282,138,675 | 1,224,547,509 | 1,283,273,835 | N/A |
+| des_perf.v | 111,781 | 20,771,797,777 | 18,642,919,801 | 20,807,534,081 | N/A |
+| vga_lcd.v | 187,445 | 14,127,284,006 | 14,024,791,415 | 14,127,453,690 | N/A |
 
 ### Geo-Mean Speedup Highlights (Baseline: Icarus = 1.00x)
 
-- **rx-prop (Wavefront BFS):** `3.57x`
-- **rx-sweep (Linear Compiled):** `3.30x`
+- **rx-prop (Wavefront BFS):** `3.61x`
+- **rx-sweep (Linear Compiled):** `3.60x`
+- **rx-oop (OOP Graph):** `2.07x`
 - **Icarus Verilog:** `1.00x (Baseline)`
-- **Verilator C++:** `14.05x`
+- **Verilator C++:** `14.54x`
+
+### Gate Evaluation Highlights
+
+- **Reactor Sweep vs Propagate Total Evaluations Ratio:** `0.90x` (propagate performed more evaluations)
 
 ### Cross-Engine Comparisons
 
-- **Reactor Sweep vs Propagate Ratio:** `0.92x` (propagate faster)
+- **Reactor Sweep vs Propagate Ratio:** `1.00x` (propagate faster)
 
 ---
 
@@ -136,87 +167,108 @@
 
 | Circuit | Engine Variant | Instructions | Cycles | IPC | L1 Loads | L1 Misses | L2 Loads | L2 Misses | L3 Loads | DRAM Loads | Branches | Branch Misses |
 | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| pci_conf_cyc_addr_dec.v | rx-prop | 279.41M | 95.66M | 2.92 | 139.68M | 1.35M | 1.35M | 25.11K | 334.11K | 308.10K | 39.94M | 1.14M |
-| pci_conf_cyc_addr_dec.v | rx-sweep (Linear) | 256.95M | 121.63M | 2.11 | 147.92M | 1.71M | 1.71M | 35.20K | 721.00K | 692.29K | 54.77M | 2.18M |
-| pci_conf_cyc_addr_dec.v | Icarus Verilog | 12.78B | 3.23B | 3.96 | 4.88B | 27.59M | 27.59M | 20.09K | 55.71K | 7.05K | 2.74B | 13.79M |
-| pci_conf_cyc_addr_dec.v | Verilator C++ | 124.92K | 2.93M | 0.04 | 3.70M | 43.31K | 43.31K | 1.49K | 1.49K | 0.00 | 2.02M | 450.00 |
-| steppermotordrive.v | rx-prop | 803.31M | 196.35M | 4.09 | 304.49M | 609.76K | 609.76K | 3.81K | 33.33K | 29.33K | 77.37M | 189.50K |
-| steppermotordrive.v | rx-sweep (Linear) | 977.06M | 231.27M | 4.22 | 317.37M | 1.56M | 1.56M | 17.59K | 28.84K | 25.11K | 193.06M | 1.03M |
-| steppermotordrive.v | Icarus Verilog | 1.54B | 382.91M | 4.03 | 654.04M | 1.08M | 1.08M | 33.29K | 80.87K | 33.71K | 310.62M | 2.23M |
-| steppermotordrive.v | Verilator C++ | 107.75M | 78.58M | 1.37 | 78.54M | 24.82K | 24.82K | 3.02K | 24.22K | 5.52K | 21.82M | 382.24K |
-| ss_pcm.v | rx-prop | 3.09B | 953.61M | 3.24 | 1.18B | 109.98M | 109.98M | 93.54K | 1.99M | 1.87M | 312.25M | 3.27M |
-| ss_pcm.v | rx-sweep (Linear) | 3.32B | 1.02B | 3.25 | 1.15B | 154.73M | 154.73M | 114.54K | 1.99M | 1.90M | 646.46M | 9.25M |
-| ss_pcm.v | Icarus Verilog | 8.07B | 2.19B | 3.68 | 3.68B | 72.42M | 72.42M | 194.65K | 351.27K | 53.94K | 1.59B | 13.72M |
-| ss_pcm.v | Verilator C++ | 284.41M | 163.95M | 1.73 | 222.15M | 50.59K | 50.59K | 2.38K | 9.60K | 6.07K | 45.70M | 860.61K |
-| usb_phy.v | rx-prop | 3.18B | 980.49M | 3.24 | 1.22B | 112.69M | 112.69M | 72.70K | 1.16M | 1.12M | 306.56M | 3.51M |
-| usb_phy.v | rx-sweep (Linear) | 3.53B | 977.63M | 3.61 | 1.18B | 157.11M | 157.11M | 60.80K | 1.53M | 1.51M | 680.05M | 6.42M |
-| usb_phy.v | Icarus Verilog | 5.71B | 1.61B | 3.54 | 2.54B | 48.35M | 48.35M | 224.81K | 476.25K | 74.40K | 1.12B | 10.82M |
-| usb_phy.v | Verilator C++ | 344.32M | 170.43M | 2.02 | 214.69M | 27.64K | 27.64K | 1.44K | 24.84K | 313.00 | 48.92M | 1.01M |
-| sasc.v | rx-prop | 4.12B | 1.24B | 3.32 | 1.56B | 160.81M | 160.81M | 82.14K | 1.08M | 1.00M | 393.29M | 3.88M |
-| sasc.v | rx-sweep (Linear) | 4.38B | 1.27B | 3.44 | 1.44B | 203.73M | 203.73M | 145.90K | 1.91M | 1.79M | 856.68M | 9.72M |
-| sasc.v | Icarus Verilog | 7.02B | 1.94B | 3.62 | 3.25B | 72.46M | 72.46M | 269.05K | 549.20K | 82.90K | 1.39B | 12.30M |
-| sasc.v | Verilator C++ | 522.71M | 204.47M | 2.56 | 299.87M | 83.70K | 83.70K | 644.00 | 76.41K | 31.69K | 51.76M | 924.14K |
-| simple_spi.v | rx-prop | 3.98B | 1.19B | 3.34 | 1.52B | 177.46M | 177.46M | 110.49K | 1.37M | 1.25M | 381.82M | 1.67M |
-| simple_spi.v | rx-sweep (Linear) | 4.55B | 1.16B | 3.93 | 1.41B | 232.42M | 232.42M | 68.35K | 1.57M | 1.55M | 932.17M | 5.15M |
-| simple_spi.v | Icarus Verilog | 8.78B | 2.32B | 3.78 | 3.95B | 108.24M | 108.24M | 412.31K | 912.36K | 112.76K | 1.74B | 12.50M |
-| simple_spi.v | Verilator C++ | 613.49M | 337.70M | 1.82 | 339.32M | 88.59K | 88.59K | 2.32K | 52.22K | 15.00K | 64.04M | 622.46K |
-| pci_spoci_ctrl.v | rx-prop | 3.09B | 848.55M | 3.64 | 1.20B | 58.99M | 58.99M | 96.68K | 1.36M | 1.27M | 312.27M | 1.86M |
-| pci_spoci_ctrl.v | rx-sweep (Linear) | 3.24B | 917.34M | 3.54 | 997.09M | 133.20M | 133.20M | 109.11K | 2.31M | 2.24M | 665.52M | 4.64M |
-| pci_spoci_ctrl.v | Icarus Verilog | 11.08B | 3.16B | 3.51 | 5.18B | 147.85M | 147.85M | 1.29M | 2.22M | 119.65K | 2.18B | 19.70M |
-| pci_spoci_ctrl.v | Verilator C++ | 450.95M | 214.31M | 2.10 | 244.39M | 16.04K | 16.04K | 1.17K | 11.03K | 1.22K | 42.09M | 270.47K |
-| i2c.v | rx-prop | 4.78B | 1.42B | 3.38 | 1.81B | 167.59M | 167.59M | 111.84K | 1.72M | 1.59M | 455.30M | 2.35M |
-| i2c.v | rx-sweep (Linear) | 5.17B | 1.35B | 3.85 | 1.62B | 238.51M | 238.51M | 84.18K | 2.06M | 2.02M | 1.02B | 6.31M |
-| i2c.v | Icarus Verilog | 16.18B | 4.19B | 3.86 | 7.40B | 307.88M | 307.88M | 4.51M | 7.85M | 198.40K | 3.18B | 18.77M |
-| i2c.v | Verilator C++ | 667.81M | 428.95M | 1.56 | 400.42M | 98.91K | 98.91K | 2.11K | 10.52K | 4.73K | 74.10M | 853.56K |
-| systemcdes.v | rx-prop | 26.81B | 10.02B | 2.68 | 10.43B | 1.04B | 1.04B | 2.29M | 17.58M | 13.50M | 2.65B | 124.31M |
-| systemcdes.v | rx-sweep (Linear) | 16.50B | 7.74B | 2.13 | 6.51B | 686.10M | 686.10M | 1.84M | 16.55M | 12.96M | 2.90B | 138.08M |
-| systemcdes.v | Icarus Verilog | 154.67B | 56.78B | 2.72 | 82.53B | 2.93B | 2.93B | 619.41M | 871.86M | 658.06K | 30.40B | 403.86M |
-| systemcdes.v | Verilator C++ | 1.59B | 828.36M | 1.92 | 811.41M | 223.10K | 223.10K | 1.85K | 30.74K | 23.34K | 124.07M | 6.35M |
-| spi.v | rx-prop | 7.78B | 2.26B | 3.44 | 2.98B | 325.85M | 325.85M | 338.14K | 4.62M | 4.14M | 771.03M | 3.53M |
-| spi.v | rx-sweep (Linear) | 9.71B | 2.62B | 3.70 | 2.91B | 503.75M | 503.75M | 290.95K | 4.80M | 4.51M | 2.04B | 14.11M |
-| spi.v | Icarus Verilog | 34.43B | 8.95B | 3.85 | 15.58B | 618.47M | 618.47M | 104.49M | 183.30M | 166.30K | 6.74B | 31.54M |
-| spi.v | Verilator C++ | 1.46B | 782.15M | 1.86 | 725.93M | 48.01K | 48.01K | 1.75K | 37.73K | 28.50K | 110.09M | 612.81K |
-| wb_dma.v | rx-prop | 20.48B | 5.97B | 3.43 | 7.90B | 911.57M | 911.57M | 2.04M | 24.15M | 21.04M | 2.16B | 13.73M |
-| wb_dma.v | rx-sweep (Linear) | 22.12B | 6.24B | 3.54 | 7.40B | 1.07B | 1.07B | 12.16M | 66.09M | 21.44M | 4.45B | 46.99M |
-| wb_dma.v | Icarus Verilog | 87.95B | 21.45B | 4.10 | 38.47B | 583.77M | 583.77M | 111.59M | 195.22M | 609.47K | 16.98B | 70.65M |
-| wb_dma.v | Verilator C++ | 2.78B | 1.40B | 1.98 | 1.45B | 187.00K | 187.00K | 2.02K | 51.11K | 26.65K | 309.17M | 4.53M |
-| des_area.v | rx-prop | 26.71B | 10.28B | 2.60 | 10.57B | 915.67M | 915.67M | 3.86M | 31.35M | 24.58M | 2.79B | 144.75M |
-| des_area.v | rx-sweep (Linear) | 17.23B | 8.93B | 1.93 | 7.03B | 641.61M | 641.61M | 3.06M | 29.58M | 23.74M | 3.18B | 171.46M |
-| des_area.v | Icarus Verilog | 583.04B | 182.32B | 3.20 | 221.97B | 5.67B | 5.67B | 1.05B | 1.33B | 1.18M | 137.16B | 787.78M |
-| des_area.v | Verilator C++ | 2.48B | 1.27B | 1.96 | 1.24B | 64.01K | 64.01K | 4.64K | 161.32K | 150.16K | 77.60M | 6.50M |
-| tv80.v | rx-prop | 11.07B | 3.26B | 3.39 | 4.14B | 512.05M | 512.05M | 2.78M | 5.82M | 342.55K | 1.04B | 5.37M |
-| tv80.v | rx-sweep (Linear) | 16.12B | 4.57B | 3.53 | 4.49B | 858.09M | 858.09M | 15.04M | 56.17M | 1.27M | 3.44B | 26.02M |
-| tv80.v | Icarus Verilog | 13.87B | 4.44B | 3.13 | 6.36B | 239.59M | 239.59M | 28.03M | 43.17M | 1.05M | 2.84B | 25.62M |
-| tv80.v | Verilator C++ | 3.24B | 1.56B | 2.08 | 1.73B | 39.59K | 39.59K | 4.20K | 9.21K | 5.65K | 281.03M | 1.58M |
-| systemcaes.v | rx-prop | 31.06B | 10.01B | 3.10 | 11.90B | 1.14B | 1.14B | 76.28M | 202.06M | 26.78M | 3.16B | 31.15M |
-| systemcaes.v | rx-sweep (Linear) | 34.27B | 11.05B | 3.10 | 11.08B | 1.66B | 1.66B | 124.99M | 535.67M | 25.29M | 6.96B | 90.67M |
-| systemcaes.v | Icarus Verilog | 308.47B | 74.98B | 4.11 | 137.99B | 4.31B | 4.31B | 1.19B | 2.01B | 4.88M | 56.54B | 177.40M |
-| systemcaes.v | Verilator C++ | 6.28B | 2.66B | 2.36 | 2.74B | 79.51K | 79.51K | 41.39K | 226.73K | 192.91K | 477.66M | 1.28M |
-| mem_ctrl.v | rx-prop | 31.30B | 9.58B | 3.27 | 11.76B | 1.31B | 1.31B | 62.27M | 151.05M | 11.17M | 3.01B | 16.99M |
-| mem_ctrl.v | rx-sweep (Linear) | 37.87B | 11.05B | 3.43 | 11.56B | 1.91B | 1.91B | 116.70M | 692.70M | 10.95M | 7.80B | 75.80M |
-| mem_ctrl.v | Icarus Verilog | 101.32B | 27.98B | 3.62 | 45.64B | 1.18B | 1.18B | 554.57M | 893.91M | 1.76M | 19.70B | 76.03M |
-| mem_ctrl.v | Verilator C++ | 7.27B | 3.44B | 2.12 | 3.70B | 194.56K | 194.56K | 124.61K | 278.07K | 135.32K | 617.03M | 6.95M |
-| ac97_ctrl.v | rx-prop | 54.19B | 18.36B | 2.95 | 20.21B | 2.38B | 2.38B | 363.81M | 1.26B | 8.18M | 5.07B | 8.51M |
-| ac97_ctrl.v | rx-sweep (Linear) | 65.94B | 18.21B | 3.62 | 19.72B | 3.23B | 3.23B | 349.20M | 2.26B | 8.37M | 13.43B | 79.21M |
-| ac97_ctrl.v | Icarus Verilog | 67.30B | 19.34B | 3.48 | 27.79B | 1.01B | 1.01B | 514.83M | 959.96M | 1.60M | 13.99B | 39.43M |
-| ac97_ctrl.v | Verilator C++ | 9.82B | 4.34B | 2.26 | 4.73B | 352.97K | 352.97K | 968.33K | 1.13M | 198.47K | 1.06B | 5.14M |
-| usb_funct.v | rx-prop | 19.81B | 7.04B | 2.81 | 7.54B | 836.85M | 836.85M | 129.11M | 336.05M | 12.33M | 1.97B | 10.19M |
-| usb_funct.v | rx-sweep (Linear) | 33.92B | 11.30B | 3.00 | 9.18B | 1.91B | 1.91B | 195.84M | 1.04B | 12.70M | 7.76B | 72.03M |
-| usb_funct.v | Icarus Verilog | 116.19B | 30.69B | 3.79 | 51.06B | 1.67B | 1.67B | 513.18M | 846.81M | 2.99M | 22.65B | 75.81M |
-| usb_funct.v | Verilator C++ | 9.88B | 4.74B | 2.08 | 4.78B | 392.64K | 392.64K | 897.27K | 920.61K | 40.04K | 1.06B | 7.83M |
-| aes_core.v | rx-prop | 75.00B | 34.91B | 2.15 | 29.03B | 3.62B | 3.62B | 692.57M | 1.19B | 26.96M | 7.35B | 339.60M |
-| aes_core.v | rx-sweep (Linear) | 76.24B | 40.47B | 1.88 | 29.75B | 3.54B | 3.54B | 594.57M | 1.91B | 26.74M | 12.10B | 605.65M |
-| aes_core.v | Icarus Verilog | 277.46B | 104.39B | 2.66 | 147.86B | 3.84B | 3.84B | 2.02B | 2.58B | 14.13M | 52.92B | 597.20M |
-| aes_core.v | Verilator C++ | 5.40B | 3.46B | 1.56 | 3.02B | 118.73K | 118.73K | 129.88K | 316.56K | 208.16K | 395.20M | 27.54M |
-| wb_conmax.v | rx-prop | 48.81B | 18.35B | 2.66 | 19.68B | 1.93B | 1.93B | 440.90M | 1.16B | 116.42M | 5.83B | 40.46M |
-| wb_conmax.v | rx-sweep (Linear) | 66.72B | 24.58B | 2.71 | 21.32B | 3.52B | 3.52B | 475.42M | 2.67B | 112.72M | 14.93B | 205.91M |
-| wb_conmax.v | Icarus Verilog | 1448.02B | 374.10B | 3.87 | 653.99B | 39.81B | 39.81B | 6.37B | 9.22B | 44.88M | 274.05B | 581.57M |
-| wb_conmax.v | Verilator C++ | 13.33B | 6.21B | 2.14 | 6.20B | 4.43M | 4.43M | 135.20M | 135.76M | 381.42K | 727.34M | 2.32M |
-| des_perf.v | rx-prop | 699.36B | 446.06B | 1.57 | 269.75B | 35.37B | 35.37B | 21.19B | 40.50B | 131.74M | 65.36B | 2.95B |
-| des_perf.v | rx-sweep (Linear) | 643.49B | 412.32B | 1.56 | 274.79B | 28.46B | 28.46B | 10.31B | 28.93B | 139.82M | 103.53B | 5.90B |
-| des_perf.v | Icarus Verilog | 59.54B | 51.66B | 1.15 | 33.69B | 1.35B | 1.35B | 867.41M | 1.15B | 266.89M | 12.29B | 180.47M |
-| des_perf.v | Verilator C++ | 50.91B | 114.10B | 0.45 | 36.96B | 228.95M | 228.95M | 3.71B | 3.77B | 200.99K | 4.91B | 2.06B |
-| vga_lcd.v | rx-prop | 460.10B | 182.01B | 2.53 | 173.34B | 20.46B | 20.46B | 5.41B | 26.34B | 54.38M | 42.24B | 34.79M |
-| vga_lcd.v | rx-sweep (Linear) | 558.61B | 173.60B | 3.22 | 165.55B | 27.74B | 27.74B | 5.93B | 34.13B | 340.32M | 113.78B | 880.53M |
-| vga_lcd.v | Icarus Verilog | 38.63B | 19.40B | 1.99 | 15.63B | 827.35M | 827.35M | 183.12M | 267.13M | 44.75M | 8.35B | 87.69M |
-| vga_lcd.v | Verilator C++ | 71.50B | 185.57B | 0.39 | 56.97B | 353.12M | 353.12M | 5.98B | 6.15B | 124.82K | 7.62B | 3.83B |
+| pci_conf_cyc_addr_dec.v | rx-prop | 249.83M | 95.52M | 2.62 | 130.20M | 1.22M | 1.22M | 22.20K | 53.16K | 26.14K | 42.40M | 1.14M |
+| pci_conf_cyc_addr_dec.v | rx-sweep (Linear) | 246.39M | 118.74M | 2.08 | 146.19M | 1.56M | 1.56M | 20.45K | 338.81K | 310.73K | 55.71M | 2.12M |
+| pci_conf_cyc_addr_dec.v | rx-oop (OOP Engine) | 236.49M | 144.47M | 1.64 | 198.75M | 1.97M | 1.97M | 43.76K | 509.79K | 389.47K | 40.65M | 1.73M |
+| pci_conf_cyc_addr_dec.v | Icarus Verilog | 12.75B | 3.27B | 3.89 | 4.91B | 27.49M | 27.49M | 15.96K | 54.76K | 10.24K | 2.73B | 14.23M |
+| pci_conf_cyc_addr_dec.v | Verilator C++ | 9.95M | 3.06M | 3.25 | 4.28M | 21.28K | 21.28K | 0.00 | 0.00 | 0.00 | 2.61M | 326.00 |
+| steppermotordrive.v | rx-prop | 732.77M | 200.84M | 3.65 | 298.83M | 215.29K | 215.29K | 5.82K | 33.73K | 10.46K | 73.13M | 330.00K |
+| steppermotordrive.v | rx-sweep (Linear) | 954.22M | 208.26M | 4.58 | 319.81M | 1.69M | 1.69M | 4.23K | 39.31K | 24.17K | 186.88M | 1.02M |
+| steppermotordrive.v | rx-oop (OOP Engine) | 809.10M | 331.34M | 2.44 | 481.05M | 5.21M | 5.21M | 13.83K | 80.41K | 15.09K | 101.57M | 744.30K |
+| steppermotordrive.v | Icarus Verilog | 1.54B | 401.05M | 3.84 | 650.17M | 873.44K | 873.44K | 16.87K | 48.80K | 1.54K | 320.41M | 2.25M |
+| steppermotordrive.v | Verilator C++ | 87.25M | 37.42M | 2.33 | 50.72M | 35.63K | 35.63K | 435.00 | 22.03K | 0.00 | 17.85M | 248.10K |
+| ss_pcm.v | rx-prop | 2.88B | 926.59M | 3.11 | 1.11B | 91.35M | 91.35M | 78.49K | 1.25M | 1.22M | 272.14M | 3.33M |
+| ss_pcm.v | rx-sweep (Linear) | 3.36B | 982.66M | 3.42 | 1.15B | 126.72M | 126.72M | 90.32K | 1.66M | 1.62M | 648.31M | 9.19M |
+| ss_pcm.v | rx-oop (OOP Engine) | 3.12B | 1.46B | 2.13 | 1.83B | 158.77M | 158.77M | 81.82K | 1.31M | 1.12M | 383.26M | 6.27M |
+| ss_pcm.v | Icarus Verilog | 8.07B | 2.19B | 3.69 | 3.67B | 72.22M | 72.22M | 58.50K | 211.56K | 21.89K | 1.58B | 13.05M |
+| ss_pcm.v | Verilator C++ | 325.51M | 160.25M | 2.03 | 186.92M | 32.39K | 32.39K | 1.06K | 9.61K | 5.08K | 44.54M | 834.88K |
+| usb_phy.v | rx-prop | 2.95B | 967.00M | 3.05 | 1.17B | 99.60M | 99.60M | 55.75K | 117.67K | 90.21K | 291.77M | 3.49M |
+| usb_phy.v | rx-sweep (Linear) | 3.55B | 948.82M | 3.74 | 1.18B | 131.12M | 131.12M | 79.88K | 1.74M | 1.74M | 684.31M | 6.40M |
+| usb_phy.v | rx-oop (OOP Engine) | 3.28B | 1.58B | 2.08 | 1.91B | 185.25M | 185.25M | 63.64K | 897.81K | 740.97K | 401.70M | 6.77M |
+| usb_phy.v | Icarus Verilog | 5.67B | 1.60B | 3.54 | 2.56B | 49.05M | 49.05M | 79.12K | 166.55K | 22.02K | 1.11B | 10.78M |
+| usb_phy.v | Verilator C++ | 334.90M | 167.25M | 2.00 | 209.01M | 8.50K | 8.50K | 261.00 | 8.68K | 326.00 | 49.54M | 927.01K |
+| sasc.v | rx-prop | 3.87B | 1.25B | 3.11 | 1.49B | 138.36M | 138.36M | 57.45K | 1.02M | 978.66K | 361.02M | 3.92M |
+| sasc.v | rx-sweep (Linear) | 4.39B | 1.17B | 3.76 | 1.43B | 177.29M | 177.29M | 60.79K | 1.68M | 1.65M | 860.53M | 9.63M |
+| sasc.v | rx-oop (OOP Engine) | 4.34B | 2.01B | 2.16 | 2.57B | 256.48M | 256.48M | 82.03K | 1.51M | 1.25M | 530.08M | 8.79M |
+| sasc.v | Icarus Verilog | 7.13B | 1.96B | 3.63 | 3.24B | 70.81M | 70.81M | 113.30K | 260.78K | 20.82K | 1.41B | 11.89M |
+| sasc.v | Verilator C++ | 549.46M | 220.57M | 2.49 | 298.96M | 10.73K | 10.73K | 539.00 | 105.79K | 95.00 | 56.28M | 916.69K |
+| simple_spi.v | rx-prop | 3.76B | 1.18B | 3.17 | 1.44B | 147.78M | 147.78M | 67.78K | 1.12M | 1.06M | 348.16M | 1.70M |
+| simple_spi.v | rx-sweep (Linear) | 4.63B | 1.08B | 4.29 | 1.41B | 191.32M | 191.32M | 76.79K | 1.54M | 1.52M | 945.40M | 5.08M |
+| simple_spi.v | rx-oop (OOP Engine) | 4.12B | 1.70B | 2.43 | 2.31B | 278.45M | 278.45M | 97.17K | 2.01M | 1.70M | 503.35M | 3.50M |
+| simple_spi.v | Icarus Verilog | 8.84B | 2.32B | 3.80 | 3.94B | 107.88M | 107.88M | 248.48K | 621.70K | 26.54K | 1.75B | 12.24M |
+| simple_spi.v | Verilator C++ | 629.64M | 330.03M | 1.91 | 335.52M | 105.94K | 105.94K | 1.53K | 68.25K | 2.04K | 67.12M | 547.24K |
+| pci_spoci_ctrl.v | rx-prop | 2.92B | 861.72M | 3.39 | 1.12B | 57.04M | 57.04M | 78.05K | 2.12M | 2.06M | 283.18M | 1.95M |
+| pci_spoci_ctrl.v | rx-sweep (Linear) | 3.19B | 793.49M | 4.02 | 984.44M | 107.92M | 107.92M | 103.42K | 2.15M | 2.12M | 657.69M | 4.44M |
+| pci_spoci_ctrl.v | rx-oop (OOP Engine) | 3.13B | 1.73B | 1.81 | 2.12B | 132.97M | 132.97M | 77.49K | 2.01M | 1.73M | 389.14M | 13.77M |
+| pci_spoci_ctrl.v | Icarus Verilog | 11.10B | 3.15B | 3.53 | 5.16B | 148.19M | 148.19M | 1.66M | 2.88M | 51.37K | 2.16B | 18.84M |
+| pci_spoci_ctrl.v | Verilator C++ | 498.88M | 229.76M | 2.17 | 249.36M | 32.33K | 32.33K | 520.00 | 10.81K | 283.00 | 45.78M | 245.53K |
+| i2c.v | rx-prop | 4.47B | 1.38B | 3.23 | 1.72B | 146.98M | 146.98M | 78.37K | 1.61M | 1.54M | 407.74M | 2.39M |
+| i2c.v | rx-sweep (Linear) | 5.18B | 1.24B | 4.17 | 1.63B | 199.87M | 199.87M | 86.77K | 1.97M | 1.94M | 1.03B | 6.29M |
+| i2c.v | rx-oop (OOP Engine) | 4.90B | 2.29B | 2.14 | 2.95B | 297.76M | 297.76M | 212.18K | 1.35M | 931.59K | 592.18M | 10.10M |
+| i2c.v | Icarus Verilog | 16.25B | 4.24B | 3.83 | 7.41B | 303.16M | 303.16M | 5.12M | 8.75M | 59.96K | 3.17B | 19.39M |
+| i2c.v | Verilator C++ | 669.27M | 426.29M | 1.57 | 398.60M | 33.74K | 33.74K | 699.00 | 10.89K | 312.00 | 73.85M | 709.87K |
+| systemcdes.v | rx-prop | 25.23B | 10.24B | 2.46 | 9.83B | 907.68M | 907.68M | 1.20M | 14.79M | 12.93M | 2.42B | 123.32M |
+| systemcdes.v | rx-sweep (Linear) | 16.33B | 7.46B | 2.19 | 6.46B | 593.80M | 593.80M | 824.17K | 14.43M | 13.06M | 2.87B | 135.36M |
+| systemcdes.v | rx-oop (OOP Engine) | 28.09B | 23.32B | 1.20 | 21.73B | 1.49B | 1.49B | 26.58M | 56.27M | 10.98M | 3.46B | 296.12M |
+| systemcdes.v | Icarus Verilog | 154.64B | 56.26B | 2.75 | 83.40B | 2.91B | 2.91B | 601.87M | 827.54M | 434.95K | 30.42B | 404.08M |
+| systemcdes.v | Verilator C++ | 1.60B | 827.77M | 1.94 | 793.04M | 29.07K | 29.07K | 2.80K | 90.64K | 73.80K | 120.88M | 6.33M |
+| spi.v | rx-prop | 7.32B | 2.24B | 3.27 | 2.79B | 301.77M | 301.77M | 308.67K | 4.80M | 4.29M | 683.27M | 3.45M |
+| spi.v | rx-sweep (Linear) | 9.73B | 2.31B | 4.21 | 2.90B | 429.91M | 429.91M | 284.06K | 4.65M | 4.43M | 2.04B | 13.87M |
+| spi.v | rx-oop (OOP Engine) | 7.88B | 3.26B | 2.42 | 4.50B | 520.53M | 520.53M | 975.79K | 5.94M | 3.88M | 967.48M | 8.58M |
+| spi.v | Icarus Verilog | 34.41B | 8.90B | 3.87 | 15.60B | 613.65M | 613.65M | 103.71M | 181.39M | 218.89K | 6.75B | 30.73M |
+| spi.v | Verilator C++ | 1.49B | 813.41M | 1.83 | 718.46M | 127.54K | 127.54K | 1.88K | 37.22K | 1.13K | 114.90M | 567.67K |
+| wb_dma.v | rx-prop | 19.32B | 5.99B | 3.23 | 7.46B | 832.16M | 832.16M | 5.76M | 32.13M | 21.50M | 1.98B | 13.78M |
+| wb_dma.v | rx-sweep (Linear) | 22.14B | 5.72B | 3.87 | 7.35B | 915.63M | 915.63M | 4.06M | 29.27M | 21.63M | 4.46B | 45.70M |
+| wb_dma.v | rx-oop (OOP Engine) | 20.85B | 9.23B | 2.26 | 12.06B | 1.36B | 1.36B | 72.58M | 161.75M | 19.04M | 2.66B | 26.02M |
+| wb_dma.v | Icarus Verilog | 87.99B | 22.13B | 3.98 | 38.86B | 583.80M | 583.80M | 111.41M | 197.19M | 397.65K | 16.98B | 73.61M |
+| wb_dma.v | Verilator C++ | 2.73B | 1.39B | 1.96 | 1.46B | 231.75K | 231.75K | 2.54K | 67.01K | 60.81K | 311.02M | 4.62M |
+| des_area.v | rx-prop | 25.16B | 10.47B | 2.40 | 10.00B | 823.13M | 823.13M | 2.92M | 28.70M | 24.28M | 2.58B | 144.78M |
+| des_area.v | rx-sweep (Linear) | 17.03B | 8.52B | 2.00 | 7.01B | 566.42M | 566.42M | 3.39M | 30.34M | 23.48M | 3.16B | 169.78M |
+| des_area.v | rx-oop (OOP Engine) | 27.84B | 23.06B | 1.21 | 21.72B | 1.41B | 1.41B | 46.42M | 89.27M | 20.25M | 3.54B | 295.02M |
+| des_area.v | Icarus Verilog | 582.87B | 181.79B | 3.21 | 222.89B | 5.66B | 5.66B | 1.05B | 1.33B | 951.01K | 137.21B | 793.11M |
+| des_area.v | Verilator C++ | 2.49B | 1.07B | 2.33 | 1.24B | 74.39K | 74.39K | 1.83K | 85.01K | 81.69K | 78.06M | 6.40M |
+| tv80.v | rx-prop | 10.39B | 3.24B | 3.21 | 3.91B | 481.74M | 481.74M | 1.74M | 4.11M | 718.96K | 925.66M | 5.17M |
+| tv80.v | rx-sweep (Linear) | 16.01B | 3.86B | 4.15 | 4.49B | 718.17M | 718.17M | 5.08M | 10.61M | 390.58K | 3.42B | 24.57M |
+| tv80.v | rx-oop (OOP Engine) | 11.51B | 5.19B | 2.22 | 6.78B | 786.07M | 786.07M | 14.33M | 25.79M | 853.86K | 1.38B | 17.76M |
+| tv80.v | Icarus Verilog | 13.96B | 4.36B | 3.20 | 6.37B | 238.33M | 238.33M | 28.00M | 40.96M | 402.46K | 2.84B | 24.93M |
+| tv80.v | Verilator C++ | 3.24B | 1.47B | 2.20 | 1.73B | 23.95K | 23.95K | 5.01K | 44.51K | 42.27K | 280.56M | 1.44M |
+| systemcaes.v | rx-prop | 29.23B | 9.64B | 3.03 | 11.22B | 1.09B | 1.09B | 49.70M | 128.19M | 26.08M | 2.86B | 30.80M |
+| systemcaes.v | rx-sweep (Linear) | 34.12B | 9.96B | 3.43 | 11.05B | 1.42B | 1.42B | 98.17M | 354.14M | 25.64M | 6.95B | 87.52M |
+| systemcaes.v | rx-oop (OOP Engine) | 31.60B | 17.33B | 1.82 | 19.83B | 1.86B | 1.86B | 311.14M | 686.71M | 22.62M | 3.96B | 86.28M |
+| systemcaes.v | Icarus Verilog | 308.64B | 74.90B | 4.12 | 137.86B | 4.26B | 4.26B | 1.17B | 1.95B | 2.58M | 56.54B | 175.08M |
+| systemcaes.v | Verilator C++ | 6.27B | 2.66B | 2.36 | 2.73B | 212.61K | 212.61K | 106.20K | 121.41K | 20.84K | 479.28M | 1.32M |
+| mem_ctrl.v | rx-prop | 29.44B | 9.24B | 3.19 | 11.07B | 1.20B | 1.20B | 37.83M | 98.94M | 10.86M | 2.70B | 16.36M |
+| mem_ctrl.v | rx-sweep (Linear) | 37.74B | 9.92B | 3.81 | 11.61B | 1.62B | 1.62B | 119.07M | 489.86M | 10.96M | 7.79B | 71.89M |
+| mem_ctrl.v | rx-oop (OOP Engine) | 32.04B | 15.96B | 2.01 | 18.90B | 2.14B | 2.14B | 425.52M | 982.94M | 9.12M | 3.90B | 40.35M |
+| mem_ctrl.v | Icarus Verilog | 101.36B | 28.33B | 3.58 | 45.46B | 1.19B | 1.19B | 554.97M | 890.21M | 1.11M | 19.68B | 75.89M |
+| mem_ctrl.v | Verilator C++ | 7.27B | 3.39B | 2.14 | 3.70B | 116.71K | 116.71K | 16.88K | 100.41K | 82.83K | 615.70M | 6.82M |
+| ac97_ctrl.v | rx-prop | 50.89B | 17.53B | 2.90 | 19.08B | 2.22B | 2.22B | 259.39M | 902.58M | 7.89M | 4.51B | 8.34M |
+| ac97_ctrl.v | rx-sweep (Linear) | 65.83B | 15.84B | 4.16 | 19.72B | 2.74B | 2.74B | 325.92M | 1.80B | 8.25M | 13.41B | 71.91M |
+| ac97_ctrl.v | rx-oop (OOP Engine) | 55.64B | 28.04B | 1.98 | 32.08B | 3.83B | 3.83B | 1.32B | 3.42B | 6.90M | 6.67B | 20.58M |
+| ac97_ctrl.v | Icarus Verilog | 67.35B | 19.46B | 3.46 | 27.74B | 1.01B | 1.01B | 501.76M | 955.61M | 1.51M | 14.00B | 39.61M |
+| ac97_ctrl.v | Verilator C++ | 9.76B | 4.31B | 2.26 | 4.77B | 379.01K | 379.01K | 860.33K | 994.54K | 111.07K | 1.07B | 4.99M |
+| usb_funct.v | rx-prop | 18.63B | 6.74B | 2.76 | 7.10B | 785.29M | 785.29M | 88.19M | 239.14M | 12.28M | 1.77B | 9.95M |
+| usb_funct.v | rx-sweep (Linear) | 33.95B | 9.25B | 3.67 | 9.16B | 1.56B | 1.56B | 166.06M | 662.41M | 12.05M | 7.78B | 66.40M |
+| usb_funct.v | rx-oop (OOP Engine) | 20.10B | 10.70B | 1.88 | 11.73B | 1.41B | 1.41B | 410.89M | 903.80M | 10.36M | 2.49B | 21.68M |
+| usb_funct.v | Icarus Verilog | 116.24B | 30.54B | 3.81 | 50.75B | 1.70B | 1.70B | 505.60M | 855.19M | 1.48M | 22.63B | 74.35M |
+| usb_funct.v | Verilator C++ | 9.81B | 4.60B | 2.13 | 4.80B | 364.03K | 364.03K | 831.54K | 861.22K | 28.65K | 1.05B | 6.91M |
+| aes_core.v | rx-prop | 70.73B | 35.11B | 2.01 | 27.43B | 3.30B | 3.30B | 613.34M | 1.10B | 25.99M | 6.77B | 332.27M |
+| aes_core.v | rx-sweep (Linear) | 74.31B | 38.99B | 1.91 | 29.31B | 3.19B | 3.19B | 539.04M | 1.57B | 25.23M | 11.88B | 602.57M |
+| aes_core.v | rx-oop (OOP Engine) | 78.83B | 80.26B | 0.98 | 68.91B | 4.79B | 4.79B | 1.29B | 2.06B | 23.63M | 9.67B | 903.62M |
+| aes_core.v | Icarus Verilog | 277.49B | 103.95B | 2.67 | 147.95B | 3.80B | 3.80B | 2.01B | 2.56B | 3.48M | 52.82B | 602.21M |
+| aes_core.v | Verilator C++ | 5.39B | 3.32B | 1.62 | 3.04B | 70.08K | 70.08K | 8.67K | 60.36K | 51.80K | 392.96M | 27.45M |
+| wb_conmax.v | rx-prop | 46.07B | 17.27B | 2.67 | 18.54B | 1.75B | 1.75B | 326.67M | 899.16M | 116.04M | 5.34B | 39.83M |
+| wb_conmax.v | rx-sweep (Linear) | 66.57B | 22.00B | 3.03 | 21.24B | 2.98B | 2.98B | 458.15M | 2.13B | 112.48M | 14.92B | 201.65M |
+| wb_conmax.v | rx-oop (OOP Engine) | 47.26B | 27.06B | 1.75 | 28.59B | 2.86B | 2.86B | 999.13M | 2.10B | 97.69M | 6.52B | 90.59M |
+| wb_conmax.v | Icarus Verilog | 1448.12B | 375.96B | 3.85 | 647.84B | 39.86B | 39.86B | 6.29B | 9.06B | 44.75M | 274.04B | 585.06M |
+| wb_conmax.v | Verilator C++ | 13.36B | 6.09B | 2.19 | 6.20B | 5.55M | 5.55M | 116.95M | 118.36M | 355.68K | 733.03M | 2.61M |
+| des_perf.v | rx-prop | 657.63B | 417.42B | 1.58 | 251.12B | 32.79B | 32.79B | 18.20B | 36.95B | 42.47M | 59.18B | 2.93B |
+| des_perf.v | rx-sweep (Linear) | 632.91B | 387.03B | 1.64 | 271.23B | 25.90B | 25.90B | 8.93B | 25.56B | 57.92M | 102.06B | 5.84B |
+| des_perf.v | rx-oop (OOP Engine) | 725.45B | 830.46B | 0.87 | 604.85B | 46.52B | 46.52B | 31.53B | 53.67B | 743.56M | 86.94B | 6.76B |
+| des_perf.v | Icarus Verilog | 59.49B | 50.33B | 1.18 | 33.80B | 1.36B | 1.36B | 864.54M | 1.15B | 247.14M | 12.31B | 182.01M |
+| des_perf.v | Verilator C++ | 50.90B | 114.46B | 0.44 | 36.91B | 133.30M | 133.30M | 3.56B | 3.59B | 175.99K | 4.90B | 2.05B |
+| vga_lcd.v | rx-prop | 431.88B | 153.28B | 2.82 | 160.23B | 20.20B | 20.20B | 3.17B | 23.02B | 19.33M | 37.44B | 31.37M |
+| vga_lcd.v | rx-sweep (Linear) | 558.29B | 141.65B | 3.94 | 166.96B | 23.80B | 23.80B | 3.72B | 28.78B | 68.86M | 113.80B | 871.26M |
+| vga_lcd.v | rx-oop (OOP Engine) | 473.02B | 261.43B | 1.81 | 278.39B | 32.30B | 32.30B | 11.86B | 37.57B | 523.86M | 56.26B | 126.23M |
+| vga_lcd.v | Icarus Verilog | 38.66B | 18.46B | 2.09 | 15.74B | 842.37M | 842.37M | 181.58M | 267.58M | 29.57M | 8.34B | 88.52M |
+| vga_lcd.v | Verilator C++ | 71.53B | 183.20B | 0.39 | 56.76B | 387.80M | 387.80M | 5.68B | 5.87B | 295.82K | 7.61B | 3.81B |
