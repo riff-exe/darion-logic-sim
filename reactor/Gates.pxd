@@ -46,9 +46,8 @@ cdef extern from "Profile.h" nogil:
     cdef cppclass Task:
         int gate_loc
         unsigned int time
-        int location
         Task() nogil
-        Task(int gate_loc, unsigned int time, int location) nogil
+        Task(int gate_loc, unsigned int time) nogil
         bint operator>(const Task& other) nogil
     cdef cppclass HitList:
         Profile* data

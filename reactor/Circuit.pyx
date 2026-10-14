@@ -36,6 +36,8 @@ cdef class Circuit:
         self.gate_clocks.reserve(500_000)
         self.gate_verse = [] # the gate list in python
         self.runner = None        # asyncio.Task for FLIPFLOP drain loop
+        self.wave_multiplier = 2  # default 2V
+        self.wave_offset = 0
         self.Global_Clock = 0
         self.queue.resize(2)
         self.queue[0].resize(LIMIT)
@@ -92,6 +94,24 @@ cdef class Circuit:
         return self.objlist[code[0]][code[1]]
     def set_mode(self, int mode):
         set_MODE(mode)
+
+    cpdef void set_wave_mode(self, str mode="sequential"):
+        """
+        Configure zero-delay wavefront oscillation cutoff budget:
+        - 'combinational' or 'dag': |V| + 1 (exact tight Dirichlet Pigeonhole bound for DAGs)
+        - 'sequential' (default): 2|V| (upper heuristic bound allowing 2-phase latch/feedback stabilization)
+        """
+        if mode in ("combinational", "dag"):
+            self.wave_multiplier = 1
+            self.wave_offset = 1
+        else:
+            self.wave_multiplier = 2
+            self.wave_offset = 0
+
+    cpdef void set_wave_limit(self, int multiplier=2, int offset=0):
+        """Directly set custom wave_multiplier and wave_offset."""
+        self.wave_multiplier = multiplier
+        self.wave_offset = offset
     cpdef void delobj(self, object obj):
         '''Delete object from objlist and mutate info id for removal'''
         cdef CPP_Gate* gate_info=self.gate_infolist.data()
@@ -223,7 +243,7 @@ cdef class Circuit:
                     gate_info = &self.gate_infolist[gate.location]
                     if gate_info.inputlimit == INFINITE:
                         gate_info.flags |= FLAG_SCHEDULED
-                        self.time_queue.push(Task(gate.location, self.Global_Clock + gate.delay_book[PRIMARY], gate.location))
+                        self.time_queue.push(Task(gate.location, self.Global_Clock + gate.delay_book[PRIMARY]))
             if self.runner is None or self.runner.done():
                 self.runner = asyncio.create_task(self.task_manager())
         else:
@@ -1387,20 +1407,21 @@ cdef class Circuit:
             target_output = target.output
             if new_output != UNKNOWN:
                 target.evaluate()
+                self.eval_count += 1
             else:
                 target.output = UNKNOWN
             if target_output != target.output:
                 target_loc = <int>(profile.target - gate_infolist)
                 calc_time = self.Global_Clock + self.Global_delay[target.type] + (self.FanIn_delay[target.type] * target.inputlimit) + (self.FanOut_delay[target.type] * target.hitlist.size)
                 gate_clocks[target_loc] = calc_time
-                self.time_queue.push(Task(target_loc, calc_time, target_loc))
+                self.time_queue.push(Task(target_loc, calc_time))
             profile.output = new_output
             profile += 1
         if self_info.inputlimit == INFINITE:
             with gil:
                 next_time = self.Global_Clock + (<Gate>PyList_GET_ITEM(self.gate_verse, origin)).delay_book[self_info.output]
             gate_clocks[origin] = next_time
-            self.time_queue.push(Task(origin, next_time, origin))
+            self.time_queue.push(Task(origin, next_time))
             self.time_limit.push(next_time + (self.FanOut_delay[self_info.type] * self_info.hitlist.size))
 
     cdef void sync_queue_size(self) noexcept nogil:
@@ -1411,10 +1432,10 @@ cdef class Circuit:
 
     cdef void propagate(self, Py_ssize_t end_point) noexcept nogil:
         '''propagate the output of a gate to its targets'''
-        cdef Py_ssize_t wave_limit = self.gate_infolist.size() - self.hidden
-        if unlikely(wave_limit > self.queue[0].size()):
+        cdef Py_ssize_t active = self.gate_infolist.size() - self.hidden
+        if unlikely(active > self.queue[0].size()):
             self.sync_queue_size()
-        wave_limit*=2
+        cdef Py_ssize_t wave_limit = active * self.wave_multiplier + self.wave_offset
         cdef Profile* profile
         cdef Profile* end
         cdef uint8_t target_output, new_output
@@ -1466,7 +1487,7 @@ cdef class Circuit:
                     self_info.flags &= ~FLAG_MARK
                     calc_time = self.Global_Clock + self.Global_delay[self_info.type] + (self.FanIn_delay[self_info.type] * self_info.inputlimit) + (self.FanOut_delay[self_info.type] * self_info.hitlist.size)
                     self.gate_clocks[loc] = calc_time
-                    self.time_queue.push(Task(loc, calc_time, loc))
+                    self.time_queue.push(Task(loc, calc_time))
                 with gil:
                     try:
                         loop = asyncio.get_running_loop()
@@ -1630,6 +1651,66 @@ cdef class Circuit:
                     else:
                         break
             await asyncio.sleep(DELAY)
+
+    cpdef unsigned long long drain_timed_queue(self, unsigned long long max_tasks = 0, unsigned int max_time = 0):
+        '''Synchronously process all pending tasks in the priority queue with gate delays, without async or GIL bottlenecks.'''
+        cdef Task task
+        cdef unsigned long long count = 0
+        with nogil:
+            while not self.time_queue.empty():
+                if max_time > 0 and self.time_queue.top().time >= max_time:
+                    break
+                task = self.time_queue.top()
+                self.time_queue.pop()
+                self.complete_task(task)
+                count += 1
+                if max_tasks > 0 and count >= max_tasks:
+                    break
+        return count
+
+    cpdef void toggle_timed(self, int target, int value, unsigned int delay = 0):
+        '''Toggle a variable and schedule its event into the priority queue at Global_Clock + delay.'''
+        cdef CPP_Gate* info = &self.gate_infolist[target]
+        cdef unsigned int event_time
+        if info.flags & FLAG_SCHEDULED:
+            return
+        if value != info.output:
+            info.flags = (info.flags & ~FLAG_VALUE) | value
+            info.output = value if MODE != DESIGN else UNKNOWN
+            event_time = self.Global_Clock + delay
+            self.gate_clocks[target] = event_time
+            self.time_queue.push(Task(target, event_time))
+
+    cpdef unsigned long long step_timed(self, int target, int value, unsigned int delay = 0):
+        '''Convenience function: toggle_timed and immediately drain the priority queue until empty.'''
+        self.toggle_timed(target, value, delay)
+        return self.drain_timed_queue()
+
+    cpdef unsigned long long batch_toggle_timed(self, list batch, unsigned int delay = 0):
+        '''Schedule a batch of (target, value) toggles and drain the priority queue until empty.'''
+        cdef tuple pair
+        for pair in batch:
+            self.toggle_timed(pair[0], pair[1], delay)
+        return self.drain_timed_queue()
+
+    cpdef int timed_queue_size(self):
+        '''Return the number of pending tasks in the priority queue.'''
+        return self.time_queue.size()
+
+    cpdef bint timed_queue_empty(self):
+        '''Return True if the priority queue is empty.'''
+        return self.time_queue.empty()
+
+    cpdef unsigned long long run_clock_timed(self, int clk_target, unsigned int cycles, unsigned int half_period = 0):
+        '''Toggle a clock for N complete cycles (0 -> 1 -> 0) synchronously in pure C++.'''
+        cdef unsigned int i
+        cdef unsigned long long total_tasks = 0
+        for i in range(cycles):
+            self.toggle_timed(clk_target, 1, half_period)
+            total_tasks += self.drain_timed_queue()
+            self.toggle_timed(clk_target, 0, half_period)
+            total_tasks += self.drain_timed_queue()
+        return total_tasks
 
     # ── Visual-queue helpers (called from the UI layer) ──────────────────
     cpdef bint visual_queue_empty(self):

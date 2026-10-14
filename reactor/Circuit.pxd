@@ -28,6 +28,8 @@ cdef class Circuit:
     cdef public bint clocks_enabled
     cdef public unsigned long long eval_count
     cdef public object runner      # asyncio.Task or None (FLIPFLOP async runner)
+    cdef public int wave_multiplier
+    cdef public int wave_offset
     cdef public unsigned int Global_Clock
     cdef unsigned int[12] Global_delay
     cdef unsigned int[12] FanIn_delay
@@ -55,6 +57,8 @@ cdef class Circuit:
     cpdef void connect(self, Gate target, int source, int index)
     cpdef void toggle(self, int target, int value)
     cpdef void enable_all_clocks(self, bint enable=*)
+    cpdef void set_wave_mode(self, str mode=*)
+    cpdef void set_wave_limit(self, int multiplier=*, int offset=*)
     cpdef void disconnect(self, Gate target, int index)
     cpdef void delobj(self, object obj)
     cpdef IC build_ic(self, dict pin_orientations=*)
@@ -93,3 +97,10 @@ cdef class Circuit:
     cpdef int pop_visual_queue(self)
     cpdef int visual_queue_size(self)
     cpdef void activate(self)
+    cpdef unsigned long long drain_timed_queue(self, unsigned long long max_tasks=*, unsigned int max_time=*)
+    cpdef void toggle_timed(self, int target, int value, unsigned int delay=*)
+    cpdef unsigned long long step_timed(self, int target, int value, unsigned int delay=*)
+    cpdef unsigned long long batch_toggle_timed(self, list batch, unsigned int delay=*)
+    cpdef int timed_queue_size(self)
+    cpdef bint timed_queue_empty(self)
+    cpdef unsigned long long run_clock_timed(self, int clk_target, unsigned int cycles, unsigned int half_period=*)

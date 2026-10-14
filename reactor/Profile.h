@@ -25,13 +25,12 @@ struct Profile {
 struct Task {
   int gate_loc;
   unsigned int time;
-  int location;
-  Task() : gate_loc(-1), time(0), location(0) {}
-  Task(int g, unsigned int t, int loc) : gate_loc(g), time(t), location(loc) {}
+  Task() : gate_loc(-1), time(0) {}
+  Task(int g, unsigned int t) : gate_loc(g), time(t) {}
   bool operator>(const Task &other) const {
     if (time != other.time)
       return time > other.time;
-    return location > other.location;
+    return gate_loc > other.gate_loc;
   }
 };
 // ──────────────────────────────────────────────────────────────────────────
