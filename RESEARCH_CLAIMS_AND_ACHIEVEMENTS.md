@@ -13,8 +13,8 @@ This document formalizes the scientific, microarchitectural, and empirical achie
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │                                DARION ACHIEVEMENT MATRIX                               │
 ├──────────────────────────────┬─────────────────────────────────────────────────────────┤
-│ Elaboration / Turnaround     │ Up to 284× faster than Verilator (0.57s vs. 162.45s)    │
-│ Simulation Execution Speed   │ Up to 2.33× faster than Verilator on mammoth netlists   │
+│ Elaboration / Turnaround     │ Up to 290× faster than Verilator (0.55s vs. 160.60s)    │
+│ Simulation Execution Speed   │ Up to 2.49× faster than Verilator on mammoth netlists   │
 │                              │ at low switching activity (b18, b19, vga_lcd)           │
 │ Baseline Speedup vs. Icarus  │ Up to 1,756× faster across 420,000+ gate netlists       │
 │ CPU Pipeline Saturation      │ 4.03 – 4.48 IPC (Instructions Per Cycle) via Linux PMU  │
@@ -127,31 +127,31 @@ This document formalizes the scientific, microarchitectural, and empirical achie
 
 ## 3. Empirical Achievement Claims (Verified Benchmark Data)
 
-### Claim 8: Up to 284× (and 605×) Faster Turnaround / Compilation than Verilator C++
+### Claim 8: Up to 290× (and 612×) Faster Turnaround / Compilation than Verilator C++
 * **Statement:** Cycle-based compiled simulators (Verilator) translate netlists to intermediate C++ source files and invoke GCC/Clang with `-O3`, incurring multi-minute compilation latencies that preclude interactive workflows. Darion loads, optimizes, and elaborates circuits directly in-memory, achieving sub-second turnaround on quarter-million-gate netlists.
 * **Empirical Proof (Extracted from [`Benchmark/master_test/ITC99.md`](file:///home/farhan/Github/darion-logic-sim/Benchmark/master_test/ITC99.md) & [`Hyp.md`](file:///home/farhan/Github/darion-logic-sim/Benchmark/master_test/Hyp.md)):**
 
 | Benchmark Circuit | Benchmark Suite | Total Gate Count | Verilator C++ Compile Time | Darion Reactor Optimization & Load | **Turnaround Advantage** |
 |:---|:---|---:|:---:|:---:|:---:|
-| **`b14.v`** | IWLS 2005 (ITC99) | 10,624 | 6.02 s | **9.94 ms** (1.25 ms opt) | **605× faster** |
-| **`b15.v`** | IWLS 2005 (ITC99) | 17,594 | 8.37 s | **17.48 ms** (2.43 ms opt) | **478× faster** |
-| **`b17.v`** | IWLS 2005 (ITC99) | 52,250 | 22.84 s | **67.49 ms** (14.65 ms opt) | **338× faster** |
-| **`b18.v`** | IWLS 2005 (ITC99) | 132,940 | 66.90 s (1.1 mins) | **261.24 ms** (52.16 ms opt) | **256× faster** |
-| **`b19.v`** | IWLS 2005 (ITC99) | 257,489 | **162.45 s (2.7 mins)** | **570.64 ms** (112.53 ms opt) | **284× faster** |
+| **`b14.v`** | IWLS 2005 (ITC99) | 10,624 | 5.99 s | **9.79 ms** (1.26 ms opt) | **612× faster** |
+| **`b15.v`** | IWLS 2005 (ITC99) | 17,594 | 8.13 s | **24.59 ms** (2.16 ms opt) | **331× faster** |
+| **`b17.v`** | IWLS 2005 (ITC99) | 52,250 | 23.22 s | **66.43 ms** (14.57 ms opt) | **350× faster** |
+| **`b18.v`** | IWLS 2005 (ITC99) | 132,940 | 66.28 s (1.1 mins) | **248.01 ms** (48.63 ms opt) | **267× faster** |
+| **`b19.v`** | IWLS 2005 (ITC99) | 257,489 | **160.60 s (2.7 mins)** | **554.24 ms** (118.49 ms opt) | **290× faster** |
 | **`hyp.v`** | EPFL Mammoth | 420,896 | **116.02 s (1.9 mins)** | **613.74 ms** (100.93 ms opt) | **189× faster** |
 
 ---
 
 ### Claim 9: Execution Scaling Inversion Against Verilator at Low Switching Activities
-* **Statement:** As formalized by Beamer et al. (DAC 2020), event-driven logic simulation outperforms compiled cycle-based simulation when switching activity factors drop below an activity threshold ($A^* \approx 8\%$). On large sequential processor designs with sparse switching activity, Darion's Data-Oriented Reactor inverts the execution curve and outpaces Verilator C++ by up to **2.33×**.
+* **Statement:** As formalized by Beamer et al. (DAC 2020), event-driven logic simulation outperforms compiled cycle-based simulation when switching activity factors drop below an activity threshold ($A^* \approx 8\%$). On large sequential processor designs with sparse switching activity, Darion's Data-Oriented Reactor inverts the execution curve and outpaces Verilator C++ by up to **2.49×**.
 * **Empirical Proof (Extracted from [`Benchmark/master_test/ITC99.md`](file:///home/farhan/Github/darion-logic-sim/Benchmark/master_test/ITC99.md) & [`Opencores.md`](file:///home/farhan/Github/darion-logic-sim/Benchmark/master_test/Opencores.md)):**
 
 | Benchmark Circuit | Benchmark Suite | Gate Count | Verilator C++ Wall Time | Darion `rx-sweep` Wall Time | Darion `rx-prop` Wall Time | **Speedup vs. Verilator** |
 |:---|:---|---:|:---:|:---:|:---:|:---:|
-| **`b17.v`** | IWLS 2005 (ITC99) | 52,250 | 5,324.98 ms | 5,544.25 ms | **5,165.29 ms** | **1.03× Faster** |
-| **`vga_lcd.v`** | IWLS 2005 (Opencores) | 187,445 | 51.34 s | **39.55 s** | **42.67 s** | **1.30× Faster** |
-| **`b18.v`** | IWLS 2005 (ITC99) | 132,940 | 28.05 s | **15.36 s** | **17.96 s** | **1.83× Faster** |
-| **`b19.v`** | IWLS 2005 (ITC99) | 257,489 | 64.12 s | **27.49 s** | **31.64 s** | **2.33× Faster** |
+| **`b17.v`** | IWLS 2005 (ITC99) | 52,250 | 5,640.61 ms | 6,166.06 ms | **4,342.73 ms** | **1.30× Faster** |
+| **`vga_lcd.v`** | IWLS 2005 (Opencores) | 187,445 | 51.25 s | **40.51 s** | **36.18 s** | **1.42× Faster** |
+| **`b18.v`** | IWLS 2005 (ITC99) | 132,940 | 28.29 s | **16.24 s** | **14.86 s** | **1.90× Faster** |
+| **`b19.v`** | IWLS 2005 (ITC99) | 257,489 | 62.40 s | **29.95 s** | **25.07 s** | **2.49× Faster** |
 
 * **Scientific Caveat (The Boundary Condition):**
   - On dense combinational netlists where switching activity is high ($A > 20\%$), Verilator's straight-line compiled machine instructions win (e.g., on `hyp.v`, Verilator runs in 245 ms vs. Darion's 851 ms).

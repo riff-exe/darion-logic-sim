@@ -39,7 +39,8 @@ cdef class Variable
 cdef extern from "Profile.h" nogil:
     cdef cppclass Profile:
         CPP_Gate* target
-        int output
+        uint8_t logic
+        uint8_t seed
         int index
         Profile()
         Profile(CPP_Gate* target, int pin_index, int output)

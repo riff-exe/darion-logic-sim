@@ -13,17 +13,17 @@
 
 | Circuit | Gates | Cython Reactor | Pure Python | Icarus Verilog | Verilator C++ |
 |:---|---:|---:|---:|---:|---:|
-| ctrl.v | 340 | 0.75 MB (28.3 MB peak) | 0.54 MB (33.5 MB peak) | 0.08 MB (8.0 MB peak) | 0.71 MB (4.4 MB peak) |
-| int2float.v | 461 | 0.86 MB (28.4 MB peak) | 0.63 MB (33.7 MB peak) | 0.19 MB (8.1 MB peak) | 0.70 MB (4.4 MB peak) |
-| dec.v | 576 | 0.98 MB (28.5 MB peak) | 0.82 MB (33.9 MB peak) | 0.20 MB (8.1 MB peak) | 0.75 MB (4.4 MB peak) |
-| router.v | 576 | 0.92 MB (28.5 MB peak) | 0.76 MB (33.8 MB peak) | 0.33 MB (8.2 MB peak) | 0.74 MB (4.4 MB peak) |
-| cavlc.v | 1,300 | 3.55 MB (31.1 MB peak) | 1.74 MB (34.8 MB peak) | 0.66 MB (8.5 MB peak) | 0.74 MB (4.4 MB peak) |
-| priority.v | 2,043 | 2.27 MB (29.8 MB peak) | 2.51 MB (35.5 MB peak) | 0.87 MB (8.8 MB peak) | 0.64 MB (4.3 MB peak) |
-| adder.v | 2,547 | 2.52 MB (30.1 MB peak) | 3.00 MB (36.0 MB peak) | 1.12 MB (9.0 MB peak) | 0.76 MB (4.5 MB peak) |
-| i2c.v | 2,480 | 2.55 MB (30.1 MB peak) | 3.01 MB (36.0 MB peak) | 1.12 MB (9.0 MB peak) | 0.75 MB (4.4 MB peak) |
-| bar.v | 5,526 | 5.64 MB (33.1 MB peak) | 6.85 MB (39.9 MB peak) | 3.13 MB (11.0 MB peak) | 0.80 MB (4.5 MB peak) |
-| max.v | 6,025 | 5.95 MB (33.5 MB peak) | 7.23 MB (40.3 MB peak) | 3.37 MB (11.3 MB peak) | 0.88 MB (4.6 MB peak) |
-| arbiter.v | 23,618 | 25.12 MB (52.6 MB peak) | 29.12 MB (62.2 MB peak) | 15.23 MB (23.1 MB peak) | 0.85 MB (4.5 MB peak) |
+| ctrl.v | 340 | 0.59 MB (28.4 MB peak) | 0.43 MB (33.4 MB peak) | 0.16 MB (8.0 MB peak) | 0.71 MB (4.4 MB peak) |
+| int2float.v | 461 | 0.63 MB (28.6 MB peak) | 0.55 MB (33.6 MB peak) | 0.21 MB (8.1 MB peak) | 0.73 MB (4.4 MB peak) |
+| dec.v | 576 | 0.78 MB (28.7 MB peak) | 0.71 MB (33.7 MB peak) | 0.21 MB (8.1 MB peak) | 0.62 MB (4.3 MB peak) |
+| router.v | 576 | 0.76 MB (28.5 MB peak) | 0.69 MB (33.7 MB peak) | 0.31 MB (8.1 MB peak) | 0.71 MB (4.4 MB peak) |
+| cavlc.v | 1,300 | 1.42 MB (29.4 MB peak) | 1.64 MB (34.7 MB peak) | 0.64 MB (8.5 MB peak) | 0.71 MB (4.4 MB peak) |
+| priority.v | 2,043 | 1.91 MB (30.0 MB peak) | 2.48 MB (35.5 MB peak) | 0.97 MB (8.9 MB peak) | 0.85 MB (4.4 MB peak) |
+| adder.v | 2,547 | 2.41 MB (30.2 MB peak) | 2.93 MB (35.9 MB peak) | 1.22 MB (9.1 MB peak) | 0.79 MB (4.5 MB peak) |
+| i2c.v | 2,480 | 2.42 MB (30.3 MB peak) | 2.88 MB (36.0 MB peak) | 1.18 MB (9.0 MB peak) | 0.73 MB (4.4 MB peak) |
+| bar.v | 5,526 | 5.45 MB (33.4 MB peak) | 6.84 MB (39.8 MB peak) | 3.23 MB (11.0 MB peak) | 0.80 MB (4.5 MB peak) |
+| max.v | 6,025 | 5.79 MB (33.7 MB peak) | 7.18 MB (40.3 MB peak) | 3.41 MB (11.3 MB peak) | 0.89 MB (4.6 MB peak) |
+| arbiter.v | 23,618 | 23.36 MB (51.2 MB peak) | 29.18 MB (62.2 MB peak) | 15.18 MB (23.1 MB peak) | 0.88 MB (4.6 MB peak) |
 
 ---
 
@@ -31,17 +31,17 @@
 
 | Circuit | Gates | Cython Reactor | Pure Python | Icarus Verilog | Verilator C++ |
 |:---|---:|---:|---:|---:|---:|
-| ctrl.v | 340 | 0.87 ms (0.026 ms opt) | 2.74 ms | 3.77 ms | 2.49 s |
-| int2float.v | 461 | 1.10 ms (0.039 ms opt) | 3.09 ms | 3.52 ms | 2.51 s |
-| dec.v | 576 | 1.13 ms (0.030 ms opt) | 3.14 ms | 3.23 ms | 2.51 s |
-| router.v | 576 | 1.31 ms (0.059 ms opt) | 3.25 ms | 4.19 ms | 2.52 s |
-| cavlc.v | 1,300 | 2.70 ms (0.111 ms opt) | 4.69 ms | 7.18 ms | 2.55 s |
-| priority.v | 2,043 | 3.74 ms (0.123 ms opt) | 6.29 ms | 9.49 ms | 2.58 s |
-| adder.v | 2,547 | 4.40 ms (0.118 ms opt) | 7.29 ms | 11.21 ms | 2.59 s |
-| i2c.v | 2,480 | 4.49 ms (0.185 ms opt) | 7.05 ms | 12.97 ms | 2.60 s |
-| bar.v | 5,526 | 10.45 ms (0.360 ms opt) | 16.77 ms | 25.61 ms | 3.11 s |
-| max.v | 6,025 | 10.77 ms (0.354 ms opt) | 17.30 ms | 26.25 ms | 2.90 s |
-| arbiter.v | 23,618 | 44.14 ms (1.858 ms opt) | 60.59 ms | 118.53 ms | 8.28 s |
+| ctrl.v | 340 | 0.87 ms (0.027 ms opt) | 2.59 ms | 3.71 ms | 2.49 s |
+| int2float.v | 461 | 1.09 ms (0.037 ms opt) | 2.85 ms | 3.87 ms | 2.50 s |
+| dec.v | 576 | 1.13 ms (0.031 ms opt) | 2.89 ms | 3.75 ms | 2.51 s |
+| router.v | 576 | 1.24 ms (0.038 ms opt) | 3.00 ms | 4.18 ms | 2.50 s |
+| cavlc.v | 1,300 | 2.63 ms (0.105 ms opt) | 4.75 ms | 6.98 ms | 2.51 s |
+| priority.v | 2,043 | 3.73 ms (0.120 ms opt) | 6.14 ms | 9.76 ms | 2.55 s |
+| adder.v | 2,547 | 4.39 ms (0.121 ms opt) | 6.92 ms | 11.20 ms | 2.56 s |
+| i2c.v | 2,480 | 4.46 ms (0.183 ms opt) | 7.16 ms | 12.20 ms | 2.56 s |
+| bar.v | 5,526 | 10.45 ms (0.347 ms opt) | 15.76 ms | 25.07 ms | 3.10 s |
+| max.v | 6,025 | 10.86 ms (0.346 ms opt) | 16.42 ms | 26.38 ms | 2.80 s |
+| arbiter.v | 23,618 | 44.03 ms (1.779 ms opt) | 61.99 ms | 118.41 ms | 8.24 s |
 
 ---
 
@@ -51,33 +51,33 @@
 
 | Circuit | rx-prop (ms) | rx-sweep (ms) | rx-oop (ms) | Pure Python (ms) | Icarus (ms) | Verilator (ms) |
 |:---|---:|---:|---:|---:|---:|---:|
-| ctrl.v | 49.93 ms | 51.94 ms | 115.77 ms | 2833.20 ms | 408.86 ms | 4.29 ms |
-| int2float.v | 50.61 ms | 85.48 ms | 122.98 ms | 3248.10 ms | 504.34 ms | 5.18 ms |
-| dec.v | 17.83 ms | 22.99 ms | 27.56 ms | 1392.25 ms | 173.33 ms | 3.65 ms |
-| router.v | 71.33 ms | 65.03 ms | 139.77 ms | 3784.71 ms | 754.86 ms | 7.01 ms |
-| cavlc.v | 157.97 ms | 241.43 ms | 372.46 ms | 9613.83 ms | 1409.46 ms | 9.00 ms |
-| priority.v | 252.90 ms | 232.65 ms | 415.19 ms | 14.53 s | 13.46 s | 44.38 ms |
-| adder.v | 407.76 ms | 345.94 ms | 807.70 ms | 26.37 s | 3848.10 ms | 64.25 ms |
-| i2c.v | 280.52 ms | 474.94 ms | 586.50 ms | 15.22 s | 2891.85 ms | 26.96 ms |
-| bar.v | 687.60 ms | 829.40 ms | 1166.14 ms | 63.80 s | 7123.64 ms | 59.43 ms |
-| max.v | 1038.78 ms | 1251.83 ms | 2153.58 ms | 73.24 s | 12.53 s | 84.22 ms |
-| arbiter.v | 2046.32 ms | 1877.00 ms | 3982.43 ms | 171.94 s | 17.68 s | 171.33 ms |
+| ctrl.v | 44.57 ms | 48.68 ms | 117.98 ms | 2918.00 ms | 407.91 ms | 5.05 ms |
+| int2float.v | 45.19 ms | 85.77 ms | 124.05 ms | 3156.56 ms | 501.51 ms | 4.38 ms |
+| dec.v | 14.03 ms | 25.26 ms | 27.89 ms | 1406.11 ms | 169.63 ms | 3.68 ms |
+| router.v | 65.80 ms | 67.11 ms | 138.25 ms | 3693.82 ms | 717.83 ms | 7.09 ms |
+| cavlc.v | 137.25 ms | 241.30 ms | 370.33 ms | 9463.58 ms | 1410.29 ms | 8.23 ms |
+| priority.v | 237.33 ms | 233.74 ms | 413.63 ms | 14.21 s | 13.48 s | 43.78 ms |
+| adder.v | 379.93 ms | 348.20 ms | 797.78 ms | 26.38 s | 3776.22 ms | 65.25 ms |
+| i2c.v | 257.95 ms | 475.16 ms | 578.53 ms | 14.94 s | 2830.91 ms | 26.12 ms |
+| bar.v | 604.25 ms | 834.51 ms | 1159.79 ms | 63.07 s | 7122.56 ms | 58.93 ms |
+| max.v | 934.92 ms | 1268.26 ms | 2225.22 ms | 68.91 s | 12.45 s | 81.98 ms |
+| arbiter.v | 1855.19 ms | 1843.70 ms | 4028.27 ms | 166.80 s | 18.03 s | 175.26 ms |
 
 ### Speedup Analysis (vs Baseline: Icarus = 1.00x)
 
 | Circuit | rx-prop | rx-sweep | rx-oop | Pure Python | Icarus | Verilator C++ |
 |:---|---:|---:|---:|---:|---:|---:|
-| ctrl.v | 8.19x | 7.87x | 3.53x | 0.14x | 1.00x | 95.25x |
-| int2float.v | 9.97x | 5.90x | 4.10x | 0.16x | 1.00x | 97.41x |
-| dec.v | 9.72x | 7.54x | 6.29x | 0.12x | 1.00x | 47.52x |
-| router.v | 10.58x | 11.61x | 5.40x | 0.20x | 1.00x | 107.67x |
-| cavlc.v | 8.92x | 5.84x | 3.78x | 0.15x | 1.00x | 156.58x |
-| priority.v | 53.23x | 57.86x | 32.42x | 0.93x | 1.00x | 303.35x |
-| adder.v | 9.44x | 11.12x | 4.76x | 0.15x | 1.00x | 59.89x |
-| i2c.v | 10.31x | 6.09x | 4.93x | 0.19x | 1.00x | 107.25x |
-| bar.v | 10.36x | 8.59x | 6.11x | 0.11x | 1.00x | 119.86x |
-| max.v | 12.06x | 10.01x | 5.82x | 0.17x | 1.00x | 148.74x |
-| arbiter.v | 8.64x | 9.42x | 4.44x | 0.10x | 1.00x | 103.20x |
+| ctrl.v | 9.15x | 8.38x | 3.46x | 0.14x | 1.00x | 80.83x |
+| int2float.v | 11.10x | 5.85x | 4.04x | 0.16x | 1.00x | 114.50x |
+| dec.v | 12.09x | 6.71x | 6.08x | 0.12x | 1.00x | 46.12x |
+| router.v | 10.91x | 10.70x | 5.19x | 0.19x | 1.00x | 101.31x |
+| cavlc.v | 10.28x | 5.84x | 3.81x | 0.15x | 1.00x | 171.43x |
+| priority.v | 56.81x | 57.68x | 32.60x | 0.95x | 1.00x | 308.00x |
+| adder.v | 9.94x | 10.84x | 4.73x | 0.14x | 1.00x | 57.87x |
+| i2c.v | 10.97x | 5.96x | 4.89x | 0.19x | 1.00x | 108.40x |
+| bar.v | 11.79x | 8.54x | 6.14x | 0.11x | 1.00x | 120.86x |
+| max.v | 13.31x | 9.81x | 5.59x | 0.18x | 1.00x | 151.83x |
+| arbiter.v | 9.72x | 9.78x | 4.48x | 0.11x | 1.00x | 102.90x |
 
 ### Total Gate Evaluations
 
@@ -97,12 +97,12 @@
 
 ### Geo-Mean Speedup Highlights (Baseline: Icarus = 1.00x)
 
-- **rx-prop (Wavefront BFS):** `11.39x`
-- **rx-sweep (Linear Compiled):** `9.75x`
-- **rx-oop (OOP Graph):** `5.74x`
+- **rx-prop (Wavefront BFS):** `12.63x`
+- **rx-sweep (Linear Compiled):** `9.59x`
+- **rx-oop (OOP Graph):** `5.67x`
 - **Pure Python Engine:** `0.17x`
 - **Icarus Verilog:** `1.00x (Baseline)`
-- **Verilator C++:** `109.32x`
+- **Verilator C++:** `109.47x`
 
 ### Gate Evaluation Highlights
 
@@ -110,9 +110,9 @@
 
 ### Cross-Engine Comparisons
 
-- **Cython Reactor (`rx-prop`) vs Pure Python:** `65.90x` faster
-- **Cython Reactor (`rx-sweep`) vs Pure Python:** `56.38x` faster
-- **Reactor Sweep vs Propagate Ratio:** `0.86x` (propagate faster)
+- **Cython Reactor (`rx-prop`) vs Pure Python:** `72.60x` faster
+- **Cython Reactor (`rx-sweep`) vs Pure Python:** `55.12x` faster
+- **Reactor Sweep vs Propagate Ratio:** `0.76x` (propagate faster)
 
 ---
 
@@ -120,69 +120,69 @@
 
 | Circuit | Engine Variant | Instructions | Cycles | IPC | L1 Loads | L1 Misses | L2 Loads | L2 Misses | L3 Loads | DRAM Loads | Branches | Branch Misses |
 | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ctrl.v | rx-prop | 528.81M | 169.73M | 3.12 | 228.19M | 494.39K | 494.39K | 2.70K | 22.78K | 6.90K | 55.02M | 1.83M |
-| ctrl.v | rx-sweep (Linear) | 318.25M | 159.53M | 1.99 | 171.40M | 631.25K | 631.25K | 4.53K | 20.74K | 17.74K | 68.01M | 3.62M |
-| ctrl.v | rx-oop (OOP Engine) | 588.27M | 414.82M | 1.42 | 471.05M | 4.73M | 4.73M | 3.60K | 42.19K | 5.41K | 76.71M | 5.33M |
-| ctrl.v | Pure Python Engine | 403.66M | 86.00M | 4.69 | 195.10M | 733.11K | 733.11K | 2.52K | 10.29K | 4.63K | 55.76M | 135.06K |
-| ctrl.v | Icarus Verilog | 5.10B | 1.47B | 3.47 | 2.43B | 39.97M | 39.97M | 1.20K | 10.11K | 1.26K | 1.02B | 10.98M |
-| ctrl.v | Verilator C++ | 5.30M | 15.31M | 0.35 | 22.60M | 42.50K | 42.50K | 210.00 | 438.00 | 0.00 | 5.51M | 81.16K |
-| int2float.v | rx-prop | 545.52M | 171.48M | 3.18 | 233.52M | 1.36M | 1.36M | 9.14K | 43.76K | 14.41K | 54.60M | 1.65M |
-| int2float.v | rx-sweep (Linear) | 488.23M | 297.09M | 1.64 | 255.28M | 1.71M | 1.71M | 5.00K | 40.00K | 10.97K | 90.82M | 6.69M |
-| int2float.v | rx-oop (OOP Engine) | 608.09M | 433.75M | 1.40 | 496.77M | 9.03M | 9.03M | 13.12K | 73.98K | 40.52K | 77.29M | 5.52M |
-| int2float.v | Pure Python Engine | 473.43M | 106.38M | 4.45 | 227.04M | 879.07K | 879.07K | 23.41K | 43.34K | 1.55K | 68.72M | 155.41K |
-| int2float.v | Icarus Verilog | 5.70B | 1.81B | 3.16 | 2.81B | 62.07M | 62.07M | 15.04K | 27.94K | 12.28K | 1.15B | 15.30M |
-| int2float.v | Verilator C++ | 15.27M | 11.38M | 1.34 | 31.41M | 35.07K | 35.07K | 1.07K | 35.08K | 184.00 | 3.79M | 138.81K |
-| dec.v | rx-prop | 175.43M | 54.18M | 3.24 | 78.88M | 296.17K | 296.17K | 1.90K | 24.04K | 4.75K | 14.61M | 235.40K |
-| dec.v | rx-sweep (Linear) | 198.71M | 71.99M | 2.76 | 93.68M | 480.40K | 480.40K | 2.34K | 21.36K | 1.72K | 47.64M | 1.11M |
-| dec.v | rx-oop (OOP Engine) | 198.84M | 94.38M | 2.11 | 125.13M | 1.12M | 1.12M | 4.99K | 39.98K | 15.52K | 23.77M | 352.39K |
-| dec.v | Pure Python Engine | 185.92M | 39.38M | 4.72 | 81.41M | 286.46K | 286.46K | 13.02K | 14.36K | 1.19K | 25.89M | 27.99K |
-| dec.v | Icarus Verilog | 2.34B | 603.67M | 3.87 | 1.13B | 24.02M | 24.02M | 4.42K | 12.62K | 6.93K | 505.13M | 3.82M |
-| dec.v | Verilator C++ | 23.14M | 12.44M | 1.86 | 30.40M | 41.83K | 41.83K | 1.12K | 32.92K | 28.00 | 5.32M | 49.18K |
-| router.v | rx-prop | 740.04M | 299.46M | 2.47 | 364.42M | 5.28M | 5.28M | 177.51K | 2.88M | 2.79M | 110.61M | 4.34M |
-| router.v | rx-sweep (Linear) | 658.58M | 263.57M | 2.50 | 318.65M | 4.19M | 4.19M | 139.03K | 2.27M | 2.17M | 145.10M | 4.04M |
-| router.v | rx-oop (OOP Engine) | 748.74M | 533.21M | 1.40 | 570.13M | 13.37M | 13.37M | 87.42K | 2.34M | 2.11M | 115.76M | 7.29M |
-| router.v | Pure Python Engine | 510.24M | 111.82M | 4.56 | 261.44M | 876.91K | 876.91K | 4.33K | 29.00K | 21.35K | 72.75M | 203.05K |
-| router.v | Icarus Verilog | 9.40B | 2.72B | 3.46 | 4.41B | 79.05M | 79.05M | 27.98K | 51.81K | 8.80K | 1.86B | 19.36M |
-| router.v | Verilator C++ | 30.05M | 9.57M | 3.14 | 32.60M | 135.24K | 135.24K | 4.53K | 126.35K | 344.00 | 2.25M | 22.17K |
-| cavlc.v | rx-prop | 1.63B | 560.92M | 2.91 | 642.88M | 33.11M | 33.11M | 6.65K | 40.76K | 14.78K | 159.13M | 4.75M |
-| cavlc.v | rx-sweep (Linear) | 1.38B | 861.68M | 1.60 | 671.62M | 39.46M | 39.46M | 3.16K | 32.69K | 22.40K | 254.97M | 19.10M |
-| cavlc.v | rx-oop (OOP Engine) | 1.86B | 1.34B | 1.39 | 1.43B | 53.43M | 53.43M | 27.46K | 105.39K | 32.39K | 224.39M | 15.44M |
-| cavlc.v | Pure Python Engine | 1.55B | 328.84M | 4.71 | 702.36M | 3.19M | 3.19M | 58.85K | 83.06K | 5.88K | 213.63M | 414.41K |
-| cavlc.v | Icarus Verilog | 15.34B | 5.07B | 3.02 | 7.84B | 297.95M | 297.95M | 162.85K | 249.50K | 15.43K | 3.08B | 39.64M |
-| cavlc.v | Verilator C++ | 53.63M | 27.09M | 1.98 | 32.33M | 16.25K | 16.25K | 203.00 | 16.96K | 115.00 | 5.25M | 137.84K |
-| priority.v | rx-prop | 2.84B | 995.81M | 2.85 | 1.20B | 64.61M | 64.61M | 278.15K | 5.97M | 5.70M | 351.26M | 8.03M |
-| priority.v | rx-sweep (Linear) | 2.36B | 917.69M | 2.57 | 1.01B | 66.72M | 66.72M | 298.74K | 6.08M | 5.89M | 477.31M | 13.43M |
-| priority.v | rx-oop (OOP Engine) | 3.01B | 1.56B | 1.93 | 1.92B | 109.53M | 109.53M | 186.44K | 5.30M | 4.57M | 412.88M | 13.20M |
-| priority.v | Pure Python Engine | 2.31B | 502.87M | 4.59 | 1.07B | 4.06M | 4.06M | 441.78K | 708.92K | 53.12K | 320.99M | 934.20K |
-| priority.v | Icarus Verilog | 182.18B | 48.54B | 3.75 | 86.93B | 2.31B | 2.31B | 1.84M | 2.73M | 47.36K | 36.42B | 256.98M |
-| priority.v | Verilator C++ | 189.68M | 158.36M | 1.20 | 134.74M | 94.41K | 94.41K | 2.27K | 125.42K | 6.11K | 17.05M | 749.28K |
-| adder.v | rx-prop | 4.29B | 1.65B | 2.59 | 1.87B | 104.64M | 104.64M | 549.60K | 12.66M | 12.05M | 569.46M | 17.85M |
-| adder.v | rx-sweep (Linear) | 3.79B | 1.43B | 2.65 | 1.68B | 111.06M | 111.06M | 458.36K | 12.56M | 12.01M | 780.11M | 18.13M |
-| adder.v | rx-oop (OOP Engine) | 4.45B | 3.06B | 1.45 | 3.36B | 169.66M | 169.66M | 341.73K | 11.47M | 10.24M | 644.82M | 36.55M |
-| adder.v | Pure Python Engine | 4.26B | 915.92M | 4.65 | 1.98B | 8.24M | 8.24M | 1.77M | 3.23M | 67.57K | 602.85M | 1.35M |
-| adder.v | Icarus Verilog | 50.51B | 13.79B | 3.66 | 23.88B | 724.49M | 724.49M | 12.35M | 20.36M | 79.72K | 9.96B | 66.75M |
-| adder.v | Verilator C++ | 252.78M | 231.92M | 1.09 | 176.00M | 227.59K | 227.59K | 7.93K | 156.59K | 114.40K | 14.44M | 1.27M |
-| i2c.v | rx-prop | 2.96B | 1.12B | 2.65 | 1.28B | 88.21M | 88.21M | 373.53K | 7.55M | 7.25M | 360.53M | 12.14M |
-| i2c.v | rx-sweep (Linear) | 2.90B | 1.82B | 1.59 | 1.44B | 96.78M | 96.78M | 332.22K | 6.75M | 6.63M | 600.27M | 38.97M |
-| i2c.v | rx-oop (OOP Engine) | 3.07B | 2.18B | 1.41 | 2.34B | 132.33M | 132.33M | 244.62K | 6.33M | 5.38M | 424.82M | 26.27M |
-| i2c.v | Pure Python Engine | 2.38B | 525.27M | 4.52 | 1.10B | 4.64M | 4.64M | 846.17K | 1.34M | 59.49K | 335.53M | 843.56K |
-| i2c.v | Icarus Verilog | 35.09B | 10.40B | 3.37 | 17.01B | 548.73M | 548.73M | 2.71M | 3.74M | 48.67K | 6.98B | 64.81M |
-| i2c.v | Verilator C++ | 216.90M | 89.72M | 2.42 | 106.15M | 96.92K | 96.92K | 1.55K | 101.59K | 5.66K | 13.94M | 1.03M |
-| bar.v | rx-prop | 8.97B | 2.54B | 3.53 | 3.46B | 312.44M | 312.44M | 100.12K | 5.08M | 4.76M | 911.58M | 4.70M |
-| bar.v | rx-sweep (Linear) | 6.23B | 3.05B | 2.04 | 2.87B | 196.62M | 196.62M | 261.76K | 5.36M | 5.01M | 1.18B | 60.68M |
-| bar.v | rx-oop (OOP Engine) | 9.80B | 4.27B | 2.30 | 5.49B | 472.48M | 472.48M | 1.02M | 7.09M | 4.84M | 1.24B | 9.50M |
-| bar.v | Pure Python Engine | 1.82B | 423.32M | 4.30 | 840.44M | 4.52M | 4.52M | 1.94M | 3.02M | 22.17K | 253.85M | 411.75K |
-| bar.v | Icarus Verilog | 93.86B | 25.54B | 3.67 | 42.99B | 2.37B | 2.37B | 387.63M | 519.68M | 65.21K | 18.86B | 65.82M |
-| bar.v | Verilator C++ | 339.35M | 197.15M | 1.72 | 215.00M | 135.48K | 135.48K | 2.38K | 149.97K | 6.65K | 22.38M | 1.49M |
-| max.v | rx-prop | 11.90B | 4.16B | 2.86 | 4.94B | 444.99M | 444.99M | 1.51M | 28.19M | 26.77M | 1.44B | 26.88M |
-| max.v | rx-sweep (Linear) | 8.83B | 4.92B | 1.80 | 4.40B | 309.83M | 309.83M | 1.54M | 28.35M | 26.99M | 1.78B | 97.20M |
-| max.v | rx-oop (OOP Engine) | 12.56B | 8.10B | 1.55 | 9.11B | 662.45M | 662.45M | 3.43M | 27.69M | 21.66M | 1.72B | 79.62M |
-| max.v | Pure Python Engine | 2.07B | 489.49M | 4.22 | 949.56M | 5.64M | 5.64M | 2.05M | 3.49M | 26.34K | 287.28M | 855.27K |
-| max.v | Icarus Verilog | 146.41B | 44.97B | 3.26 | 74.02B | 2.68B | 2.68B | 453.87M | 656.27M | 192.60K | 28.84B | 233.04M |
-| max.v | Verilator C++ | 743.21M | 287.93M | 2.58 | 385.15M | 381.49K | 381.49K | 6.62K | 347.53K | 176.22K | 48.86M | 716.00K |
-| arbiter.v | rx-prop | 22.10B | 7.52B | 2.94 | 8.49B | 695.78M | 695.78M | 29.01M | 210.80M | 12.32M | 2.21B | 20.97M |
-| arbiter.v | rx-sweep (Linear) | 22.06B | 6.91B | 3.19 | 7.69B | 722.90M | 722.90M | 58.72M | 284.87M | 12.25M | 4.25B | 63.12M |
-| arbiter.v | rx-oop (OOP Engine) | 24.22B | 14.42B | 1.68 | 14.50B | 1.36B | 1.36B | 478.22M | 824.30M | 9.82M | 3.02B | 44.52M |
-| arbiter.v | Pure Python Engine | 2.17B | 543.14M | 3.99 | 970.46M | 6.08M | 6.08M | 3.35M | 5.49M | 413.64K | 299.58M | 763.32K |
-| arbiter.v | Icarus Verilog | 205.62B | 63.41B | 3.24 | 97.72B | 5.83B | 5.83B | 2.91B | 5.44B | 1.02M | 41.17B | 99.20M |
-| arbiter.v | Verilator C++ | 705.70M | 602.41M | 1.17 | 547.19M | 223.51K | 223.51K | 4.73K | 229.57K | 68.62K | 25.22M | 3.81M |
+| ctrl.v | rx-prop | 519.96M | 154.91M | 3.36 | 218.85M | 396.86K | 396.86K | 2.19K | 25.68K | 8.84K | 54.44M | 1.81M |
+| ctrl.v | rx-sweep (Linear) | 351.30M | 166.81M | 2.11 | 165.01M | 245.71K | 245.71K | 3.55K | 26.09K | 21.23K | 71.84M | 3.45M |
+| ctrl.v | rx-oop (OOP Engine) | 607.69M | 419.03M | 1.45 | 461.98M | 4.23M | 4.23M | 6.62K | 49.30K | 18.11K | 75.10M | 5.29M |
+| ctrl.v | Pure Python Engine | 359.47M | 78.63M | 4.57 | 215.70M | 791.48K | 791.48K | 3.35K | 6.80K | 4.00K | 58.25M | 173.39K |
+| ctrl.v | Icarus Verilog | 5.07B | 1.45B | 3.49 | 2.47B | 41.04M | 41.04M | 1.43K | 10.95K | 836.00 | 1.02B | 11.44M |
+| ctrl.v | Verilator C++ | 3.55M | 15.98M | 0.22 | 24.67M | 36.53K | 36.53K | 545.00 | 26.11K | 31.00 | 4.66M | 67.79K |
+| int2float.v | rx-prop | 538.00M | 155.80M | 3.45 | 218.83M | 1.90M | 1.90M | 2.27K | 32.10K | 11.40K | 54.09M | 1.64M |
+| int2float.v | rx-sweep (Linear) | 472.98M | 298.22M | 1.59 | 259.79M | 1.54M | 1.54M | 1.71K | 32.18K | 18.08K | 92.93M | 6.88M |
+| int2float.v | rx-oop (OOP Engine) | 619.46M | 439.14M | 1.41 | 490.37M | 7.96M | 7.96M | 10.00K | 71.22K | 45.55K | 75.89M | 5.34M |
+| int2float.v | Pure Python Engine | 479.68M | 102.50M | 4.68 | 218.41M | 838.83K | 838.83K | 5.86K | 6.88K | 4.70K | 67.92M | 149.77K |
+| int2float.v | Icarus Verilog | 5.70B | 1.80B | 3.17 | 2.83B | 62.04M | 62.04M | 2.81K | 13.57K | 3.49K | 1.14B | 15.37M |
+| int2float.v | Verilator C++ | 5.86M | 9.27M | 0.63 | 28.21M | 39.86K | 39.86K | 452.00 | 26.77K | 81.00 | 4.32M | 152.45K |
+| dec.v | rx-prop | 153.73M | 47.72M | 3.22 | 85.07M | 244.07K | 244.07K | 3.35K | 16.39K | 2.28K | 17.72M | 285.84K |
+| dec.v | rx-sweep (Linear) | 202.56M | 74.86M | 2.71 | 90.83M | 369.65K | 369.65K | 366.00 | 19.54K | 2.08K | 45.95M | 1.09M |
+| dec.v | rx-oop (OOP Engine) | 187.86M | 92.90M | 2.02 | 121.22M | 1.28M | 1.28M | 1.14K | 43.78K | 8.70K | 23.12M | 344.71K |
+| dec.v | Pure Python Engine | 171.75M | 38.03M | 4.52 | 81.13M | 296.37K | 296.37K | 6.70K | 6.70K | 3.00K | 25.57M | 28.77K |
+| dec.v | Icarus Verilog | 2.44B | 603.49M | 4.04 | 1.08B | 23.40M | 23.40M | 2.71K | 12.32K | 5.42K | 491.90M | 3.75M |
+| dec.v | Verilator C++ | 10.84M | 8.60M | 1.26 | 33.47M | 35.61K | 35.61K | 1.18K | 27.62K | 301.00 | 4.36M | 43.25K |
+| router.v | rx-prop | 666.42M | 259.83M | 2.56 | 315.96M | 4.08M | 4.08M | 87.86K | 2.39M | 2.35M | 88.31M | 4.19M |
+| router.v | rx-sweep (Linear) | 609.84M | 265.50M | 2.30 | 295.77M | 3.81M | 3.81M | 91.67K | 2.21M | 2.11M | 132.88M | 4.12M |
+| router.v | rx-oop (OOP Engine) | 730.41M | 522.36M | 1.40 | 564.00M | 12.61M | 12.61M | 63.23K | 2.36M | 2.04M | 108.46M | 7.44M |
+| router.v | Pure Python Engine | 523.21M | 114.24M | 4.58 | 256.77M | 995.58K | 995.58K | 4.35K | 26.07K | 22.72K | 72.92M | 207.72K |
+| router.v | Icarus Verilog | 9.34B | 2.57B | 3.63 | 4.39B | 79.43M | 79.43M | 9.59K | 17.79K | 6.39K | 1.85B | 17.87M |
+| router.v | Verilator C++ | 60.66M | 21.40M | 2.83 | 38.92M | 72.62K | 72.62K | 3.24K | 152.45K | 467.00 | 5.68M | 27.30K |
+| cavlc.v | rx-prop | 1.58B | 492.50M | 3.22 | 638.08M | 32.80M | 32.80M | 2.46K | 33.66K | 11.25K | 159.31M | 4.79M |
+| cavlc.v | rx-sweep (Linear) | 1.32B | 862.14M | 1.53 | 688.93M | 41.36M | 41.36M | 2.02K | 31.06K | 9.42K | 254.34M | 19.22M |
+| cavlc.v | rx-oop (OOP Engine) | 1.83B | 1.32B | 1.39 | 1.44B | 54.67M | 54.67M | 20.48K | 93.80K | 26.32K | 223.57M | 15.51M |
+| cavlc.v | Pure Python Engine | 1.54B | 323.16M | 4.77 | 693.29M | 3.17M | 3.17M | 56.74K | 83.45K | 6.58K | 212.87M | 389.77K |
+| cavlc.v | Icarus Verilog | 15.35B | 5.07B | 3.02 | 7.85B | 300.88M | 300.88M | 34.91K | 68.06K | 14.04K | 3.08B | 39.34M |
+| cavlc.v | Verilator C++ | 46.22M | 23.80M | 1.94 | 30.95M | 18.98K | 18.98K | 132.00 | 31.50K | 1.46K | 4.97M | 125.71K |
+| priority.v | rx-prop | 2.65B | 926.69M | 2.86 | 1.16B | 65.46M | 65.46M | 207.07K | 5.23M | 5.05M | 332.89M | 8.25M |
+| priority.v | rx-sweep (Linear) | 2.23B | 916.15M | 2.43 | 963.38M | 66.68M | 66.68M | 253.71K | 5.81M | 5.69M | 455.87M | 13.42M |
+| priority.v | rx-oop (OOP Engine) | 2.98B | 1.54B | 1.93 | 1.92B | 108.40M | 108.40M | 163.30K | 4.99M | 4.25M | 407.11M | 13.12M |
+| priority.v | Pure Python Engine | 2.26B | 488.58M | 4.62 | 1.05B | 4.69M | 4.69M | 365.31K | 575.28K | 50.26K | 319.35M | 788.03K |
+| priority.v | Icarus Verilog | 182.26B | 48.61B | 3.75 | 88.00B | 2.33B | 2.33B | 3.36M | 5.16M | 24.41K | 36.45B | 259.79M |
+| priority.v | Verilator C++ | 180.17M | 148.94M | 1.21 | 128.49M | 93.77K | 93.77K | 3.00K | 155.36K | 8.30K | 15.87M | 673.45K |
+| adder.v | rx-prop | 4.03B | 1.54B | 2.62 | 1.78B | 103.53M | 103.53M | 393.92K | 11.80M | 11.38M | 522.42M | 17.83M |
+| adder.v | rx-sweep (Linear) | 3.54B | 1.42B | 2.49 | 1.56B | 110.86M | 110.86M | 416.85K | 12.53M | 12.02M | 725.80M | 18.38M |
+| adder.v | rx-oop (OOP Engine) | 4.44B | 3.01B | 1.48 | 3.34B | 170.64M | 170.64M | 317.91K | 11.88M | 10.60M | 638.81M | 36.59M |
+| adder.v | Pure Python Engine | 4.26B | 913.02M | 4.67 | 1.97B | 7.61M | 7.61M | 1.61M | 3.12M | 101.65K | 603.79M | 1.44M |
+| adder.v | Icarus Verilog | 50.67B | 13.58B | 3.73 | 23.94B | 714.24M | 714.24M | 4.55M | 6.45M | 61.12K | 9.97B | 68.34M |
+| adder.v | Verilator C++ | 249.73M | 223.87M | 1.12 | 167.83M | 229.85K | 229.85K | 3.13K | 154.77K | 50.29K | 13.66M | 1.24M |
+| i2c.v | rx-prop | 2.76B | 1.02B | 2.70 | 1.23B | 88.65M | 88.65M | 342.41K | 7.14M | 6.88M | 334.42M | 12.34M |
+| i2c.v | rx-sweep (Linear) | 2.77B | 1.82B | 1.52 | 1.39B | 98.26M | 98.26M | 345.47K | 7.22M | 7.13M | 569.37M | 39.06M |
+| i2c.v | rx-oop (OOP Engine) | 3.05B | 2.15B | 1.42 | 2.34B | 132.80M | 132.80M | 179.97K | 5.58M | 4.79M | 434.67M | 26.29M |
+| i2c.v | Pure Python Engine | 2.38B | 514.30M | 4.63 | 1.07B | 4.58M | 4.58M | 862.42K | 1.34M | 62.51K | 331.17M | 716.37K |
+| i2c.v | Icarus Verilog | 35.13B | 10.19B | 3.45 | 16.86B | 547.72M | 547.72M | 1.55M | 2.24M | 50.28K | 6.98B | 64.09M |
+| i2c.v | Verilator C++ | 226.51M | 91.79M | 2.47 | 110.02M | 102.69K | 102.69K | 2.54K | 121.81K | 54.79K | 14.75M | 1.10M |
+| bar.v | rx-prop | 8.56B | 2.24B | 3.82 | 3.38B | 312.54M | 312.54M | 77.32K | 5.28M | 5.00M | 883.86M | 4.66M |
+| bar.v | rx-sweep (Linear) | 5.89B | 3.06B | 1.92 | 2.92B | 198.76M | 198.76M | 318.91K | 4.19M | 3.79M | 1.16B | 61.88M |
+| bar.v | rx-oop (OOP Engine) | 9.77B | 4.24B | 2.31 | 5.50B | 475.62M | 475.62M | 1.73M | 7.99M | 4.62M | 1.24B | 8.71M |
+| bar.v | Pure Python Engine | 1.79B | 408.89M | 4.39 | 839.28M | 4.58M | 4.58M | 2.01M | 3.09M | 20.34K | 253.88M | 437.67K |
+| bar.v | Icarus Verilog | 93.90B | 25.55B | 3.67 | 43.31B | 2.36B | 2.36B | 384.66M | 505.90M | 70.68K | 18.86B | 66.49M |
+| bar.v | Verilator C++ | 340.33M | 207.58M | 1.64 | 214.70M | 200.43K | 200.43K | 2.99K | 85.59K | 5.97K | 25.09M | 1.52M |
+| max.v | rx-prop | 11.22B | 3.76B | 2.99 | 4.70B | 447.35M | 447.35M | 1.17M | 27.78M | 26.88M | 1.34B | 26.88M |
+| max.v | rx-sweep (Linear) | 8.22B | 4.90B | 1.68 | 4.24B | 311.65M | 311.65M | 1.39M | 27.45M | 26.15M | 1.69B | 98.42M |
+| max.v | rx-oop (OOP Engine) | 12.57B | 8.35B | 1.51 | 9.25B | 667.78M | 667.78M | 17.17M | 48.60M | 21.67M | 1.72B | 79.64M |
+| max.v | Pure Python Engine | 2.06B | 462.45M | 4.46 | 935.63M | 4.37M | 4.37M | 1.87M | 3.16M | 45.91K | 289.86M | 529.40K |
+| max.v | Icarus Verilog | 146.42B | 44.72B | 3.27 | 73.27B | 2.68B | 2.68B | 465.76M | 669.20M | 104.76K | 28.85B | 239.94M |
+| max.v | Verilator C++ | 788.43M | 296.06M | 2.66 | 372.70M | 363.92K | 363.92K | 5.50K | 286.90K | 216.68K | 52.95M | 761.44K |
+| arbiter.v | rx-prop | 21.13B | 6.82B | 3.10 | 8.39B | 686.33M | 686.33M | 36.53M | 197.98M | 11.63M | 2.16B | 21.96M |
+| arbiter.v | rx-sweep (Linear) | 21.15B | 6.78B | 3.12 | 7.57B | 725.11M | 725.11M | 56.66M | 290.19M | 12.17M | 4.20B | 64.55M |
+| arbiter.v | rx-oop (OOP Engine) | 24.25B | 14.58B | 1.66 | 14.51B | 1.37B | 1.37B | 482.69M | 825.47M | 10.82M | 3.01B | 46.05M |
+| arbiter.v | Pure Python Engine | 2.14B | 525.64M | 4.07 | 966.42M | 6.25M | 6.25M | 3.45M | 5.51M | 450.07K | 299.69M | 184.69K |
+| arbiter.v | Icarus Verilog | 205.62B | 64.71B | 3.18 | 97.19B | 5.89B | 5.89B | 3.22B | 5.61B | 404.45K | 41.16B | 99.37M |
+| arbiter.v | Verilator C++ | 719.73M | 624.69M | 1.15 | 545.22M | 252.84K | 252.84K | 6.77K | 238.46K | 81.46K | 25.55M | 3.83M |

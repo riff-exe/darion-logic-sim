@@ -730,13 +730,12 @@ cdef class Circuit:
                 gate_info.output = UNKNOWN
                 while profile != end:
                     eval += 1
-                    if profile.output != UNKNOWN:
-                        target_info = <CPP_Gate*>profile.target
-                        target_info.logic -= (profile.output == target_info.seed)
-                        if target_info.output != UNKNOWN:
-                            write_queue[size] = <CPP_Gate*>target_info
-                            size += 1
-                        profile.output = UNKNOWN
+                    target_info = <CPP_Gate*>profile.target
+                    target_info.logic -= profile.logic
+                    if target_info.output != UNKNOWN:
+                        write_queue[size] = <CPP_Gate*>target_info
+                        size += 1
+                    profile.logic = 0
                     profile += 1
                 index += 1
             index = 0
@@ -760,7 +759,7 @@ cdef class Circuit:
         cdef CPP_Gate* target_info
         cdef Profile* profile
         cdef Profile* end
-        cdef Py_ssize_t new_output, profile_output, target_output
+        cdef uint8_t curr_logic, target_output, new_output
         cdef Py_ssize_t index = 0, size = 0
         cdef unsigned long long counter = 0
         cdef unsigned long long eval = 0
@@ -786,9 +785,9 @@ cdef class Circuit:
                 end = gate_info.hitlist.end()
                 eval += gate_info.hitlist.size
                 while profile < end:
-                    profile_output = profile.output
+                    curr_logic = (new_output == profile.seed)
                     target_info = profile.target
-                    target_info.logic += (new_output == target_info.seed) - (profile_output == target_info.seed)
+                    target_info.logic += curr_logic - profile.logic
                     target_output = target_info.output
                     if unlikely(new_output == UNKNOWN):
                         target_info.output = UNKNOWN
@@ -798,7 +797,7 @@ cdef class Circuit:
                     write_queue[size] = target_info
                     size += (((target_info.mark == 0) & (target_output != target_info.output)))
                     target_info.mark |= (target_output != target_info.output)
-                    profile.output = new_output
+                    profile.logic = curr_logic
                     profile += 1
             end_point = size
             size = 0

@@ -13,14 +13,14 @@
 
 | Circuit | Gates | Cython Reactor | Pure Python | Icarus Verilog | Verilator C++ |
 |:---|---:|---:|---:|---:|---:|
-| sin.v | 8,947 | 8.56 MB (36.1 MB peak) | N/A | 5.38 MB (13.2 MB peak) | 0.80 MB (4.5 MB peak) |
-| voter.v | 27,720 | 26.30 MB (53.8 MB peak) | N/A | 17.91 MB (25.7 MB peak) | 1.16 MB (4.9 MB peak) |
-| square.v | 35,687 | 34.01 MB (61.6 MB peak) | N/A | 22.68 MB (30.6 MB peak) | 1.27 MB (5.0 MB peak) |
-| sqrt.v | 41,234 | 37.84 MB (65.4 MB peak) | N/A | 27.05 MB (34.9 MB peak) | 1.01 MB (4.7 MB peak) |
-| multiplier.v | 50,760 | 48.75 MB (76.3 MB peak) | N/A | 32.90 MB (40.8 MB peak) | 1.08 MB (4.8 MB peak) |
-| log2.v | 54,531 | 50.55 MB (78.1 MB peak) | N/A | 35.49 MB (43.4 MB peak) | 1.02 MB (4.7 MB peak) |
-| mem_ctrl.v | 84,974 | 78.59 MB (106.1 MB peak) | N/A | 55.49 MB (63.3 MB peak) | 1.55 MB (5.3 MB peak) |
-| div.v | 101,859 | 95.55 MB (123.0 MB peak) | N/A | 67.37 MB (75.2 MB peak) | 1.75 MB (5.3 MB peak) |
+| sin.v | 8,947 | 8.32 MB (36.2 MB peak) | N/A | 5.40 MB (13.2 MB peak) | 0.87 MB (4.5 MB peak) |
+| voter.v | 27,720 | 28.47 MB (56.2 MB peak) | N/A | 17.81 MB (25.7 MB peak) | 1.15 MB (4.9 MB peak) |
+| square.v | 35,687 | 34.35 MB (62.2 MB peak) | N/A | 22.56 MB (30.4 MB peak) | 1.23 MB (4.9 MB peak) |
+| sqrt.v | 41,234 | 37.52 MB (65.5 MB peak) | N/A | 27.04 MB (35.0 MB peak) | 1.08 MB (4.8 MB peak) |
+| multiplier.v | 50,760 | 47.06 MB (74.9 MB peak) | N/A | 33.05 MB (40.9 MB peak) | 1.24 MB (4.9 MB peak) |
+| log2.v | 54,531 | 52.49 MB (80.4 MB peak) | N/A | 35.41 MB (43.3 MB peak) | 1.06 MB (4.8 MB peak) |
+| mem_ctrl.v | 84,974 | 77.56 MB (105.4 MB peak) | N/A | 55.38 MB (63.3 MB peak) | 1.55 MB (5.3 MB peak) |
+| div.v | 101,859 | 95.70 MB (123.6 MB peak) | N/A | 67.35 MB (75.2 MB peak) | 1.60 MB (5.3 MB peak) |
 
 ---
 
@@ -28,14 +28,14 @@
 
 | Circuit | Gates | Cython Reactor | Pure Python | Icarus Verilog | Verilator C++ |
 |:---|---:|---:|---:|---:|---:|
-| sin.v | 8,947 | 6.53 ms (0.709 ms opt) | N/A | 38.34 ms | 2.88 s |
-| voter.v | 27,720 | 19.03 ms (2.136 ms opt) | N/A | 139.90 ms | 4.45 s |
-| square.v | 35,687 | 24.66 ms (4.647 ms opt) | N/A | 180.20 ms | 5.44 s |
-| sqrt.v | 41,234 | 29.37 ms (3.412 ms opt) | N/A | 218.80 ms | 5.80 s |
-| multiplier.v | 50,760 | 37.57 ms (7.621 ms opt) | N/A | 270.63 ms | 6.53 s |
-| log2.v | 54,531 | 39.67 ms (9.418 ms opt) | N/A | 307.13 ms | 7.56 s |
-| mem_ctrl.v | 84,974 | 68.91 ms (19.349 ms opt) | N/A | 845.24 ms | 13.17 s |
-| div.v | 101,859 | 107.59 ms (15.462 ms opt) | N/A | 625.45 ms | 21.33 s |
+| sin.v | 8,947 | 6.34 ms (0.704 ms opt) | N/A | 40.05 ms | 2.89 s |
+| voter.v | 27,720 | 18.95 ms (2.044 ms opt) | N/A | 133.07 ms | 4.41 s |
+| square.v | 35,687 | 24.76 ms (3.924 ms opt) | N/A | 178.17 ms | 5.41 s |
+| sqrt.v | 41,234 | 29.20 ms (3.710 ms opt) | N/A | 212.38 ms | 5.69 s |
+| multiplier.v | 50,760 | 37.53 ms (7.194 ms opt) | N/A | 269.43 ms | 6.63 s |
+| log2.v | 54,531 | 40.13 ms (8.849 ms opt) | N/A | 302.69 ms | 7.45 s |
+| mem_ctrl.v | 84,974 | 66.25 ms (18.053 ms opt) | N/A | 902.39 ms | 13.02 s |
+| div.v | 101,859 | 104.85 ms (15.521 ms opt) | N/A | 621.58 ms | 21.18 s |
 
 ---
 
@@ -45,27 +45,27 @@
 
 | Circuit | rx-prop (ms) | rx-sweep (ms) | rx-oop (ms) | Pure Python (ms) | Icarus (ms) | Verilator (ms) |
 |:---|---:|---:|---:|---:|---:|---:|
-| sin.v | 202.32 ms | 14.76 ms | 489.24 ms | N/A | 1583.50 ms | 1.23 ms |
-| voter.v | 175.66 ms | 39.97 ms | 407.38 ms | N/A | 1415.94 ms | 2.91 ms |
-| square.v | 155.18 ms | 61.64 ms | 333.83 ms | N/A | 1073.62 ms | 5.34 ms |
-| sqrt.v | 19.28 s | 68.02 ms | 33.89 s | N/A | 130.05 s | 3.29 ms |
-| multiplier.v | 1214.17 ms | 78.86 ms | 2803.32 ms | N/A | 9106.76 ms | 3.44 ms |
-| log2.v | 5377.27 ms | 86.70 ms | 12.29 s | N/A | 43.69 s | 5.21 ms |
-| mem_ctrl.v | 198.23 ms | 163.06 ms | 408.61 ms | N/A | 1906.44 ms | 25.93 ms |
-| div.v | 370.35 ms | 117.35 ms | 578.91 ms | N/A | 2728.54 ms | 46.20 ms |
+| sin.v | 181.22 ms | 14.77 ms | 489.69 ms | N/A | 1585.27 ms | 1.13 ms |
+| voter.v | 157.13 ms | 40.22 ms | 401.86 ms | N/A | 1420.59 ms | 2.83 ms |
+| square.v | 135.95 ms | 59.85 ms | 335.11 ms | N/A | 1068.62 ms | 5.21 ms |
+| sqrt.v | 16.76 s | 68.72 ms | 33.94 s | N/A | 130.88 s | 3.36 ms |
+| multiplier.v | 1003.86 ms | 76.27 ms | 2750.85 ms | N/A | 9108.34 ms | 3.57 ms |
+| log2.v | 4677.60 ms | 86.53 ms | 12.36 s | N/A | 42.98 s | 5.30 ms |
+| mem_ctrl.v | 170.71 ms | 158.85 ms | 406.82 ms | N/A | 1848.45 ms | 24.46 ms |
+| div.v | 312.37 ms | 113.86 ms | 572.58 ms | N/A | 2662.85 ms | 44.91 ms |
 
 ### Speedup Analysis (vs Baseline: Icarus = 1.00x)
 
 | Circuit | rx-prop | rx-sweep | rx-oop | Pure Python | Icarus | Verilator C++ |
 |:---|---:|---:|---:|---:|---:|---:|
-| sin.v | 7.83x | 107.30x | 3.24x | N/A | 1.00x | 1284.27x |
-| voter.v | 8.06x | 35.42x | 3.48x | N/A | 1.00x | 485.97x |
-| square.v | 6.92x | 17.42x | 3.22x | N/A | 1.00x | 200.97x |
-| sqrt.v | 6.75x | 1912.05x | 3.84x | N/A | 1.00x | 39513.71x |
-| multiplier.v | 7.50x | 115.47x | 3.25x | N/A | 1.00x | 2647.44x |
-| log2.v | 8.13x | 503.93x | 3.56x | N/A | 1.00x | 8388.94x |
-| mem_ctrl.v | 9.62x | 11.69x | 4.67x | N/A | 1.00x | 73.51x |
-| div.v | 7.37x | 23.25x | 4.71x | N/A | 1.00x | 59.05x |
+| sin.v | 8.75x | 107.35x | 3.24x | N/A | 1.00x | 1397.02x |
+| voter.v | 9.04x | 35.32x | 3.54x | N/A | 1.00x | 502.42x |
+| square.v | 7.86x | 17.86x | 3.19x | N/A | 1.00x | 205.04x |
+| sqrt.v | 7.81x | 1904.65x | 3.86x | N/A | 1.00x | 38919.10x |
+| multiplier.v | 9.07x | 119.42x | 3.31x | N/A | 1.00x | 2548.97x |
+| log2.v | 9.19x | 496.73x | 3.48x | N/A | 1.00x | 8116.10x |
+| mem_ctrl.v | 10.83x | 11.64x | 4.54x | N/A | 1.00x | 75.58x |
+| div.v | 8.52x | 23.39x | 4.65x | N/A | 1.00x | 59.30x |
 
 ### Total Gate Evaluations
 
@@ -82,11 +82,11 @@
 
 ### Geo-Mean Speedup Highlights (Baseline: Icarus = 1.00x)
 
-- **rx-prop (Wavefront BFS):** `7.73x`
-- **rx-sweep (Linear Compiled):** `81.79x`
-- **rx-oop (OOP Graph):** `3.70x`
+- **rx-prop (Wavefront BFS):** `8.84x`
+- **rx-sweep (Linear Compiled):** `82.19x`
+- **rx-oop (OOP Graph):** `3.69x`
 - **Icarus Verilog:** `1.00x (Baseline)`
-- **Verilator C++:** `911.82x`
+- **Verilator C++:** `921.36x`
 
 ### Gate Evaluation Highlights
 
@@ -94,7 +94,7 @@
 
 ### Cross-Engine Comparisons
 
-- **Reactor Sweep vs Propagate Ratio:** `10.58x` (sweep faster)
+- **Reactor Sweep vs Propagate Ratio:** `9.29x` (sweep faster)
 
 ---
 
@@ -102,43 +102,43 @@
 
 | Circuit | Engine Variant | Instructions | Cycles | IPC | L1 Loads | L1 Misses | L2 Loads | L2 Misses | L3 Loads | DRAM Loads | Branches | Branch Misses |
 | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| sin.v | rx-prop | 1.66B | 717.82M | 2.31 | 648.49M | 65.55M | 65.55M | 46.80K | 88.37K | 3.80K | 158.30M | 9.27M |
-| sin.v | rx-sweep (Linear) | 55.32M | 36.97M | 1.50 | 36.33M | 2.66M | 2.66M | 906.00 | 12.78K | 1.50K | 13.47M | 1.03M |
-| sin.v | rx-oop (OOP Engine) | 1.99B | 1.75B | 1.14 | 1.65B | 97.44M | 97.44M | 706.66K | 1.22M | 12.74K | 240.78M | 24.09M |
-| sin.v | Icarus Verilog | 14.24B | 5.69B | 2.50 | 7.94B | 346.80M | 346.80M | 41.22M | 51.78M | 98.26K | 2.86B | 46.19M |
-| sin.v | Verilator C++ | 1.48M | 1.67M | 0.88 | 3.02M | 1.90K | 1.90K | 8.00 | 8.00 | 0.00 | 85.18K | 1.58K |
-| voter.v | rx-prop | 1.31B | 619.54M | 2.11 | 523.75M | 55.02M | 55.02M | 5.38M | 8.61M | 23.00K | 125.98M | 8.30M |
-| voter.v | rx-sweep (Linear) | 283.83M | 137.78M | 2.06 | 130.93M | 10.06M | 10.06M | 836.43K | 4.96M | 17.65K | 56.34M | 2.63M |
-| voter.v | rx-oop (OOP Engine) | 1.59B | 1.46B | 1.09 | 1.32B | 75.85M | 75.85M | 10.95M | 16.72M | 80.03K | 192.95M | 19.12M |
-| voter.v | Icarus Verilog | 12.23B | 5.09B | 2.40 | 7.11B | 246.06M | 246.06M | 89.89M | 124.47M | 35.42K | 2.43B | 38.91M |
-| voter.v | Verilator C++ | 1.28M | 5.62M | 0.23 | 6.63M | 6.25K | 6.25K | 1.32K | 1.32K | 981.00 | 744.95K | 41.12K |
-| square.v | rx-prop | 1.04B | 544.32M | 1.91 | 404.20M | 47.82M | 47.82M | 6.39M | 10.96M | 4.02K | 99.75M | 5.60M |
-| square.v | rx-sweep (Linear) | 337.66M | 201.00M | 1.68 | 162.08M | 12.17M | 12.17M | 1.94M | 8.62M | 2.22K | 63.91M | 4.21M |
-| square.v | rx-oop (OOP Engine) | 1.20B | 1.19B | 1.01 | 1.04B | 65.47M | 65.47M | 11.30M | 18.44M | 70.16K | 145.63M | 14.20M |
-| square.v | Icarus Verilog | 8.32B | 3.85B | 2.16 | 5.00B | 205.86M | 205.86M | 87.54M | 113.58M | 95.07K | 1.67B | 26.34M |
-| square.v | Verilator C++ | 3.31M | 9.58M | 0.35 | 16.56M | 1.45K | 1.45K | 2.66K | 2.66K | 195.00 | 3.08M | 102.95K |
-| sqrt.v | rx-prop | 112.12B | 69.29B | 1.62 | 43.31B | 5.70B | 5.70B | 1.92B | 3.09B | 327.48K | 10.51B | 520.83M |
-| sqrt.v | rx-sweep (Linear) | 464.57M | 233.51M | 1.99 | 218.71M | 14.43M | 14.43M | 2.32M | 11.26M | 6.69K | 87.21M | 3.91M |
-| sqrt.v | rx-oop (OOP Engine) | 116.66B | 121.69B | 0.96 | 98.40B | 6.79B | 6.79B | 4.02B | 5.88B | 1.70M | 14.05B | 1.13B |
-| sqrt.v | Icarus Verilog | 856.00B | 467.19B | 1.83 | 542.77B | 23.39B | 23.39B | 18.25B | 25.05B | 4.10M | 171.83B | 2.59B |
-| sqrt.v | Verilator C++ | 5.16M | 8.02M | 0.64 | 7.01M | 1.97K | 1.97K | 1.20K | 1.20K | 0.00 | 119.43K | 8.19K |
-| multiplier.v | rx-prop | 8.19B | 4.35B | 1.88 | 3.21B | 372.36M | 372.36M | 43.86M | 64.42M | 28.53K | 786.30M | 45.75M |
-| multiplier.v | rx-sweep (Linear) | 528.39M | 265.99M | 1.99 | 237.24M | 18.49M | 18.49M | 3.79M | 15.63M | 3.37K | 99.70M | 4.69M |
-| multiplier.v | rx-oop (OOP Engine) | 9.66B | 10.06B | 0.96 | 8.51B | 513.80M | 513.80M | 171.93M | 247.91M | 322.99K | 1.17B | 114.39M |
-| multiplier.v | Icarus Verilog | 61.73B | 32.69B | 1.89 | 39.41B | 1.49B | 1.49B | 1.06B | 1.46B | 5.20M | 12.35B | 198.82M |
-| multiplier.v | Verilator C++ | 5.06M | 8.21M | 0.62 | 12.99M | 1.86K | 1.86K | 914.00 | 914.00 | 0.00 | 2.84M | 16.12K |
-| log2.v | rx-prop | 35.03B | 19.31B | 1.81 | 13.57B | 1.69B | 1.69B | 412.18M | 690.52M | 357.76K | 3.32B | 171.58M |
-| log2.v | rx-sweep (Linear) | 538.52M | 300.19M | 1.79 | 248.59M | 18.08M | 18.08M | 3.28M | 15.66M | 4.56K | 102.81M | 5.84M |
-| log2.v | rx-oop (OOP Engine) | 41.19B | 44.07B | 0.93 | 36.47B | 2.31B | 2.31B | 1.15B | 1.67B | 1.64M | 4.98B | 464.08M |
-| log2.v | Icarus Verilog | 284.74B | 156.88B | 1.82 | 182.04B | 7.10B | 7.10B | 5.52B | 7.23B | 27.53M | 57.00B | 854.92M |
-| log2.v | Verilator C++ | 4.19M | 5.19M | 0.81 | 18.54M | 846.00 | 846.00 | 1.70K | 1.70K | 28.00 | 74.83K | 4.07K |
-| mem_ctrl.v | rx-prop | 1.14B | 708.30M | 1.61 | 446.74M | 60.02M | 60.02M | 26.01M | 46.69M | 34.67K | 110.44M | 3.68M |
-| mem_ctrl.v | rx-sweep (Linear) | 842.27M | 580.99M | 1.45 | 440.01M | 34.40M | 34.40M | 9.84M | 32.78M | 34.81K | 174.28M | 11.55M |
-| mem_ctrl.v | rx-oop (OOP Engine) | 1.49B | 1.46B | 1.01 | 1.22B | 84.94M | 84.94M | 51.27M | 76.39M | 131.68K | 180.80M | 11.83M |
-| mem_ctrl.v | Icarus Verilog | 13.09B | 6.82B | 1.92 | 7.84B | 307.11M | 307.11M | 245.15M | 324.77M | 3.52M | 2.61B | 25.67M |
-| mem_ctrl.v | Verilator C++ | 93.66M | 82.82M | 1.13 | 41.42M | 132.93K | 132.93K | 6.31M | 6.31M | 214.00 | 6.68M | 122.50K |
-| div.v | rx-prop | 2.12B | 1.31B | 1.62 | 816.55M | 108.63M | 108.63M | 45.21M | 66.57M | 55.15K | 205.22M | 6.76M |
-| div.v | rx-sweep (Linear) | 1.07B | 406.33M | 2.64 | 412.40M | 33.50M | 33.50M | 6.49M | 33.88M | 6.22K | 198.55M | 5.04M |
-| div.v | rx-oop (OOP Engine) | 2.38B | 2.06B | 1.16 | 1.74B | 134.46M | 134.46M | 67.52M | 100.76M | 241.73K | 289.23M | 14.68M |
-| div.v | Icarus Verilog | 19.01B | 9.78B | 1.94 | 10.37B | 481.75M | 481.75M | 291.02M | 384.73M | 12.62M | 3.82B | 29.70M |
-| div.v | Verilator C++ | 60.82M | 157.73M | 0.39 | 38.13M | 17.18K | 17.18K | 1.62M | 1.62M | 298.00 | 10.50M | 14.44K |
+| sin.v | rx-prop | 1.59B | 640.80M | 2.47 | 657.97M | 66.35M | 66.35M | 37.77K | 81.86K | 5.80K | 157.14M | 9.18M |
+| sin.v | rx-sweep (Linear) | 58.01M | 40.35M | 1.44 | 37.27M | 2.65M | 2.65M | 864.00 | 7.36K | 727.00 | 14.80M | 1.05M |
+| sin.v | rx-oop (OOP Engine) | 1.98B | 1.74B | 1.14 | 1.63B | 97.60M | 97.60M | 755.57K | 1.35M | 17.30K | 238.66M | 23.85M |
+| sin.v | Icarus Verilog | 14.28B | 5.70B | 2.50 | 7.99B | 347.24M | 347.24M | 45.95M | 56.41M | 7.83K | 2.86B | 46.18M |
+| sin.v | Verilator C++ | 9.01K | 66.58K | 0.14 | 3.24K | 377.00 | 377.00 | 0.00 | 0.00 | 0.00 | 3.60K | 223.00 |
+| voter.v | rx-prop | 1.25B | 552.19M | 2.27 | 540.21M | 56.60M | 56.60M | 5.43M | 8.52M | 7.84K | 126.91M | 8.36M |
+| voter.v | rx-sweep (Linear) | 272.58M | 139.36M | 1.96 | 131.60M | 10.15M | 10.15M | 869.90K | 4.98M | 19.04K | 56.44M | 2.67M |
+| voter.v | rx-oop (OOP Engine) | 1.59B | 1.45B | 1.10 | 1.32B | 75.84M | 75.84M | 10.62M | 16.03M | 65.63K | 193.43M | 19.26M |
+| voter.v | Icarus Verilog | 12.21B | 5.11B | 2.39 | 7.09B | 247.05M | 247.05M | 92.37M | 128.36M | 40.37K | 2.43B | 38.98M |
+| voter.v | Verilator C++ | 6.67M | 4.91M | 1.36 | 5.97M | 3.27K | 3.27K | 983.00 | 983.00 | 0.00 | 519.85K | 38.27K |
+| square.v | rx-prop | 992.28M | 474.08M | 2.09 | 412.83M | 48.22M | 48.22M | 6.56M | 10.80M | 7.78K | 99.11M | 5.59M |
+| square.v | rx-sweep (Linear) | 323.40M | 201.50M | 1.60 | 162.94M | 12.15M | 12.15M | 1.66M | 8.34M | 2.22K | 65.94M | 4.32M |
+| square.v | rx-oop (OOP Engine) | 1.20B | 1.19B | 1.01 | 1.05B | 65.42M | 65.42M | 11.11M | 18.24M | 55.79K | 145.77M | 14.21M |
+| square.v | Icarus Verilog | 8.31B | 3.83B | 2.17 | 5.04B | 206.22M | 206.22M | 90.45M | 115.22M | 59.27K | 1.66B | 26.30M |
+| square.v | Verilator C++ | 9.25M | 10.66M | 0.87 | 21.25M | 714.00 | 714.00 | 2.21K | 2.21K | 95.00 | 3.34M | 120.81K |
+| sqrt.v | rx-prop | 107.78B | 60.16B | 1.79 | 43.69B | 5.74B | 5.74B | 1.96B | 3.11B | 160.23K | 10.51B | 521.68M |
+| sqrt.v | rx-sweep (Linear) | 446.51M | 236.41M | 1.89 | 223.50M | 14.36M | 14.36M | 2.57M | 11.66M | 4.56K | 87.28M | 4.13M |
+| sqrt.v | rx-oop (OOP Engine) | 116.66B | 121.86B | 0.96 | 98.61B | 6.83B | 6.83B | 4.14B | 6.02B | 802.28K | 14.05B | 1.13B |
+| sqrt.v | Icarus Verilog | 856.16B | 469.93B | 1.82 | 550.37B | 23.41B | 23.41B | 18.55B | 25.12B | 4.18M | 171.83B | 2.59B |
+| sqrt.v | Verilator C++ | 4.74M | 10.31M | 0.46 | 12.28M | 2.78K | 2.78K | 811.00 | 1.85K | 0.00 | 199.85K | 14.11K |
+| multiplier.v | rx-prop | 7.87B | 3.60B | 2.18 | 3.25B | 373.06M | 373.06M | 39.03M | 59.29M | 18.12K | 788.84M | 45.77M |
+| multiplier.v | rx-sweep (Linear) | 519.27M | 266.77M | 1.95 | 235.52M | 18.29M | 18.29M | 3.68M | 15.50M | 2.81K | 101.52M | 4.60M |
+| multiplier.v | rx-oop (OOP Engine) | 9.66B | 9.88B | 0.98 | 8.44B | 513.29M | 513.29M | 167.73M | 244.98M | 191.80K | 1.17B | 115.17M |
+| multiplier.v | Icarus Verilog | 61.83B | 32.72B | 1.89 | 39.81B | 1.50B | 1.50B | 1.08B | 1.46B | 676.53K | 12.37B | 198.25M |
+| multiplier.v | Verilator C++ | 13.22M | 11.92M | 1.11 | 22.62M | 876.00 | 876.00 | 647.00 | 1.91K | 0.00 | 5.38M | 25.98K |
+| log2.v | rx-prop | 33.50B | 16.81B | 1.99 | 13.78B | 1.70B | 1.70B | 464.58M | 753.29M | 61.87K | 3.32B | 171.73M |
+| log2.v | rx-sweep (Linear) | 515.94M | 298.41M | 1.73 | 249.62M | 17.78M | 17.78M | 3.32M | 15.78M | 4.14K | 102.26M | 5.83M |
+| log2.v | rx-oop (OOP Engine) | 41.27B | 44.35B | 0.93 | 36.65B | 2.28B | 2.28B | 1.17B | 1.70B | 424.37K | 4.98B | 462.20M |
+| log2.v | Icarus Verilog | 285.00B | 154.42B | 1.85 | 181.56B | 7.10B | 7.10B | 5.57B | 7.23B | 1.88M | 57.03B | 855.89M |
+| log2.v | Verilator C++ | 9.70M | 8.03M | 1.21 | 20.64M | 2.30K | 2.30K | 585.00 | 1.90K | 25.00 | 82.71K | 5.44K |
+| mem_ctrl.v | rx-prop | 1.11B | 613.57M | 1.81 | 444.72M | 59.30M | 59.30M | 25.51M | 46.30M | 41.58K | 109.96M | 3.65M |
+| mem_ctrl.v | rx-sweep (Linear) | 818.71M | 565.94M | 1.45 | 425.95M | 33.26M | 33.26M | 10.13M | 34.25M | 33.97K | 163.72M | 11.37M |
+| mem_ctrl.v | rx-oop (OOP Engine) | 1.49B | 1.46B | 1.02 | 1.22B | 84.88M | 84.88M | 51.22M | 76.35M | 110.47K | 181.19M | 11.78M |
+| mem_ctrl.v | Icarus Verilog | 13.08B | 6.62B | 1.98 | 7.69B | 306.64M | 306.64M | 247.68M | 323.43M | 2.07M | 2.60B | 25.99M |
+| mem_ctrl.v | Verilator C++ | 87.15M | 73.10M | 1.19 | 45.89M | 146.21K | 146.21K | 5.95M | 5.95M | 1.56K | 6.53M | 130.79K |
+| div.v | rx-prop | 2.04B | 1.11B | 1.85 | 821.66M | 107.18M | 107.18M | 45.17M | 65.29M | 8.30K | 207.34M | 6.84M |
+| div.v | rx-sweep (Linear) | 1.03B | 396.96M | 2.59 | 421.21M | 33.41M | 33.41M | 6.17M | 33.20M | 6.49K | 201.42M | 5.29M |
+| div.v | rx-oop (OOP Engine) | 2.38B | 2.03B | 1.17 | 1.74B | 134.51M | 134.51M | 66.31M | 99.14M | 123.39K | 288.26M | 14.58M |
+| div.v | Icarus Verilog | 19.04B | 9.54B | 2.00 | 10.34B | 479.85M | 479.85M | 288.20M | 374.58M | 10.29M | 3.81B | 30.19M |
+| div.v | Verilator C++ | 54.91M | 144.09M | 0.38 | 41.82M | 53.84K | 53.84K | 1.14M | 1.14M | 1.45K | 10.53M | 16.57K |

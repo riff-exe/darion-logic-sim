@@ -19,11 +19,13 @@ enum LogicLevel : uint8_t {
 
 // ─── Profile (hitlist entry) ───────────────────────────────────────────────────
 struct Profile {
-    CPP_Gate* target;
-    uint8_t   index;
-    uint8_t   output;
-    Profile() : target(nullptr), index(0), output(LOGIC_UNKNOWN) {}
-    Profile(CPP_Gate* t, uint8_t i, uint8_t o) : target(t), index(i), output(o) {}
+    CPP_Gate* target; // offset 0 (8 B) - downstream gate pointer
+    uint8_t   logic;  // offset 8 (1 B) - (output == seed) boolean
+    uint8_t   seed;   // offset 9 (1 B) - cached target->seed
+    uint8_t   index;  // offset 10 (1 B) - pin index
+    Profile() : target(nullptr), logic(0), seed(0), index(0) {}
+    Profile(CPP_Gate* t, uint8_t i, uint8_t l, uint8_t s) : target(t), logic(l), seed(s), index(i) {}
+    inline Profile(CPP_Gate* t, uint8_t i, uint8_t o);
     bool operator<(const Profile& other) const { return target < other.target; }
 };
 
@@ -139,14 +141,7 @@ struct HitList {
     data[size++] = p;
   }
 
-  inline void emplace_back(CPP_Gate *t, uint8_t i, uint8_t o) {
-    if (size == capacity) {
-      capacity = (capacity == 0) ? 2 : capacity * 2;
-      data = static_cast<Profile *>(
-          std::realloc(data, capacity * sizeof(Profile)));
-    }
-    data[size++] = Profile(t, i, o);
-  }
+  inline void emplace_back(CPP_Gate *t, uint8_t i, uint8_t o);
 };
 
 // ==============================================================================
@@ -276,5 +271,27 @@ inline CPP_Gate* make_gate(int8_t type_id, uint8_t lim) {
         default: return new CPP_Gate      (type_id, lim);
     }
 }
+
+inline Profile::Profile(CPP_Gate *t, uint8_t i, uint8_t o) : target(t), index(i) {
+  if (t) {
+    seed = t->seed;
+    logic = (o == seed);
+  } else {
+    seed = 0;
+    logic = 0;
+  }
+}
+
+inline void HitList::emplace_back(CPP_Gate *t, uint8_t i, uint8_t o) {
+  if (size == capacity) {
+    capacity = (capacity == 0) ? 2 : capacity * 2;
+    data = static_cast<Profile *>(
+        std::realloc(data, capacity * sizeof(Profile)));
+  }
+  data[size++] = Profile(t, i, o);
+}
+
+static_assert(sizeof(Profile) == 16,
+              "Profile: struct size must be exactly 16 bytes");
 
 #endif // PROFILE_H

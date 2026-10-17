@@ -12,12 +12,12 @@ struct CPP_Gate;
 
 struct Profile {
   CPP_Gate *target; // offset 0 (8 B) - HOTTEST: downstream gate pointer
-  uint8_t
-      output;    // offset 8 (1 B) - HOTTEST SCALAR: wire state (read + written)
-  uint8_t index; // offset 9 (1 B) - COLD: pin index (used only in
-                 // connect/disconnect)
-  Profile() : target(nullptr), output(0), index(0) {}
-  Profile(CPP_Gate *t, uint8_t i, uint8_t o) : target(t), output(o), index(i) {}
+  uint8_t logic;    // offset 8 (1 B) - HOTTEST: (output == seed) boolean
+  uint8_t seed;     // offset 9 (1 B) - WARM: cached target->seed
+  uint8_t index;    // offset 10 (1 B) - COLD: pin index
+  Profile() : target(nullptr), logic(0), seed(0), index(0) {}
+  Profile(CPP_Gate *t, uint8_t i, uint8_t l, uint8_t s) : target(t), logic(l), seed(s), index(i) {}
+  inline Profile(CPP_Gate *t, uint8_t i, uint8_t o);
   bool operator<(const Profile &other) const { return target < other.target; }
 };
 
@@ -133,14 +133,7 @@ struct HitList {
     data[size++] = p;
   }
 
-  inline void emplace_back(CPP_Gate *t, uint8_t i, uint8_t o) {
-    if (size == capacity) {
-      capacity = (capacity == 0) ? 2 : capacity * 2;
-      data = static_cast<Profile *>(
-          std::realloc(data, capacity * sizeof(Profile)));
-    }
-    data[size++] = Profile(t, i, o);
-  }
+  inline void emplace_back(CPP_Gate *t, uint8_t i, uint8_t o);
 };
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -184,6 +177,25 @@ struct CPP_Gate {
         type(t), reserved(0), hitlist() {}
 };
 
+inline Profile::Profile(CPP_Gate *t, uint8_t i, uint8_t o) : target(t), index(i) {
+  if (t) {
+    seed = t->seed;
+    logic = (o == seed);
+  } else {
+    seed = 0;
+    logic = 0;
+  }
+}
+
+inline void HitList::emplace_back(CPP_Gate *t, uint8_t i, uint8_t o) {
+  if (size == capacity) {
+    capacity = (capacity == 0) ? 2 : capacity * 2;
+    data = static_cast<Profile *>(
+        std::realloc(data, capacity * sizeof(Profile)));
+  }
+  data[size++] = Profile(t, i, o);
+}
+
 // Compile-time assertion: hitlist must be 8-byte aligned at offset 8, and total
 // size exactly 24 bytes.
 static_assert(
@@ -191,4 +203,6 @@ static_assert(
     "CPP_Gate: hitlist must be at offset 8 for optimal 8-byte alignment");
 static_assert(sizeof(CPP_Gate) == 24,
               "CPP_Gate: struct size must be exactly 24 bytes");
+static_assert(sizeof(Profile) == 16,
+              "Profile: struct size must be exactly 16 bytes");
 #endif

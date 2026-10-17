@@ -114,7 +114,7 @@ cdef class Gate:
         cdef Profile* profile = self.info.hitlist.begin()
         cdef Profile* end = self.info.hitlist.end()
         while profile < end:
-            profile.output = UNKNOWN
+            profile.logic = 0
             profile += 1
 
     cdef void hide(self):
@@ -382,7 +382,7 @@ cdef class Variable(Gate):
         cdef Profile* profile = self.info.hitlist.begin()
         cdef Profile* end = self.info.hitlist.end()
         while profile < end:
-            profile.output = UNKNOWN
+            profile.logic = 0
             profile += 1
 
     cdef void hide(self):

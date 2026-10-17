@@ -19,7 +19,7 @@ cdef inline void pop(HitList& hitlist,CPP_Gate* gate_infolist, CPP_Gate* target,
     while profile < end:
         if profile.target == target and profile.index == pin_index:
             if target.type != VARIABLE_ID:
-                target.logic -= (profile.output == target.seed)
+                target.logic -= profile.logic
             profile[0] = (end-1)[0] # swap and pop
             hitlist.size -= 1
             break
@@ -29,12 +29,12 @@ cdef inline void hide(Profile& profile, CPP_Gate* gate_infolist, list gate_verse
     '''Sever one outgoing connection and zero out the target's source slot'''
     cdef CPP_Gate* target_info = profile.target
     if target_info.type != VARIABLE_ID:
-        target_info.logic -= (profile.output == target_info.seed)
+        target_info.logic -= profile.logic
     target_info.inputlimit += 1
     cdef int target_loc = target_info - gate_infolist
     cdef Gate target_gate = <Gate>gate_verse[target_loc]
     target_gate._sources[profile.index] = -1
-    profile.output = UNKNOWN
+    profile.logic = 0
 
 cdef inline void reveal(Profile& profile, Gate source, list gate_verse):
     '''Restore one outgoing connection and re-register the source in the target's book'''
@@ -99,7 +99,7 @@ cdef class Gate:
         cdef Profile* profile = info.hitlist.begin()
         cdef Profile* end = info.hitlist.end()
         while profile < end:
-            res.append((profile.target - base, profile.output, profile.index))
+            res.append((profile.target - base, profile.logic, profile.index))
             profile += 1
         return res
 
@@ -273,7 +273,7 @@ cdef class Gate:
         cdef Profile* profile = info.hitlist.begin()
         cdef Profile* end = info.hitlist.end()
         while profile < end:
-            profile.output = UNKNOWN
+            profile.logic = 0
             profile += 1
 
     cdef void hide(self):

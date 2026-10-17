@@ -936,12 +936,14 @@ cdef class Circuit:
         new_gate_infolist.resize(n)
         for i in range(n):
             new_gate_infolist[i]=gate_infolist[serial[i]]
+        for i in range(n):
             profile=new_gate_infolist[i].hitlist.begin()
             end=new_gate_infolist[i].hitlist.end()
             while profile<end:
                 '''update the target location'''
                 old_target_loc = profile.target - gate_infolist
                 profile.target = &new_gate_infolist[hash_map[old_target_loc]]
+                profile.seed = profile.target.seed
                 profile+=1
             if new_gate_infolist[i].hitlist.size>1:
                 sort(new_gate_infolist[i].hitlist.begin(), new_gate_infolist[i].hitlist.end())
@@ -1368,7 +1370,7 @@ cdef class Circuit:
         cdef int origin = task.gate_loc
         cdef Profile* profile
         cdef Profile* end
-        cdef uint8_t target_output, new_output
+        cdef uint8_t target_output, new_output, curr_logic
         cdef unsigned int next_time, calc_time
         cdef int target_loc
         cdef CPP_Gate* self_info
@@ -1399,11 +1401,9 @@ cdef class Circuit:
         profile = self_info.hitlist.begin()
         end = self_info.hitlist.end()    
         while profile != end:
-            while profile!=end and profile.output==new_output:
-                profile+=1
-            if profile ==end:break
             target = profile.target
-            target.logic += (new_output == target.seed) - (profile.output == target.seed)
+            curr_logic = (new_output == profile.seed)
+            target.logic += curr_logic - profile.logic
             target_output = target.output
             if new_output != UNKNOWN:
                 target.evaluate()
@@ -1415,7 +1415,7 @@ cdef class Circuit:
                 calc_time = self.Global_Clock + self.Global_delay[target.type] + (self.FanIn_delay[target.type] * target.inputlimit) + (self.FanOut_delay[target.type] * target.hitlist.size)
                 gate_clocks[target_loc] = calc_time
                 self.time_queue.push(Task(target_loc, calc_time))
-            profile.output = new_output
+            profile.logic = curr_logic
             profile += 1
         if self_info.inputlimit == INFINITE:
             with gil:
@@ -1438,7 +1438,7 @@ cdef class Circuit:
         cdef Py_ssize_t wave_limit = active * self.wave_multiplier + self.wave_offset
         cdef Profile* profile
         cdef Profile* end
-        cdef uint8_t target_output, new_output
+        cdef uint8_t target_output, new_output, curr_logic
         cdef Py_ssize_t index = 0, size = 0
         cdef Py_ssize_t eval = 0
         cdef CPP_Gate** read_queue = self.queue[0].data()
@@ -1464,7 +1464,8 @@ cdef class Circuit:
                     new_output = self_info.output
                     while profile < end:
                         target = profile.target
-                        target.logic += (new_output == target.seed) - (profile.output == target.seed)
+                        curr_logic = (new_output == profile.seed)
+                        target.logic += curr_logic - profile.logic
                         target_output = target.output
                         if new_output != UNKNOWN:
                             target.evaluate()
@@ -1473,7 +1474,7 @@ cdef class Circuit:
                         write_queue[size] = profile.target
                         size += (((target.flags & FLAG_MARK) == 0) & (target_output != target.output))
                         target.flags |= FLAG_MARK * (target_output != target.output)
-                        profile.output = new_output
+                        profile.logic = curr_logic
                         profile += 1
                 # size is actually the growing size of write_queue
                 end_point, size = size, 0
@@ -1509,7 +1510,7 @@ cdef class Circuit:
 
         cdef Profile* profile
         cdef Profile* end
-        cdef uint8_t target_output
+        cdef uint8_t target_output, curr_logic
         cdef Py_ssize_t back_edges = 0,new_output=0
         cdef Py_ssize_t eval = 0
         cdef Py_ssize_t i
@@ -1535,7 +1536,8 @@ cdef class Circuit:
 
             while profile < end:
                 target = profile.target
-                target.logic += (new_output == target.seed) - (profile.output == target.seed)
+                curr_logic = (new_output == profile.seed)
+                target.logic += curr_logic - profile.logic
                 target_output = target.output
                 if new_output != UNKNOWN:
                     target.evaluate()
@@ -1549,7 +1551,7 @@ cdef class Circuit:
                     if threshold == NULL or target > threshold:
                         threshold = target
 
-                profile.output = new_output
+                profile.logic = curr_logic
                 profile += 1
 
         # If none of the immediate targets changed, no sweep is required
@@ -1570,7 +1572,8 @@ cdef class Circuit:
                 new_output=curr.output
                 while profile < end:
                     target = profile.target
-                    target.logic += (new_output == target.seed) - (profile.output == target.seed)
+                    curr_logic = (new_output == profile.seed)
+                    target.logic += curr_logic - profile.logic
                     target_output = target.output
                     if new_output != UNKNOWN:
                         target.evaluate()
@@ -1584,7 +1587,7 @@ cdef class Circuit:
                         if target > threshold:
                             threshold = target
 
-                    profile.output = new_output
+                    profile.logic = curr_logic
                     profile += 1
             curr += 1
 

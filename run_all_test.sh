@@ -52,5 +52,6 @@ python tests/master_test.py tests/IWLS2005/itc99 --skip-verify --no-engine
 python tests/master_test.py tests/IWLS2005/opencores --skip-verify --no-engine
 python tests/master_test.py tests/IWLS2005/faraday --skip-verify --no-engine
 python tests/cache_perf.py --plot
+python tests/cache_perf.py --plot --tree
 
 python tests/master_test.py tests/EPFL_mammoth_parsed --vectors 500 --no-engine --skip-verify
