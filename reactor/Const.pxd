@@ -45,6 +45,7 @@ cpdef enum:
     LOGIC_2=1<<5
     LOGIC_3=1<<6
     # FLAG_OTHER=1<<6
+    FLAG_BOUNDARY=1<<7
 
     LUT= 0x254
     NAME=-1

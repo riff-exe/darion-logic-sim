@@ -82,6 +82,12 @@ cdef class IC:
             self.pin_orientations = dictionary[PIN_ORIENTATIONS]
         self.load_components(dictionary, pseudo) # first phase, loading to hashmap pseudo
         self.clone(pseudo) # second phase, wiring up
+        cdef str name_lower = self.custom_name.lower()
+        cdef Gate out_g
+        if ('dff' in name_lower) or ('flip' in name_lower) or ('latch' in name_lower) or ('tlat' in name_lower):
+            for out_g in self.outputs:
+                if out_g.info != NULL:
+                    out_g.info.flags |= FLAG_BOUNDARY
 
     cpdef void load_components(self, list dictionary, unordered_map[int,int]& pseudo):
         '''Instantiate the IC's internal gates and map their old locations to new ones
@@ -143,9 +149,13 @@ cdef class IC:
         '''Wire up the IC's gates into the parent circuit using the resolved location map'''
         cdef Gate gate
         cdef tuple code
+        cdef str name_lower = self.custom_name.lower()
+        cdef bint is_seq = ('dff' in name_lower) or ('flip' in name_lower) or ('latch' in name_lower) or ('tlat' in name_lower)
         for i in self.map:
             gate = <Gate>PyList_GET_ITEM(self.gate_verse, pseudo[i[LOCATION]])
             gate.clone(i, pseudo)
+            if is_seq and gate.id == IC_OUTPUT_PIN_ID and gate.info != NULL:
+                gate.info.flags |= FLAG_BOUNDARY
 
     cpdef void hide(self):
         '''Cut the IC out of the live graph — disconnects output targets and drops input registrations'''

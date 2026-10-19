@@ -818,8 +818,9 @@ cdef class Circuit:
             end=info.hitlist.end()
             while profile<end:
                 '''count of how many gates point to the target gate'''
-                target_idx = profile.target - gate_infolist
-                in_degree[target_idx]+=1
+                if not (profile.target.flags & FLAG_BOUNDARY):
+                    target_idx = profile.target - gate_infolist
+                    in_degree[target_idx]+=1
                 profile+=1
         i=0
         for index in range(n):
@@ -845,11 +846,12 @@ cdef class Circuit:
                 end=info.hitlist.end()
                 while profile<end:
                     '''if the target's dependencies are already in to the list push it to the list now'''
-                    target_loc = profile.target - gate_infolist
-                    if in_degree[target_loc]>0:
-                        in_degree[target_loc]-=1
-                        if in_degree[target_loc]==0:
-                            queue.push_back(target_loc)
+                    if not (profile.target.flags & FLAG_BOUNDARY):
+                        target_loc = profile.target - gate_infolist
+                        if in_degree[target_loc]>0:
+                            in_degree[target_loc]-=1
+                            if in_degree[target_loc]==0:
+                                queue.push_back(target_loc)
                     profile+=1
                     
         cdef int k=0
@@ -860,9 +862,10 @@ cdef class Circuit:
                 end=info.hitlist.end()
                 while profile<end:
                     '''count of how many gates point to the target gate'''
-                    target_idx = profile.target - gate_infolist
-                    if in_degree[target_idx]>0:
-                        backup.push_back(target_idx)                    
+                    if not (profile.target.flags & FLAG_BOUNDARY):
+                        target_idx = profile.target - gate_infolist
+                        if in_degree[target_idx]>0:
+                            backup.push_back(target_idx)                    
                     profile+=1
             i=j
             if backup.empty():break
@@ -887,11 +890,12 @@ cdef class Circuit:
                         end=info.hitlist.end()
                         while profile<end:
                             '''if the target's dependencies are already in to the list push it to the list now'''
-                            target_loc2 = profile.target - gate_infolist
-                            if in_degree[target_loc2]>0:
-                                in_degree[target_loc2]-=1
-                                if in_degree[target_loc2]==0:
-                                    queue.push_back(target_loc2)
+                            if not (profile.target.flags & FLAG_BOUNDARY):
+                                target_loc2 = profile.target - gate_infolist
+                                if in_degree[target_loc2]>0:
+                                    in_degree[target_loc2]-=1
+                                    if in_degree[target_loc2]==0:
+                                        queue.push_back(target_loc2)
                             profile+=1
                         
                
@@ -920,11 +924,12 @@ cdef class Circuit:
                         end=info.hitlist.end()
                         while profile<end:
                             '''if the target's dependencies are already in to the list push it to the list now'''
-                            target_loc2 = profile.target - gate_infolist
-                            if in_degree[target_loc2]>0:
-                                in_degree[target_loc2]-=1
-                                if in_degree[target_loc2]==0:
-                                    queue.push_back(target_loc2)
+                            if not (profile.target.flags & FLAG_BOUNDARY):
+                                target_loc2 = profile.target - gate_infolist
+                                if in_degree[target_loc2]>0:
+                                    in_degree[target_loc2]-=1
+                                    if in_degree[target_loc2]==0:
+                                        queue.push_back(target_loc2)
                             profile+=1
         
         # i is location of each hidden gate, it will be pushed to the end of queue
