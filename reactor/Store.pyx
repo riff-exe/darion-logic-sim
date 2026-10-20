@@ -68,6 +68,7 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, vector[unsigned int
         gate_clocks.push_back(0)
         gate.location = gate_infolist.size()-1
         gate.info = &gate_infolist[gate.location]
+        gate.info.reserved = lim
         if choice!= VARIABLE_ID:                
             if choice == AND_ID:
                 gate.info.flags |= FLAG_NEGATE # low == 0

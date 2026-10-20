@@ -1,5 +1,5 @@
 # distutils: language = c++
-from Const cimport HIGH, LOW, ERROR, UNKNOWN, DESIGN, SIMULATE, MODE
+from Const cimport HIGH, LOW, ERROR, UNKNOWN, DESIGN, SIMULATE, COMPILE, PRIORITY, MODE
 from libc.stdint cimport uint8_t, int8_t, uint32_t
 from libcpp.unordered_map cimport unordered_map
 from libcpp.deque cimport deque
@@ -75,6 +75,7 @@ cdef extern from "Profile.h" nogil:
         CPP_Gate()
         CPP_Gate(uint8_t t, uint8_t lim)
         void evaluate() noexcept nogil
+        uint8_t compute() noexcept nogil
 
 cdef enum GateFlags:
     FLAG_VALUE     = 1 << 0
@@ -108,6 +109,7 @@ cdef class Gate:
     cdef void hide(self)
     cdef void reveal(self)
     cpdef bint setlimits(self, int size)
+    cpdef bint retype(self, int new_id)
     cpdef str getoutput(self)
     cpdef list full_data(self)
     cpdef list partial_data(self)

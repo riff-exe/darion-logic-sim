@@ -161,6 +161,23 @@ struct CPP_Gate {
   uint8_t reserved;
   HitList hitlist; // 16 B; offset 8 (8-byte aligned)
 
+#ifdef DARION_EVAL_SWITCH
+  // Ablation only (build with -DDARION_EVAL_SWITCH, see tests/ablation_eval.py): a type-switch evaluator over
+  // the same accumulators, used to isolate the benefit of the unified mask/invert rule below.
+  inline uint8_t compute() noexcept {
+    if (inputlimit) return 2;
+    switch (type) {
+    case 0: return logic == 0;   // AND  (logic = #zeros)
+    case 1: return logic != 0;   // NAND
+    case 2: return logic != 0;   // OR   (logic = #ones)
+    case 3: return logic == 0;   // NOR
+    case 4: return logic & 1;    // XOR
+    case 5: return !(logic & 1); // XNOR
+    default: return logic != 0;  // NOT (#zeros), BUFFER and pins (#ones)
+    }
+  }
+  inline void evaluate() noexcept { output = compute(); }
+#else
   inline void evaluate() noexcept {
     if (!inputlimit) {
       output = bool(logic & mask) ^ (flags & 1);
@@ -168,13 +185,20 @@ struct CPP_Gate {
       output = 2;
     }
   }
-
+  inline uint8_t compute() noexcept {
+    if (!inputlimit) {
+      return bool(logic & mask) ^ (flags & 1);
+    } else {
+      return 2;
+    }
+  }
+#endif
   CPP_Gate()
       : flags(0), output(2), inputlimit(2), mask(0xFF), logic(0), seed(1),
-        type(0), reserved(0), hitlist() {}
+        type(0), reserved(2), hitlist() {}
   CPP_Gate(uint8_t t, uint8_t lim)
       : flags(0), output(2), inputlimit(lim), mask(0xFF), logic(0), seed(1),
-        type(t), reserved(0), hitlist() {}
+        type(t), reserved(lim), hitlist() {}
 };
 
 inline Profile::Profile(CPP_Gate *t, uint8_t i, uint8_t o) : target(t), index(i) {

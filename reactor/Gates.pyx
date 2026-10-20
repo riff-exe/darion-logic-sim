@@ -344,6 +344,7 @@ cdef class Gate:
             for _ in range(size - current):
                 self._sources.append(-1)
             info.inputlimit += (size - current)
+            info.reserved = size
             self.process()
             return True
         elif size < current:
@@ -353,9 +354,99 @@ cdef class Gate:
             for i in range(current - size):
                 self._sources.pop()
             info.inputlimit -= (current - size)
+            info.reserved = size
             self.process()
             return True
         return False
+
+    cpdef bint retype(self, int new_id):
+        '''Change this gate's type in place; returns False if the current wiring doesn't fit the new type.
+        Rewrites seed/mask/invert and the input slots, then re-derives the logic counter and the
+        seed/logic cached in each source's hitlist entry. Caller handles objlist bookkeeping and propagation'''
+        cdef CPP_Gate* gate_infolist = self.info - self.location
+        cdef CPP_Gate* info = &gate_infolist[self.location]
+        cdef CPP_Gate* src_info
+        cdef Profile* profile
+        cdef Profile* end
+        cdef int old_id = info.type
+        cdef int pin, src_loc, new_pin, slots, limit
+        cdef list pins = []
+        cdef list new_sources
+        cdef tuple item
+        if new_id == old_id or new_id < 0 or new_id >= IC_ID or old_id < 0 or old_id >= IC_ID:
+            return False
+        for pin in range(len(self._sources)):
+            if self._sources[pin] != -1:
+                pins.append((pin, self._sources[pin]))
+        if new_id == VARIABLE_ID:
+            if pins: return False
+            slots = 1
+            limit = 0
+        elif new_id >= SINGLE_INPUT_ID:
+            if len(pins) > 1: return False
+            slots = 1
+            limit = 1
+        else:
+            slots = len(self._sources) if old_id < SINGLE_INPUT_ID else 2
+            limit = slots
+
+        # move the (at most one) surviving input to its new slot and fix the pin index stored in the source's hitlist
+        new_sources = [-1] * slots
+        for item in pins:
+            pin = item[0]
+            src_loc = item[1]
+            new_pin = pin if pin < slots else 0
+            new_sources[new_pin] = src_loc
+            profile = gate_infolist[src_loc].hitlist.begin()
+            end = gate_infolist[src_loc].hitlist.end()
+            while profile < end:
+                if profile.target == info and profile.index == pin:
+                    profile.index = new_pin
+                    break
+                profile += 1
+        self._sources = new_sources
+
+        info.type = new_id
+        self.id = new_id
+        info.reserved = limit
+        info.inputlimit = limit - len(pins)
+        info.flags &= ~(FLAG_NEGATE | FLAG_SCHEDULED)   # FLAG_NEGATE shares bit 0 with FLAG_VALUE
+        info.logic = 0
+        info.mask = 0xFF
+        info.seed = 1
+        if new_id == VARIABLE_ID:
+            if self.delay_book is None:
+                self.delay_book = [0, 0, 0]
+        else:
+            if new_id == AND_ID:
+                info.flags |= FLAG_NEGATE
+                info.seed = 0
+            elif new_id == NAND_ID:
+                info.seed = 0
+            elif new_id == NOR_ID:
+                info.flags |= FLAG_NEGATE
+            elif new_id == NOT_ID:
+                info.seed = 0
+            elif new_id == XOR_ID:
+                info.mask = 1
+            elif new_id == XNOR_ID:
+                info.flags |= FLAG_NEGATE
+                info.mask = 1
+            # OR, BUFFER and the pins keep seed 1 / mask 0xFF / no invert
+            for item in pins:
+                new_pin = item[0] if item[0] < slots else 0
+                src_info = &gate_infolist[item[1]]
+                profile = src_info.hitlist.begin()
+                end = src_info.hitlist.end()
+                while profile < end:
+                    if profile.target == info and profile.index == new_pin:
+                        profile.seed = info.seed
+                        profile.logic = (src_info.output == info.seed)
+                        info.logic += profile.logic
+                        break
+                    profile += 1
+        self.process()
+        return True
 
     cpdef str getoutput(self):
         '''Return the output as a human-readable character: T, F, E, or X'''

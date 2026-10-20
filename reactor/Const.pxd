@@ -9,6 +9,7 @@ cpdef enum:
     DESIGN = 0
     SIMULATE = 1
     COMPILE = 3
+    PRIORITY = 4
     
     LIMIT = 1024
     INFINITE = 255
