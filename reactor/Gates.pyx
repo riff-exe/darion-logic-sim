@@ -332,11 +332,12 @@ cdef class Gate:
         self.process()
 
     cpdef bint setlimits(self, int size):
-        '''Resize the input list; returns False if slots are in use and can't be trimmed'''
+        '''Resize the input list; returns False if slots are in use and can't be trimmed, or if size is above 255
+        (inputlimit, reserved and the logic counter are uint8, so a wider gate would silently wrap)'''
         cdef CPP_Gate* info = self.info
         cdef int i
         cdef int current
-        if size < 2 or info.type >= SINGLE_INPUT_ID:
+        if size < 2 or size > 255 or info.type >= SINGLE_INPUT_ID:
             return False
         current = len(self._sources)
 
@@ -488,6 +489,8 @@ cdef class Gate:
             if dictionary[VALUE]: info.flags |= FLAG_VALUE
             else: info.flags &= ~FLAG_VALUE
         else:
+            if dictionary[INPUTLIMIT] > 255:
+                raise ValueError(f"gate {self.custom_name!r} has {dictionary[INPUTLIMIT]} inputs; the maximum is 255")
             self.setlimits(dictionary[INPUTLIMIT])
             for index, source in enumerate(dictionary[SOURCES]):
                 if source != -1:
