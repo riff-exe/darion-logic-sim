@@ -269,6 +269,7 @@ class AggressiveTestSuite:
         await self.test_all_circuit_methods()
         await self.test_mixed_gate_circuit()
         await self.test_transfer_info()
+        await self.test_retype_exhaustive()
         
         # ==================== PART 2: CIRCUIT STRESS ====================
         self.section("CIRCUIT STRESS")
@@ -991,6 +992,89 @@ class AggressiveTestSuite:
         self.assert_test(g.id == Const.OR_ID, "Gate correctly morphed to OR_ID")
         self.assert_test(g in c.objlist[Const.OR_ID], "Gate added to new ID's object list")
         self.assert_test(c.objlist[old_code[0]][old_code[1]] is None, "Gate removed from old ID's list")
+
+    async def test_retype_exhaustive(self):
+        """Gate.retype / transfer_info over every source->target type pair, several wirings, SIMULATE and COMPILE.
+
+        After retyping a live gate, all outputs are compared with the independent fixed-point oracle in
+        timing_lib (importing it turns UI_MODE on, so the caller's setting is restored)."""
+        self.subsection("Retype (all type pairs, both modes)")
+        ui = Const.get_UI_MODE()
+        sys.path.insert(0, script_dir)
+        import timing_lib as TL
+        Const.set_UI_MODE(ui)
+        VAR = TL.VAR
+        NARY = (TL.AND, TL.NAND, TL.OR, TL.NOR, TL.XOR, TL.XNOR)
+        SINGLE = (TL.BUF, TL.NOT, TL.PIN_IN, TL.PIN_OUT)
+        ALL = NARY + SINGLE + (VAR,)
+
+        def mismatch(c):
+            nodes = TL.extract_netlist(c)
+            exp = TL.zero_delay_settle(nodes, {x.location: x.value for x in c.get_variables()})
+            for g in c.gate_verse:
+                if g.id != VAR and g.inputlimit != 0:
+                    continue                      # still has an open input slot -> output is UNKNOWN by design
+                if g.output != exp[g.location]:
+                    return f"gate {g.location} ({TL.KIND_NAME.get(g.id, g.id)}) = {g.output}, oracle {exp[g.location]}"
+            return None
+
+        def run_case(mode, src, dst, n_pins, rng):
+            """Return False if the combination is not applicable, else True; failures go through assert_test."""
+            Const.set_MODE(Const.DESIGN)
+            c = Circuit()
+            vs = [c.getcomponent(VAR) for _ in range(4)]
+            for x in vs:
+                x.value = rng.randint(0, 1)
+            g = c.getcomponent(src)
+            slots = len(g._sources) if src != VAR else 0
+            if src in NARY and n_pins > 2:
+                assert c.setlimits(g, n_pins)
+                slots = n_pins
+            if src != VAR:
+                for pin in rng.sample(range(slots), n_pins):
+                    c.connect(g, rng.choice(vs).location, pin)
+            elif n_pins:
+                return False                      # a variable has no inputs
+            down = c.getcomponent(TL.BUF); c.connect(down, g.location, 0)
+            mix = c.getcomponent(TL.OR); c.connect(mix, g.location, 0); c.connect(mix, vs[0].location, 1)
+            c.simulate(mode)
+            c.set_wave_limit(0, 1 << 20)
+
+            ok = (n_pins == 0) if dst == VAR else (n_pins <= 1) if dst in SINGLE else True
+            before = g.id
+            c.transfer_info(g, dst)
+            label = f"mode={mode} {TL.KIND_NAME[src]}->{TL.KIND_NAME[dst]} pins={n_pins}"
+            if not ok:
+                self.assert_test(g.id == before, f"{label}: transfer should be refused")
+                return True
+            self.assert_test(g.id == dst, f"{label}: id not changed")
+            self.assert_test(g.code[0] == dst and c.objlist[dst][g.code[1]] is g, f"{label}: code/objlist not updated")
+            self.assert_test(all(x is not g for x in c.objlist[src]), f"{label}: still listed under the old type")
+            if dst != VAR:                        # fill remaining open slots, then check and keep toggling
+                for pin, s in enumerate(g._sources):
+                    if s == -1:
+                        c.connect(g, rng.choice(vs).location, pin)
+            bad = mismatch(c)
+            self.assert_test(bad is None, f"{label} (after wiring)", bad or "")
+            for step in range(12):
+                x = rng.choice(list(c.get_variables()))
+                c.toggle(x.location, rng.randint(0, 1))
+                bad = mismatch(c)
+                self.assert_test(bad is None, f"{label} (toggle {step})", bad or "")
+            return True
+
+        rng = random.Random(2026)
+        for mode in (Const.SIMULATE, Const.COMPILE):
+            for src in ALL:
+                for dst in ALL:
+                    if src == dst:
+                        continue
+                    for n_pins in (0, 1, 2, 3):
+                        for _ in range(3):
+                            if src in SINGLE and n_pins > 1:
+                                continue
+                            run_case(mode, src, dst, n_pins, rng)
+        Const.set_MODE(Const.DESIGN)
 
     async def test_all_circuit_methods(self):
         """Touch every accessible Circuit method."""

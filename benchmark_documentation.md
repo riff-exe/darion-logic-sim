@@ -246,7 +246,7 @@ In digital logic simulation and Electronic Design Automation (EDA) research, dig
 1. **Discrete-Event / Event-Driven Simulation (DES):** Implemented by **Reactor (Propagate & Sweep)** and **Icarus Verilog**. The simulation engine evaluates a gate if and only if one of its driving input nets undergoes a dynamic value transition.
 2. **Cycle-Based / Static Compiled Simulation (CBS):** Implemented by **Verilator C++**. The circuit netlist is topologically scheduled into a static Directed Acyclic Graph (DAG) and compiled directly into C++ scalar machine instructions. The full combinational logic cone is unconditionally evaluated on every cycle trigger.
 
-When conducting cross-engine benchmarks, researchers observe a remarkable phenomenon: **on small structural netlists (ISCAS-89 `s5378`), Verilator outperforms event-driven simulation by 31× to 85×; yet on standard-cell netlists (IWLS 2005 `b12`), the margin drops to 2.8×; and on mammoth processor netlists (`b18`, `b19`, `vga_lcd`), the scaling inverts completely and Reactor outperforms Verilator by up to 2.03×.**
+When conducting cross-engine benchmarks, researchers observe a remarkable phenomenon: **on small structural netlists (ISCAS-89 `s5378`), Verilator outperforms event-driven simulation by 31× to 85×; yet on standard-cell netlists (IWLS 2005 `b12`), the margin drops to 2.8×; and on mammoth processor netlists (`b18`, `b19`, `vga_lcd`), the scaling inverts on the Cadence-UDP netlists measured here and Reactor outperforms Verilator by up to 2.03×. This does not generalize: in the IWLS runs reported in `RESEARCH_CLAIMS_AND_ACHIEVEMENTS.md`, Verilator wins 17 of 21 circuits.**
 
 This section presents the formal mathematical theory, compiler code-generation analysis, microarchitectural cache dynamics, and empirical state audits that explain this behavior.
 
@@ -309,7 +309,7 @@ $$A^* \approx \frac{1.2\,\text{ns}}{14.5\,\text{ns}} \approx 8\% - 12\%$$
 - **High Activity Regime ($A \gg A^*$, e.g., $A \approx 40\% - 75\%$):**
   In arithmetic data-paths, multipliers (e.g., ISCAS-85 `c6288`), and dense logic cones, a change at the inputs cascades through the majority of gates. Here, Event-Driven Simulation incurs event scheduling overhead on almost every gate without gaining sparsity savings. CBS processes all gates via flat, branchless SIMD/superscalar instructions. **Verilator is 10× to 85× faster.**
 - **Low Activity Regime ($A \ll A^*$, e.g., $A \approx 2\% - 5\%$):**
-  In microprocessors, bus fabrics, and system-on-chip controllers (e.g., IWLS 2005 `b18`, `b19`, OpenCores `vga_lcd`), 95% to 98% of the circuit is idle during any clock cycle (unselected registers, quiescent ALUs, inactive decoders). Here, CBS evaluates all 250,000+ gates wastefully. Reactor evaluates only the ~5,000 active gates per clock edge. **Reactor is 1.6× to 2.03× faster than Verilator.**
+  In microprocessors, bus fabrics, and system-on-chip controllers (e.g., IWLS 2005 `b18`, `b19`, OpenCores `vga_lcd`, in the Cadence-UDP netlists measured here), 95% to 98% of the circuit was idle during any clock cycle (unselected registers, quiescent ALUs, inactive decoders). Here, CBS evaluates all 250,000+ gates wastefully. Reactor evaluates only the ~5,000 active gates per clock edge. **Reactor is 1.6× to 2.03× faster than Verilator on these Cadence-UDP netlists only; across all IWLS circuits Verilator is faster on 17 of 21.**
 
 ---
 
@@ -445,7 +445,7 @@ The PMU profiling reveals four distinct microarchitectural phenomena that degrad
    - In smaller designs (`b05`), Verilator's branch misprediction rate is minimal (`0.35%`).
    - By `b17` (52k gates), branch misses rise to `2.33%`.
    - On `b18` (133k gates), Verilator's branch misprediction rate explodes to **14.60%** — over **11.6× higher than Reactor Sweep (1.26%)**.
-   - *Why?* To handle asynchronous UDP triggers and conditional wire updates across 133,000 gates, Verilator compiles hundreds of thousands of conditional branch instructions. The CPU's hardware Branch Target Buffer (BTB) and Pattern History Tables (PHT) become completely saturated, causing the branch predictor to fail on nearly 1 out of every 7 branches. Every misprediction forces a pipeline flush, discarding 15–20 cycles of in-flight execution.
+   - *Why? (UDP-trigger explanation: unchecked. The measured mechanism is the code-footprint and IPC effect in items 2-4 below.)* To handle asynchronous UDP triggers and conditional wire updates across 133,000 gates, Verilator compiles hundreds of thousands of conditional branch instructions. The CPU's hardware Branch Target Buffer (BTB) and Pattern History Tables (PHT) become completely saturated, causing the branch predictor to fail on nearly 1 out of every 7 branches. Every misprediction forces a pipeline flush, discarding 15–20 cycles of in-flight execution.
 2. **IPC Collapse from Front-End Pipeline Starvation (9.42 → 1.76 → 1.15 → 0.69):**
    - In combinational circuits (`c5315`), Verilator achieves **IPC = 9.42** (running multiple vector instructions per cycle).
    - In `b05`, IPC falls to **1.76**.
