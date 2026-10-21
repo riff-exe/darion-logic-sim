@@ -7,7 +7,7 @@ Darion Logic Sim is a Python-based digital logic simulator featuring a PySide6 v
 ## Features
 
 - Extremely fast circuit simulation using precompiled Cython backend.
-- Exact for its delay model (load-dependent propagation delay, self-oscillation), but not calibrated to a cell library; see `TIMING_VERIFICATION_REPORT.md`.
+- Exact for its delay model (load-dependent propagation delay, self-oscillation), but not calibrated to a cell library; see `research/Timing_Report.md`.
 - Minimal but powerful and customizable user interface.
 - Circuit building experience is made to be as smooth and unobtrusive as possible with QoL features.
 - For wiring components, pin-to-pin approach is used instead of manual path-drawing for a smoother design experience. Created wires will path-find to maintain a clean layout without clutter.

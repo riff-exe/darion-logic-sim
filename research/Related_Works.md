@@ -162,7 +162,7 @@ Every bibliographic entry below was looked up against Crossref (the DOI registry
 
 | Claim | Status after the check |
 |---|---|
-| SIMA (one incrementally kept seed-relative count, one mask/invert rule for eight gates, type-agnostic edge update) | **Novel formulation (revised 2026-10-21 after reading Maurer 1994-2000 and Teiche/Apple 2019 in full).** Counting at a dominant value is Maurer's and classical, and branch-free mixed-type evaluation from a sum plus a table is Teiche/Apple's (compiled SIMD). No source found encodes the basis as (seed, mask, invert) over one incremental count, answers existence and parity with one masked AND, or keeps the edge update free of gate type; it is also what makes the homogeneous data-oriented layout possible. Measured benefit: 1.35-1.5x over a type switch (harness), 1.1-1.7x on the evaluation step (engine). Wording: "to our knowledge"; see PAPER_NOTES 2.2 "What SIMA really is". |
+| SIMA (one incrementally kept seed-relative count, one mask/invert rule for eight gates, type-agnostic edge update) | **Novel formulation (revised 2026-10-21 after reading Maurer 1994-2000 and Teiche/Apple 2019 in full).** Counting at a dominant value is Maurer's and classical, and branch-free mixed-type evaluation from a sum plus a table is Teiche/Apple's (compiled SIMD). No source found encodes the basis as (seed, mask, invert) over one incremental count, answers existence and parity with one masked AND, or keeps the edge update free of gate type; it is also what makes the homogeneous data-oriented layout possible. Measured benefit: 1.35-1.5x over a type switch (harness), 1.1-1.7x on the evaluation step (engine). Wording: "to our knowledge"; see Paper_Notes 2.2 "What SIMA really is". |
 | Conditional-free gate evaluation | Prior art (Maurer 2000); different mechanism. |
 | Data-oriented layout, cache-conscious structures | Prior art as a technique (Chilimbi 1999; DOD practice). Novelty is the measurement in gate-level simulation. |
 | Virtual-call cost, `switch` not a fix, predictor effects | Known phenomena (Driesen and Hölzle). Yours: the controlled attribution on 24 real netlists plus synthetic sweeps, and the repeated-sequence effect on the target predictor (a supported hypothesis, mechanism not probed). |
@@ -175,7 +175,7 @@ Overall (revised 2026-10-21, after reading Maurer 1993-2000 and Teiche/Apple 201
 - the type-agnostic O(1) edge update;
 - the live-size, edit-tracking V+1 oscillation budget, with its soundness proof and non-fatal handoff.
 
-The measured reversal of Maurer's dispatch trade-off on modern CPUs is a finding in its own right. Together with the verification, the observation-cost results and the case study, this is a design paper with original mechanisms and the evidence for them. See PAPER_NOTES section 1b.
+The measured reversal of Maurer's dispatch trade-off on modern CPUs is a finding in its own right. Together with the verification, the observation-cost results and the case study, this is a design paper with original mechanisms and the evidence for them. See Paper_Notes section 1b.
 
 ### 0.5 SIMA versus Maurer's inversion algorithm (patents read in full, 2026-10-21)
 
