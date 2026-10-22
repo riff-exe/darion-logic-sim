@@ -45,6 +45,15 @@ _VPI_TIMER_VPI = os.path.join(_VPI_DIR, "vpi_timer.vpi")
 # ---------------------------------------------------------------------------
 
 def find_gsclib_path(start_path: str = "") -> str:
+    """The cell library for Icarus and Verilator: GSCLib_3.0.v, or with DARION_GLS_FLOPS=1 in the
+    environment (master_test.py / verify_state.py --gls-flops) its gate-level copy (gls_gsclib)."""
+    lib = _find_vendor_gsclib(start_path)
+    if lib and os.environ.get("DARION_GLS_FLOPS"):
+        return gls_gsclib(lib)
+    return lib
+
+
+def _find_vendor_gsclib(start_path: str = "") -> str:
     """Locate GSCLib_3.0.v in the repository."""
     candidates = [
         os.path.join(_TESTS_DIR, "IWLS2005", "library", "GSCLib_3.0.v"),
@@ -70,6 +79,98 @@ def find_gsclib_path(start_path: str = "") -> str:
         if os.path.exists(c):
             return os.path.abspath(c)
     return ""
+
+
+# Verilator lowers sequential UDP tables to processes with blocking assignments (its BLKSEQ
+# warning), so a flop-to-flop transfer depends on evaluation order and the model is wrong and
+# slow. These modules have the tables' behaviour (set over clear, both asynchronous) with
+# nonblocking assignments; the combinational cells and udp_mux2 are left as they are.
+_SEQ_UDP_MODULES = {
+    "udp_dff": """module udp_dff (out, in, clk, clr, set, NOTIFIER);
+   output out; input in, clk, clr, set, NOTIFIER; reg out;
+   always @(posedge clk or posedge clr or posedge set)
+     if (set) out <= 1'b1; else if (clr) out <= 1'b0; else out <= in;
+endmodule""",
+    "udp_tlat": """module udp_tlat (out, in, enable, clr, set, NOTIFIER);
+   output out; input in, enable, clr, set, NOTIFIER; reg out;
+   always @(*)
+     if (set) out <= 1'b1; else if (clr) out <= 1'b0; else if (enable) out <= in;
+endmodule""",
+    "udp_rslat": """module udp_rslat (out, clr, set, NOTIFIER);
+   output out; input clr, set, NOTIFIER; reg out;
+   always @(*)
+     if (set) out <= 1'b1; else if (clr) out <= 1'b0;
+endmodule""",
+}
+
+
+def verilator_gsclib(src: str, dst: str) -> str:
+    """Write a copy of GSCLib_3.0.v with the sequential UDPs replaced by the modules above
+    (instances get names, which modules need and primitives do not). Returns dst."""
+    s = open(src, encoding="utf-8").read()
+    for name, body in _SEQ_UDP_MODULES.items():
+        a = s.index(f"primitive {name}")
+        b = s.index("endprimitive", a) + len("endprimitive")
+        s = s[:a] + body + s[b:]
+    n = iter(range(1, 1 << 20))
+    s = re.sub(r"(^\s*)(udp_dff|udp_tlat|udp_rslat)\s*\(",
+               lambda m: f"{m.group(1)}{m.group(2)} u_{m.group(2)}_{next(n)} (", s, flags=re.M)
+    open(dst, "w", encoding="utf-8").write(s)
+    return dst
+
+
+# Same-netlist comparison: the cells Darion builds differently from the library, written as the gates
+# Darion simulates. Flops are the network of tests/src/DFFSR.json (NOT CLK, NOT D, 8-NAND master-slave,
+# active-low SN/RN, missing SN/RN tied to 1); SDFFSRX1 adds the converter's NOT + 2 AND + OR scan mux;
+# TLATX1 is the same flop (as scripts/iwls_parser.py maps it); MX2X1 is the converter's NOT + 2 AND + OR.
+_GLS_FLOP = """   wire nck, nd, m1, m2, m3, m4, s1, s2;
+   not (nck, {ck}); not (nd, {d});
+   nand (m1, {d}, nck, {sn}); nand (m2, nd, nck, {rn});
+   nand (m3, m1, m4, {sn}); nand (m4, m2, m3, {rn});
+   nand (s1, m3, {ck}); nand (s2, m4, {ck});
+   nand (Q, s1, QN, {sn}); nand (QN, s2, Q, {rn});
+"""
+_GLS_CELLS = {
+    "DFFX1": "module DFFX1 (CK, D, Q, QN);\n   input CK, D; output Q, QN;\n"
+             + _GLS_FLOP.format(ck="CK", d="D", sn="1'b1", rn="1'b1") + "endmodule",
+    "DFFSRX1": "module DFFSRX1 (CK, D, RN, SN, Q, QN);\n   input CK, D, RN, SN; output Q, QN;\n"
+               + _GLS_FLOP.format(ck="CK", d="D", sn="SN", rn="RN") + "endmodule",
+    "SDFFSRX1": "module SDFFSRX1 (CK, D, RN, SE, SI, SN, Q, QN);\n   input CK, D, RN, SE, SI, SN; output Q, QN;\n"
+                "   wire nse, a_si, a_d, dm;\n   not (nse, SE); and (a_si, SI, SE); and (a_d, D, nse); or (dm, a_si, a_d);\n"
+                + _GLS_FLOP.format(ck="CK", d="dm", sn="SN", rn="RN") + "endmodule",
+    "TLATX1": "module TLATX1 (C, D, Q, QN);\n   input C, D; output Q, QN;\n"
+              + _GLS_FLOP.format(ck="C", d="D", sn="1'b1", rn="1'b1") + "endmodule",
+    "MX2X1": "module MX2X1 (A, B, S0, Y);\n   input A, B, S0; output Y;\n   wire ns, a1, a2;\n"
+             "   not (ns, S0); and (a1, A, ns); and (a2, B, S0); or (Y, a1, a2);\nendmodule",
+}
+
+
+def gls_gsclib(src: str) -> str:
+    """Write (once) tests/test_result/gls/GSCLib_gls.v: GSCLib_3.0.v with _GLS_CELLS replacing those cells."""
+    dst = os.path.join(_TESTS_DIR, "test_result", "gls", "GSCLib_gls.v")
+    if not os.path.exists(dst) or os.path.getmtime(dst) < os.path.getmtime(__file__):
+        s = open(src, encoding="utf-8").read()
+        for name, body in _GLS_CELLS.items():
+            m = re.search(rf"^module {name}\b.*?^endmodule", s, re.M | re.S)
+            s = s[:m.start()] + body + s[m.end():]
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        tmp = f"{dst}.{os.getpid()}"
+        open(tmp, "w", encoding="utf-8").write(s)
+        os.replace(tmp, dst)
+    return dst
+
+
+def verilator_make_jobs(obj_dir: str) -> int:
+    """Parallel jobs for building a Verilator model: one per CPU, fewer when the generated files
+    are large (vga_lcd's ~3 MB files need 3-5 GB of compiler memory each; -j16 exhausted 32 GB)."""
+    cpus = os.cpu_count() or 4
+    try:
+        biggest = max(os.path.getsize(os.path.join(obj_dir, f)) for f in os.listdir(obj_dir) if f.endswith(".cpp"))
+        avail = next(int(l.split()[1]) * 1024 for l in open("/proc/meminfo") if l.startswith("MemAvailable:"))
+    except (OSError, ValueError, StopIteration):
+        return cpus
+    per_job = max(512 << 20, int(biggest * 1.7 * 1024))   # about 1.7 GB of compiler memory per MB of source
+    return max(1, min(cpus, int(avail * 0.8) // per_job))
 
 
 def build_vpi_timer() -> bool:
@@ -624,6 +725,7 @@ def run_verilator_harness_iwls(v_file: str, vectors: int, warmup: int,
         generate_verilator_tb_iwls(v_file, tb_file, module_name, port_decls, flat_inputs, clock_port_name, use_perf=use_perf)
 
         t_comp_start = time.perf_counter_ns()
+        gsclib_path = verilator_gsclib(gsclib_path, base_path + "_iwls_verilator_gsclib.v")
         comp_cmd = [
             "verilator", "-O3", "-Wno-fatal", "--default-language", "1364-2001", "--cc",
             gsclib_path, v_file,
@@ -635,7 +737,7 @@ def run_verilator_harness_iwls(v_file: str, vectors: int, warmup: int,
         if comp_res.returncode != 0:
             return {"engine": "Verilator", "file": filename, "error": f"Verilator compilation failure: {comp_res.stderr.strip()}"}
 
-        build_cmd = ["make", "-j", str(os.cpu_count() or 4), "-C", obj_dir, "-f", f"V{module_name}.mk", f"V{module_name}"]
+        build_cmd = ["make", "-j", str(verilator_make_jobs(obj_dir)), "-C", obj_dir, "-f", f"V{module_name}.mk", f"V{module_name}"]
         build_res = subprocess.run(build_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         t_comp_end = time.perf_counter_ns()
         compile_ms = (t_comp_end - t_comp_start) / 1_000_000.0
@@ -707,7 +809,7 @@ def run_verilator_harness_iwls(v_file: str, vectors: int, warmup: int,
     except Exception as e:
         return {"engine": "Verilator", "file": filename, "error": str(e)}
     finally:
-        for p in (tb_file, vector_file):
+        for p in (tb_file, vector_file, base_path + "_iwls_verilator_gsclib.v"):
             if p and os.path.exists(p):
                 try: os.remove(p)
                 except OSError: pass

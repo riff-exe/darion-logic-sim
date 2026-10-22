@@ -4,6 +4,8 @@
 
 ---
 
+**Second pass (2026-10-22):** every statement this file attributes to a paper in `~/Github/darion_research_papers` (Ulrich 1969, LECSIM, Maurer 1994/1996/2000, Chilimbi et al. x2, Driesen and Hölzle 1996, Edwards 2003, Shiple et al. 2002, Fleurkens 1996) was re-checked against the PDF text, with OCR for the scanned ones; all quoted figures match. New readings (Maurer 1996, Edwards, Chilimbi-Hill-Larus) are in 0.3 item 4 and 0.3b. Sections 1-4 below are older text: they were corrected inline where wrong (marked with the date) and section 6 was rewritten; where they disagree with sections 0.x, sections 0.x win.
+
 ## 0. Verification log (2026-10-21): what was checked and what changed
 
 Every bibliographic entry below was looked up against Crossref (the DOI registry); factual claims about other tools were checked against their own documentation or source code. "Verified" means the title, authors, venue, year, pages and DOI match the registry record. A cited paper's *content* was not read unless stated.
@@ -33,7 +35,7 @@ Every bibliographic entry below was looked up against Crossref (the DOI registry
 
 | Claim in this file | Verdict | Source |
 |---|---|---|
-| Verilator `--converge-limit` defaults to 100 | **Version dependent.** 100 in the 4.x manuals and in the 5.020 source; the current online guide says 10000. | Verilator `docs/guide` at tags v4.106, v4.228; `V3Options.h` at v5.020; current guide. State the version. |
+| Verilator `--converge-limit` defaults to 100 | **Version dependent.** 100 in the 4.x manuals and in the 5.020 source; the current online guide says 10000. **The installed Verilator 5.052 (used for every measurement here) generates `convergeLimit: 10000`** (checked 2026-10-22 in the C++ it emits for a one-gate module). Cite 10,000 with the version. | Verilator `docs/guide` at tags v4.106, v4.228; `V3Options.h` at v5.020; current guide. State the version. |
 | Logisim oscillation limit defaults to 1,000 | **Confirmed.** "The default of 1,000 ... number of clicks of the internal hidden clock (a simple gate takes just one click)"; the manual also says it may report false oscillation on very large circuits. | Logisim 2.7 docs, Simulation tab and "Oscillation errors". |
 | Digital oscillation handling | **Verified in source.** Default limit 1,000 micro-steps (`oscillationDetectionCounter = 1000`), then 100 more steps collecting the oscillating nodes, then an error ("seems to oscillate"). An optional `setRecoverFromOscillation` mode introduces random-order noise ("use with extreme care ... covers bugs ... very slow"). | `Model.java`, Digital 0.31 and current master. |
 | Digital's evaluation model | **Documented by its author:** without noise, "the steps of the model are calculated in a synchronized way ... you can observe oscillations in the model, which makes it impossible to start the model. So a RS-FF typically does not start because of oscillations." With noise, nodes are updated in random order. | Class comment of `Model.java`. This also explains why gate-level latch designs such as the tv80 export fail to start in Digital: observed directly, the limiter raises "Logic seems to oscillate" at the first vector and `errorOccurred` closes the model without throwing to the caller. |
@@ -58,7 +60,13 @@ Every bibliographic entry below was looked up against Crossref (the DOI registry
 
    Found by a targeted search on 2026-10-21; no source combining an incremental seed-relative count with a single mask/invert rule in an event-driven simulator was found.
 3. **Driesen and Hölzle, "The direct cost of virtual function calls in C++", OOPSLA 1996, pp. 306-323 (DOI 10.1145/236337.236369), and "Accurate indirect branch prediction", ISCA 1998 (SIGARCH CAN 26(3):167-178, DOI 10.1145/279361.279380).** The cost of virtual dispatch and its dependence on indirect-branch prediction are established results. The OOP-versus-flat attribution in Claim 13 is a measurement in a new domain, not a new phenomenon.
-4. **Maurer, "Is compiled simulation really faster than interpreted simulation?", ICVD 1996, pp. 303-306 (DOI 10.1109/ICVD.1996.489615).** Closely related to the crossover between compiled and event-driven simulation; read it before claiming the code-footprint explanation.
+4. **Maurer, "Is compiled simulation really faster than interpreted simulation?", ICVD 1996, pp. 303-306 (DOI 10.1109/ICVD.1996.489615). Read in full on 2026-10-22** (the copy in `darion_research_papers` is a 13-page manuscript whose reference [1] is still "submitted for publication", so check the printed ICVD text before quoting page-specific wording). What it shows:
+   - The Inversion Algorithm runs compiled or interpreted with "virtually the same run-time code"; on ISCAS85 (5,000 random vectors, SUN IPC) the interpreted form is at most about 60% slower on the smallest circuit and under 5% on the largest.
+   - Time to the first simulated vector: compiled 12.1-193.8 s, interpreted 0.6-14.4 s (more than 10x), extrapolated to 3 h 48 min versus 17 min for a quarter-million-gate circuit. "First simulation results can be obtained much faster using the interpreted form."
+   - The fixed interpreted engine is proposed as "an ideal vehicle" for incremental compilation, because "precompiled portions of the circuit will consist only of data structures which can be loaded or replaced as needed".
+   - The LCC versus event-driven break-even activity is quoted as 1-3%.
+   - **What it does not say:** nothing about instruction caches or code footprint. The code-footprint explanation of the Verilator crossover (Claim 9) is therefore not anticipated here; it remains Darion's measurement (a general "large generated code thrashes the I-cache" observation may exist elsewhere and was not searched for). *(Superseded 2026-10-22: these Verilator numbers came from its blocking lowering of the library's UDP flops, which is wrong and slow; with a correct flop model Verilator is faster on all 88 master-test circuits. See Claim 9 in `research/Claims.md`.)*
+   - **What it does anticipate:** the turnaround argument of Claim 8. A fixed, prebuilt engine that loads the circuit as data, gives first results far sooner than a compiled flow, and runs within a small factor of it is Maurer's 1996 argument. Cite it (with LECSIM's own statement that recompilation after each modification is its major problem) as the origin of that trade-off; Darion's contribution is the measurement at 10^5-gate scale against a current compiled simulator, not the observation.
 5. **Related interactive / programmatic tools not yet cited:** PyRTL (Clow et al., "A Pythonic approach for rapid hardware prototyping and instrumentation", FPL 2017, DOI 10.23919/FPL.2017.8056860; Python-embedded, instrumentation framework, simplicity over performance), cocotb (drives an external HDL simulator from Python through VPI/VHPI/FLI), DigitalJS (Materzok, "DigitalJS: a Visual Verilog Simulator for Teaching", 8th Computer Science Education Research Conference, 2019, pp. 110-115, DOI 10.1145/3375258.3375272), and Digital's own `Model` API (internal, not a supported public API).
 
 ### 0.3b Reference reading status, complete list (2026-10-21)
@@ -137,17 +145,23 @@ Every bibliographic entry below was looked up against Crossref (the DOI registry
   - *Use in the paper:* event-driven simulation never needed loop analysis (Ulrich 1969); levelized simulation did (LECSIM: SCCs, feedback-path breaking, iteration caps). Darion's sweep keeps levelized order without the analysis by falling back to the event-driven engine on back edges. That bridges the two lines of work rather than claiming loop tolerance as new.
 - *Stated disadvantage:* every element must be initialised to consistent states before simulation starts.
 - Clocked systems: skip-and-scan of the wheel; clocked elements rescheduled to the next clock edge.
+- *Observability, an early mention (checked 2026-10-22):* Ulrich lists as an advantage that selective path simulation "leads to advantages for output and display" (selective output of the active paths). It is a one-line remark, not a design for interactive use; it can be cited for the idea that activity tracking also serves observation.
+
+**A (added 2026-10-22, PDFs in `~/Github/darion_research_papers`, every quoted figure above re-checked against the text):**
+- Ulrich 1969, Maurer 1994, Maurer ICCAD 2000, LECSIM (tech-report version), Chilimbi-Davidson-Larus, Shiple et al. 2002, Fleurkens 1996: each statement in A+ to A+++++ was checked against the PDF text (OCR for the scanned ones). All match; LECSIM's cap was confirmed as 2^m+1 from the page image (text extraction drops the superscript).
+- Maurer 1996 (ICVD): read in full, see 0.3 item 4.
+- Chilimbi, Hill and Larus 1999, "Cache-Conscious Structure Layout" (the paper in the BibTeX): abstract and introduction. Cache-conscious placement of pointer structures (`ccmorph` clustering and colouring, `ccmalloc` allocator): 4-5x on microbenchmark trees, 28-194% on Olden programs, 42% on RADIANCE and 27% on VIS. Supports "layout of pointer-linked data matters" as known; Darion's harness measures how much of that applies to a gate graph (Claim 13: small unless placement is scattered and exceeds cache).
+- Edwards 2003, "Making Cyclic Circuits Acyclic": synthesis method that turns a cyclic circuit into an equivalent acyclic one for the inputs where it neither oscillates nor holds state, using Malik's three-valued definition; worst-case exponential. Use only as context ("cyclic circuits are troublesome for most circuit analysis tools"); it says nothing about simulation step limits.
+- Driesen and Hölzle 1996: the full paper is in the folder; the quoted 5.2% / 13.7% medians and "likely to increase moderately" were re-checked.
 
 **C. Not read, worth reading before submission (get them in a browser or through the university library):**
-- Chilimbi, Hill and Larus 1999, "Cache-Conscious Structure Layout" (the paper actually in the BibTeX; optional now that the sibling is read).
-- Edwards 2003 (Columbia, browser only).
-- EPICS 2025.
-- Driesen and Hölzle ISCA 1998.
+- EPICS 2025 (paywalled).
+- Driesen and Hölzle ISCA 1998 (only the UCSB tech-report abstract).
 - Burch 2002 (Logisim).
 - DigitalJS 2019.
-- Maurer 1996 (compiled versus interpreted).
-- Maurer 1993 (Shadow).
+- Maurer 1993 (Shadow; the Baylor copy blocks scripted downloads, open it in a browser).
 - The Abramovici textbook chapter on simulation (library).
+- ESSENT (Beamer and Donofrio 2020): read in an earlier session, but its eScholarship PDF could not be fetched on 2026-10-22, so the points in A were not re-checked.
 
 **D. Recommended to drop unless a specific use appears:**
 - Bryant 1984 (switch-level, not related to any claim).
@@ -168,7 +182,8 @@ Every bibliographic entry below was looked up against Crossref (the DOI registry
 | Virtual-call cost, `switch` not a fix, predictor effects | Known phenomena (Driesen and Hölzle). Yours: the controlled attribution on 24 real netlists plus synthetic sweeps, and the repeated-sequence effect on the target predictor (a supported hypothesis, mechanism not probed). |
 | Bounded topological sweep with back-edge escape | **Distinct mechanism, narrowed after reading LECSIM in full (2026-10-21).** The runtime back-edge test itself is *not* new: LECSIM's top-level scheduler sets an `unstable` flag when a block is inserted into a level already scanned (`index < current_level`) and re-runs the level scan (TR DA-19, Fig. 5). What remains distinct: (1) LECSIM can only assign levels after DFS SCC detection and breaking of the identified feedback paths; Darion uses one Kahn sort with forced breadth-first placement, no SCC or feedback-arc analysis. (2) LECSIM answers a back edge with another full levelized pass, capped by 2^m+1 (small SCCs, m feedback arcs) or a user-specified limit, then an error routine; Darion hands the back edge to the event-driven engine on the same data, under the live-size V+1/2V budget, with non-fatal timed promotion. (3) LECSIM must recompile after every edit (its own stated weakness); Darion needs no re-analysis. Verilator (fatal UNOPTFLAT/"didn't converge") and EPICS 2025 (static SCCs) as before. Measured: a live ring in b15/b19 under sweep, promoted, 0 output mismatches afterwards (Claim 5). Claim it "to our knowledge", and cite LECSIM for the runtime back-edge test. |
 | Live-size wave budget (V+1 / 2V) and non-fatal promotion | **Novel as a simulator mechanism (revised 2026-10-21).** Every tool checked uses a fixed constant: Logisim 1,000; Digital 1,000 micro-steps; Verilator `--converge-limit` 100 or 10,000; ModelSim `IterationLimit` 5,000 or 10M; Vivado xsim 10,000 ("Iteration limit 10000 is reached"); GHDL `--stop-delta` 5,000 (GHDL docs). Most stop with an error; Digital also has an optional noise mode. Targeted searches found no simulator that derives its cutoff from the circuit's size. Darion's cutoff is the live gate count, maintained in O(1) under editing. It is proven never to fire on acyclic logic, and firing certifies that a real feedback loop was traversed. Non-convergence is promoted to timed simulation instead of stopping. What is elementary and must not be claimed as new: that acyclic zero-delay logic settles within its depth (the basis of levelized simulation). The contribution is using the live size as a self-scaling, configuration-free, sound cutoff, together with the non-fatal handoff, measured: 0 false alarms on 30 acyclic circuits up to 101,859 gates, and a real ring caught in 0.92 ms on 356k gates (claims doc 3a+). The 2V sequential tier stays a heuristic. |
-| Interactive, observable engine with an API | Logisim, Digital, DigitalJS, PyRTL and cocotb occupy neighbouring points; the measured result (observation cost under 2%, microsecond calls) is yours. |
+| Interactive, observable engine with an API | Logisim, Digital, DigitalJS, PyRTL and cocotb occupy neighbouring points, and ESCAPE (Fleurkens 1996) already stated the goal; the measured result (observation cost under 2%, microsecond calls) is yours. |
+| Fast turnaround from a fixed engine that loads the circuit as data (Claim 8) | **Prior art as an argument** (checked 2026-10-22): Maurer 1996 (interpreted Inversion Algorithm, same run-time code, first results more than 10x sooner than compiled, within a small factor in speed) and LECSIM (recompilation after each edit is its "major problem"). Darion's part is the measurement at current scale and on every suite: load faster than Icarus compiles on all 88 master-test circuits (2.4-27x) and faster than a Verilator build on all 87 that built (143-22,455x). Do not present the trade-off itself as new. |
 
 Overall (revised 2026-10-21, after reading Maurer 1993-2000 and Teiche/Apple 2019 in full and surveying simulator oscillation limits): the general ideas have ancestors (counting at a dominant value, data-oriented layout, levelized settling), but three mechanisms are novel to our knowledge:
 - the SIMA formulation;
@@ -247,7 +262,7 @@ The table below maps each mechanism in Darion to its historical origin and canon
 
 | Darion Component | Historical Origin / Literature Reference | Canonical Publication | Primary Overlap | Darion's Evolution / Difference |
 |---|---|---|---|---|
-| **Single-Invariant Masked Accumulator (SIMA)** | **Input Counting Algorithm** (Controlling Value Counting) | M. Abramovici, M. A. Breuer, A. D. Friedman, *Digital Systems Testing and Testable Design*, 1990;<br>S. A. Szygenda & E. W. Thompson, *IEEE Computer 1975* | Incremental tracking of inputs to avoid $O(k)$ fan-in rescanning on each event. | • Tracks **one singular logic state** (`seed`) instead of multi-branch counters (`c_count`, `u_count`).<br>• Uses **bitwise mask** (`mask = 0x01`) to extract **XOR/XNOR parity** from the ones-count. (Prior art: Maurer's patents US 5,856,933 / 6,131,081 already handle XOR/XNOR by change events and defer inversion, see 0.3; this row describes an arithmetic variant, not a new idea.)<br>• Unifies all 8 gates into a single branchless ALU instruction: `bool(logic & mask) ^ (flags & 1)`.<br>• Zero vtables; all gates share one flat array and one evaluation rule. (In-place type change is a side effect: $O(1)$ within a seed family, $O(\text{fan-in})$ across families; see `Gate.retype`.) Novelty is modest: this is classical input counting with parity read from the low bit. |
+| **Single-Invariant Masked Accumulator (SIMA)** | **Input Counting Algorithm** (Controlling Value Counting) | M. Abramovici, M. A. Breuer, A. D. Friedman, *Digital Systems Testing and Testable Design*, 1990;<br>S. A. Szygenda & E. W. Thompson, *IEEE Computer 1975* | Incremental tracking of inputs to avoid $O(k)$ fan-in rescanning on each event. | • Tracks **one singular logic state** (`seed`) instead of multi-branch counters (`c_count`, `u_count`).<br>• Uses **bitwise mask** (`mask = 0x01`) to extract **XOR/XNOR parity** from the ones-count. (Prior art: Maurer's patents US 5,856,933 / 6,131,081 already handle XOR/XNOR by change events and defer inversion, see 0.3; this row describes an arithmetic variant, not a new idea.)<br>• Unifies all 8 gates into a single branchless ALU instruction: `bool(logic & mask) ^ (flags & 1)`.<br>• Zero vtables; all gates share one flat array and one evaluation rule. (In-place type change is a side effect: $O(1)$ within a seed family, $O(\text{fan-in})$ across families; see `Gate.retype`.) *Novelty (aligned with 0.4 on 2026-10-22):* counting at a dominant value is prior art; the (seed, mask, invert) formulation over one incrementally kept count, read by one masked AND, with a type-agnostic edge update, is novel to our knowledge. |
 | **Two-Tier Dynamic Oscillation Budgeting** | **DAG Depth, Delta Cycles, and Combinational Cycles** | S. Malik, *IEEE TCAD 1994*;<br>T. R. Shiple et al., *ISCAS 1996*;<br>P. Agrawal & W. J. Dally, *IEEE TCAD 1990*;<br>R. E. Bryant, *IEEE TCAD 1984* | Bounding zero-delay feedback loop propagation and delta cycle limits. | • Simulators use static iteration limits (Verilator's default `--converge-limit` is 100 and its failure is fatal; the limits of commercial tools are **not yet cited**, see the note in 2.1.C).<br>• Formal tools use expensive static ternary BDD/SAT cycle analysis [Malik 1994].<br>• **Tier 1 (Combinational / DAG):** the **$|V| + 1$ pigeonhole bound** is sound (no false positives on acyclic circuits) but loose: the true bound is circuit depth.<br>• **Tier 2 (Sequential 2-State Feedback):** **$2|V|$ is an unproven heuristic** (no counterexample found among 16,129 converging random cyclic networks).<br>• **Non-fatal promotion:** Seamlessly defers oscillating sub-cones to an asynchronous timed priority queue without crashing. |
 | **Data-Oriented Microarchitectural Layout (DOD)** | **Data-Oriented Design & Cache-Conscious Structures** | M. Acton, *CppCon 2014*;<br>T. Chilimbi et al., "Cache-Conscious Structure Layout", *PLDI 1999* | Memory defragmentation and contiguous array packing to prevent cache misses. | • Strict **24-byte POD struct** (`static_assert(sizeof(CPP_Gate) == 24)`).<br>• Field order inside the first 8 bytes has no cache effect (one 8-byte word); do not claim it as a result.<br>• Kahn topological sort physically co-locates connected gates in RAM, improving prefetch locality.<br>• Zero heap pointers in UI communication; decoupled via raw integer indices. |
 | **Dynamic Bounded Topological Sweep** (`sweep`) | **Levelized Compiled Simulation (LCS)** & **Levelized Event-Driven (LEDS)** | Z. Wang and P. M. Maurer, "LECSIM", *DAC 1990*; ("Hansen et al., TCAD 1999" removed: no such paper could be verified) | Topological evaluation of logic without dynamic heap queues. | • Unlike static LCS (Verilator), which evaluates $0 \dots N-1$ unconditionally, Darion sweeps a **dynamic bounded window $[\text{curr}, \text{threshold}]$**.<br>• In-place selective trace skips quiescent gates without queue overhead.<br>• **Back-Edge Escape:** Automatically detects cyclic feedback (`target <= curr`) and delegates to the wavefront engine. |
@@ -272,23 +287,23 @@ In graph theory, it is a proven mathematical property that:
 - If a wavefront survives past wave $|V| + 1$, it visits $\ge |V| + 2$ vertices along a causal path. By the **Dirichlet Pigeonhole Principle**:
   $$\text{Causal Path Length} \ge |V| + 1 \text{ evaluations} \implies \exists \, v_i, v_j \in \text{Path} \text{ such that } v_i = v_j$$
 - This guarantees with mathematical certainty that at least one vertex is visited more than once—meaning the wavefront has entered an active directed cycle.
-- **Result:** $|V| + 1$ is the exact, minimal tight bound that guarantees **zero false positives on maximal-depth acyclic paths** while guaranteeing cycle detection.
+- **Result:** $|V| + 1$ never fires on acyclic logic and, when it fires, certifies that a loop was traversed. *Correction (2026-10-22):* it is tight only for a single chain; the real requirement is the circuit's depth, so on real circuits it is loose (V exceeds the needed budget by 2.6x to 1,687x, median about 40x; Claims 3a+). Its value is that it is maintained in O(1) under editing, not that it is minimal.
 
 #### B. The Sequential Reality: 2-State Feedback and Latch Stabilization ($2|V|$ Heuristic)
 When simulating sequential circuits modeled at the gate level (e.g., cross-coupled NOR/NAND RS latches, transparent latches, gate-level master-slave D-FFs), the network is no longer a DAG—it contains physical feedback cycles.
 1. **The Combinational Cycle Problem in the Literature:**
    - **Sharad Malik** (*IEEE TCAD 1994*, "Analysis of Cyclic Combinational Circuits") proved that cyclic circuits can behave combinationally (without true state storage) if they stabilize to a unique value for all input assignments. Malik utilized ternary simulation (0, 1, X) and Boolean function analysis to verify cycle stabilization.
-   - **Thomas R. Shiple et al.** (*ISCAS 1996*, "Analysis of Combinational Cycles in Sequential Circuits") and **Stephen A. Edwards** (*DAC 2003*, "Making Cyclic Circuits Acyclic") demonstrated that cyclic circuits require bounded multi-phase unrolling to stabilize under 2-state and multi-state logic.
-2. **Two-Phase Stabilization in 2-State Logic:**
+   - *Corrected 2026-10-22 after reading Edwards 2003 and Shiple et al. 2002:* these works analyse cyclic circuits (ternary simulation, Malik's definition, BDD-based reachability, and Edwards's synthesis of an equivalent acyclic circuit). They do not show that cyclic circuits need "bounded multi-phase unrolling" in 2-state simulation; the earlier sentence here was wrong. What Shiple et al. do give is the linear bound for monotone ternary analysis and the exponential Brzozowski-Seger bound for binary settling (see 0.3b).
+2. **Two-Phase Stabilization in 2-State Logic** (*superseded 2026-10-21 by the single-loop argument in Claims 3a++: a single loop settles within t + L + 1 waves or oscillates forever, with no second pass; the extra pass appears only for interacting loops; 2V is an empirical default, exceeded by XOR-heavy loops*):
    - In 2-state logic simulation, cross-coupled feedback latches stabilize through a **two-phase transition**:
      - *Phase 1 (Forward Excitation):* The triggering transition propagates through the primary gate.
      - *Phase 2 (Feedback Locking):* The inverted output propagates back across the cross-coupled edge to clamp the complementary gate.
    - For a sequential pipeline of depth $|V|$, each feedback stage may require up to 2 evaluation waves to settle into its steady-state.
 3. **Darion's $2|V|$ Heuristic:**
    - To prevent premature cutoff during normal latch state transitions in sequential netlists, Darion defines an upper heuristic threshold of **$2|V|$** (`wave_multiplier = 2`).
-   - Darion exposes both modes through `set_wave_mode("combinational")` ($|V|+1$) and `set_wave_mode("sequential")` ($2|V|$), defaulting to the robust $2|V|$ sequential threshold.
+   - Darion exposes both modes through `set_wave_mode("combinational")` ($|V|+1$) and `set_wave_mode("sequential")` ($2|V|$), defaulting to the $2|V|$ sequential threshold (an empirical default, not a bound).
 
-#### C. What Industrial EDA Simulators Actually Do (The Hardcoded Flaw)
+#### C. What Industrial EDA Simulators Actually Do (fixed iteration limits)
 Despite the formal graph-theoretic foundations, **commercial and open-source simulators do not use dynamic graph-dependent bounds**. Instead:
 1. **Commercial Simulators (Synopsys VCS, Cadence Xcelium, Siemens ModelSim/Questa), verified findings:**
    - **ModelSim/Questa (verified from user-forum quotes of the manual and vsim messages):** the delta-iteration limit is a configurable setting (`IterationLimit` in `modelsim.ini`, or Simulate > Runtime Options); exceeding it is a fatal "iteration limit reached ... possible zero delay oscillation" error. The default is version dependent: older manuals say 5000, newer vsim messages say 10 million. Cite the manual of the version you use.
@@ -322,7 +337,7 @@ A low-level inspection reveals fundamental architectural differences between cla
 In classical EDA literature (Abramovici et al. 1990; Szygenda & Thompson 1975; *not* Ulrich 1969, who stores each element's full input bit pattern and has no counting; corrected 2026-10-21):
 - Input counting relies on the existence of a **controlling value** ($c \in \{0, 1\}$)—an input value that uniquely forces the gate's output regardless of all other inputs ($0$ for AND/NAND, $1$ for OR/NOR).
 - **CORRECTION (2026-10-21):** the earlier text here said that classical literature treated XOR/XNOR as incompatible with counting. That is not supported: Maurer's patents US 5,856,933 (1999) and US 6,131,081 (2000) process XOR, XNOR, NOT and BUFFER by input-change events alone and apply output inversion afterwards (see 0.3). XOR/XNOR have no controlling value, which is why they are handled by parity of changes or of a ones-count instead of a dominant-value count.
-- Classical algorithms maintained separate multi-state variables (`c_count` for controlling values, `u_count` for unknown values) evaluated through multi-branch `if-else` conditional trees.
+- Classical algorithms maintained separate multi-state variables (`c_count` for controlling values, `u_count` for unknown values) evaluated through multi-branch `if-else` conditional trees. *(Not checked in Abramovici et al.; the branching form is confirmed only by Maurer 1994's "traditional" pseudocode, see 0.3b A+. Cite Maurer 1994 for it.)*
 
 #### B. Darion's Single-Invariant Masked Accumulator (SIMA) Model
 Darion unifies all eight elementary logic gates into a single algebraic parameter tuple:
@@ -356,7 +371,7 @@ $$\text{Output} = \left( [(\text{logic} \ \& \ \text{mask}) \neq 0] \right) \opl
 In conventional object-oriented simulation architectures (Logisim, Digital, and `reactor_oop`):
 - Each gate type is a separate subclass (`AND_Gate`, `OR_Gate`, `XOR_Gate`) with a virtual method table (`vtable`).
 - Virtual dispatch incurs double dereferences (`this -> vptr -> vtable[slot]()`), stalling CPU execution pipelines and consuming 8 bytes per struct for the `vptr`.
-- Mutating a gate (e.g., when a user in the GUI morphs an AND gate into an XOR gate) requires tearing down the object, allocating a new subclass on the heap, and rewiring graph references.
+- Changing a gate's type in an object design means replacing the object (a new subclass instance) and rewiring references. *(Retyping is used only during IC creation in Darion, not as a user feature; how Logisim and Digital implement edits was not checked.)*
 
 In Darion's optimized `reactor`:
 - The gate struct is a flat 24-byte POD (`CPP_Gate`) without a `vptr`.
@@ -393,14 +408,14 @@ A critical question in logic simulation benchmarking is why and when an event-dr
 - In compiled simulators (Verilator), execution cost per cycle is roughly constant: $C_{\text{comp}} = O(N)$.
 - In event-driven simulators, execution cost per cycle is proportional to the switching activity factor $A$: $C_{\text{event}} = O(A \cdot N) + C_{\text{overhead}}$.
 - **Measured here (benchmark stimulus):** gate-output activity is about 9.5–10.4% on `b15`, `b17`, `b18`, `b19` and 18.6% on `b14`; it stays near 10% even at a 0.5% input toggle rate because the clock and Darion's gate-level DFF latches keep switching. The earlier "2–6%" figure was wrong.
-- **Result:** circuits with the same activity give opposite outcomes versus Verilator (`b14`: Verilator 6–7× faster; `b17`: about parity; `b19`: Darion 2.3–3.6× faster). Activity therefore does **not** explain the crossover. Design size does: the `b19` Verilator binary has 22 MB of code, runs at IPC 0.66 and takes 117M L1-instruction-cache misses, while the `b14` binary has 0.75 MB and runs at IPC 2.3. The supported explanation is compiled-code footprint exceeding the instruction cache.
+- **Result:** circuits with the same activity give opposite outcomes versus Verilator (`b14`: Verilator 6–7× faster; `b17`: about parity; `b19`: Darion 2.3–3.6× faster). Activity therefore does **not** explain the crossover. Design size does: the `b19` Verilator binary has 22 MB of code, runs at IPC 0.66 and takes 117M L1-instruction-cache misses, while the `b14` binary has 0.75 MB and runs at IPC 2.3. The supported explanation is compiled-code footprint exceeding the instruction cache. *(Superseded 2026-10-22: these Verilator numbers came from its blocking lowering of the library's UDP flops, which is wrong and slow; with a correct flop model Verilator is faster on all 88 master-test circuits. See Claim 9 in `research/Claims.md`.)*
 - On dense combinational netlists (e.g., `hyp.v`), Verilator is faster than Darion (245 ms vs. 851 ms for `rx-sweep`).
 
 ---
 
 ### 2.5 Double-Buffered Wavefront Propagation (`propagate`)
 
-Darion's `propagate()` implements a zero-allocation, branchless Discrete-Event Simulation (DES) engine inside a pure Cython `nogil` context:
+Darion's `propagate()` implements a zero-allocation Discrete-Event Simulation (DES) engine with a branch-free enqueue, inside a Cython `nogil` context:
 1. **Raw Pointer Ping-Pong Queues:** Maintains two pre-allocated buffers (`read_queue` and `write_queue` of `CPP_Gate*`). At the end of each wave, buffers are swapped in $O(1)$ pointer operations without memory allocations.
 2. **Branchless Queue Insertion:**
    ```cpp
@@ -408,7 +423,7 @@ Darion's `propagate()` implements a zero-allocation, branchless Discrete-Event S
    size += (((target.flags & FLAG_MARK) == 0) & (target_output != target.output));
    target.flags |= FLAG_MARK * (target_output != target.output);
    ```
-   Eliminates conditional branch instructions in the hottest fan-out loop, allowing uninterrupted superscalar CPU pipelining.
+   Removes the enqueue branch from the fan-out loop. *(The loop still has the unknown-value and unconnected-input branches, normally predictable; on irregular graphs the flat engine still mispredicts 0.57-0.65 times per evaluation in the harness, Claim 13. Say "branch-free enqueue and evaluation", not "branchless".)*
 3. **Dynamic Wavefront Budgeting:** Enforces the two-tier dynamic wave limit, automatically transitioning runaway oscillations into timed priority tasks.
 
 ---
@@ -419,12 +434,12 @@ Educational tools focus on visual ergonomics but suffer from performance degrada
 
 | Feature | Logisim / Logisim-Evolution (Burch 2002) | Digital (Neemann 2016) | Darion Logic Sim |
 |---|---|---|---|
-| **Target Scale** | Small educational circuits (< 1,000 gates) | Medium circuits / toy CPUs (< 50,000 gates) | Standard-cell netlists up to the largest tested (`hyp.v`, 420,896 gates; `b19` expands to 356k engine entries). Logisim/Digital figures are unmeasured estimates. |
+| **Target Scale** | Educational circuits (no size limit measured here) | Educational circuits; headless runs here handled gate-level netlists up to EPFL arbiter (23k gates) and ITC99 b15 (21k after merging) | Standard-cell netlists up to the largest tested (`hyp.v`, 420,896 gates; `b19` expands to 356k engine entries) |
 | **Language & Architecture** | Java Swing; recursive graph traversal | Java; flattened `Node`/`Element` object graph | Cython / C++ native Array-of-Structures (AOS) |
-| **Memory Model** | Heap-allocated Java objects; GC pauses | Heap-allocated Java objects; high pointer indirection | Contiguous 24-byte cache-aligned native struct |
+| **Memory Model** | Java objects (GC behaviour not measured) | Java objects in a `Node`/`Element` graph | Contiguous 24-byte native structs (not line-aligned: 25% straddle a 64-byte line, Claim 4) |
 | **Simulation Paradigms** | Event-driven with static step limits | Event-driven loop (micro-step) | Dual-engine: BFS Wavefront + Topological Linear Sweep |
 | **Academic Benchmark Suite** | None | Ad-hoc processor circuits | ISCAS-85, ISCAS-89, IWLS 2005, EPFL Mammoth |
-| **Hardware Baselines** | None | None | Formally benchmarked against **Icarus Verilog** and **Verilator** |
+| **Hardware Baselines** | None | None | Benchmarked and verified against **Icarus Verilog** and **Verilator** on 88 circuits in 8 suites |
 
 ---
 
@@ -435,7 +450,7 @@ In computer systems (OSDI, SOSP, ASPLOS) and EDA (DAC, ICCAD, TCAD), novelty rar
 1. **Architectural Synthesis:** Combining previously incompatible design patterns (e.g., interactive visual CAD and high-performance low-level simulation) to break an established trade-off.
 2. **Microarchitectural Realization:** Translating abstract algorithmic models into cache-conscious, branchless native implementations that run at machine limits.
 3. **Dual-Mode Adaptability:** Unifying two separate paradigms (Discrete-Event Wavefront vs. Static Linear Sweep) under a single in-memory representation without recompilation.
-4. **Empirical Discovery and Proof:** Providing rigorous cross-engine measurements across standardized benchmark suites that reveal operational boundary conditions (such as the low-activity inversion point against Verilator).
+4. **Empirical Discovery and Proof:** Providing rigorous cross-engine measurements across standardized benchmark suites that reveal operational boundary conditions (for Darion: the size crossover against Verilator, driven by compiled-code footprint; the earlier "low-activity inversion point" explanation was refuted, Claim 9).
 
 ---
 
@@ -446,12 +461,12 @@ When writing the paper, the contributions should be framed around these concrete
 1. **The Single-Invariant Masked Accumulator (SIMA):**
    - Unifies all eight elementary logic gates into a single 3-tuple parameter vector $(\text{seed}, \text{mask}, \text{inv})$, evaluating parity via a bitwise mask (`mask = 0x01`) and dual-inversion via bitwise XOR (`flags & 1`).
    - The entire gate library evaluates through a single, uniform branchless instruction: `bool(logic & mask) ^ (flags & 1)`.
-   - Eliminates virtual method tables (`vtable`); all gates share one flat array and one evaluation rule. The benefit of the rule itself over a `switch(type)` evaluator has **not yet been isolated** (ablation pending).
+   - Eliminates virtual method tables (`vtable`); all gates share one flat array and one evaluation rule. The benefit of the rule over a `switch(type)` evaluator was isolated on 2026-10-20/21: 1.1-1.7x in the real engine (Claim 1) and 1.35-1.5x in the harness on real circuits (Claim 13).
 
 2. **Microarchitectural Data-Oriented Design (DOD):**
    - Gates are packed into an exact 24-byte POD struct (`static_assert(sizeof(CPP_Gate) == 24)`). Field order inside the first 8 bytes is not a result.
    - Re-allocates gates in physical memory based on Kahn's topological sort to improve locality. IPC is not an achievement: the 4+ IPC figures come from tiny L1-resident chains, and real `hyp.v` runs at IPC 1.3–1.5.
-   - The defensible systems result is the **size crossover versus compiled simulation** (compiled-code footprint versus instruction cache), not the struct layout.
+   - The defensible systems result is the **size crossover versus compiled simulation** (compiled-code footprint versus instruction cache), not the struct layout. *(Superseded 2026-10-22: these Verilator numbers came from its blocking lowering of the library's UDP flops, which is wrong and slow; with a correct flop model Verilator is faster on all 88 master-test circuits. See Claim 9 in `research/Claims.md`.)*
 
 3. **Dynamic Bounded Topological Sweep (`sweep`) with Back-Edge Escape:**
    - Bridges the gap between static oblivious simulation (which evaluates $0 \dots N-1$ unconditionally) and levelized event scheduling (which incurs queue overhead).
@@ -508,7 +523,8 @@ When writing the paper, the contributions should be framed around these concrete
   title     = {Making Cyclic Circuits Acyclic},
   booktitle = {Proceedings of the 40th ACM/IEEE Design Automation Conference (DAC)},
   pages     = {159--162}, year = {2003},
-  doi       = {10.1145/775832.775874}
+  doi       = {10.1145/775832.775874},
+  note      = {Read 2026-10-22: synthesis of an equivalent acyclic circuit; context only.}
 }
 
 @inproceedings{riedel2003synthesis,
@@ -566,7 +582,8 @@ When writing the paper, the contributions should be framed around these concrete
   title     = {Cache-Conscious Structure Layout},
   booktitle = {Proceedings of the ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI)},
   pages     = {1--12}, year = {1999},
-  doi       = {10.1145/301618.301633}
+  doi       = {10.1145/301618.301633},
+  note      = {Abstract and introduction read 2026-10-22 (ccmorph, ccmalloc; 28-194\% on Olden).}
 }
 
 @inproceedings{chilimbi1999definition,
@@ -708,7 +725,7 @@ When writing the paper, the contributions should be framed around these concrete
   booktitle = {Proceedings of the 9th International Conference on VLSI Design},
   pages     = {303--306}, year = {1996},
   doi       = {10.1109/ICVD.1996.489615},
-  note      = {Not read; relevant to the compiled-versus-event-driven crossover.}
+  note      = {Read 2026-10-22 (13-page manuscript copy). Interpreted Inversion Algorithm within a small factor of compiled, first results 10x+ sooner; no I-cache argument. Prior art for the turnaround trade-off (Claim 8).}
 }
 
 @inproceedings{driesen1996direct,
@@ -716,7 +733,8 @@ When writing the paper, the contributions should be framed around these concrete
   title     = {The Direct Cost of Virtual Function Calls in {C++}},
   booktitle = {Proceedings of the 11th ACM SIGPLAN Conference on Object-Oriented Programming, Systems, Languages, and Applications (OOPSLA)},
   pages     = {306--323}, year = {1996},
-  doi       = {10.1145/236337.236369}
+  doi       = {10.1145/236337.236369},
+  note      = {Full text in the papers folder; medians 5.2\% and 13.7\% re-checked 2026-10-22.}
 }
 
 @article{driesen1998accurate,
@@ -766,18 +784,18 @@ When writing the paper, the contributions should be framed around these concrete
 
 ---
 
-## 6. Publication-Ready "Related Work" Section
+## 6. Draft "Related Work" section (rewritten 2026-10-22)
 
-Here is the complete, publication-ready Related Works section for your paper:
+The earlier draft here contained claims nothing in the repository supports ("GC pauses", educational tools that "degrade severely", commercial tools "burdened by legacy polymorphic codebases", "Darion introduces a pure data-oriented architecture to logic simulation", Bryant cited for zero-delay loops, the refuted low-activity story). It is replaced by the draft below. Every factual sentence is backed by a paper in `~/Github/darion_research_papers` or by section 0; citations marked (not read) must be read before submission or cited only for their metadata-level content.
 
 > ### Related Work
-> 
-> **Logic Simulation Paradigms and Activity Thresholds:** Digital logic simulation fundamentally partitions into Discrete-Event Simulation (DES) \cite{ulrich1969exclusive} and Levelized Compiled-Code Simulation (LCS) \cite{wang1990lecsim} \textbf{[add a verified LCS reference]}. DES computes signal transitions dynamically based on event sensitivity, making it well-suited for circuits with sparse dynamic switching activity. In contrast, cycle-based compiled simulators, such as Verilator \cite{verilator_veripool}, translate logic netlists into straight-line machine instructions that evaluate the entire gate topology unconditionally on every active clock edge. Recent work by Beamer and Donofrio \cite{beamer2020exploiting} shows that exploiting low activity factors accelerates RTL simulation by skipping quiescent logic. We find that on gate-level netlists the observed crossover against a compiled simulator tracks design size, through the instruction-cache footprint of the generated code, rather than activity. Darion offers both paradigms within a single native runtime, dynamically supporting both double-buffered wavefront DES and linear topological sweeps over a contiguous memory layout without requiring offline C++ compilation passes.
-> 
-> **Gate Evaluation and Universal Parameterization:** Classical gate evaluation scans a gate's inputs or maintains a count of inputs at the gate's controlling value, updated on each input change \cite{abramovici1990digital, szygenda1975digital}. Maurer showed that gate outputs need not be computed explicitly: counting dominant-valued inputs suffices for AND/NAND/OR/NOR, XOR, XNOR, NOT and BUFFER can be processed by input changes alone, and output inversion can be applied afterwards \cite{maurer1994inversion, maurer1999patent}, and that state-testing code can be removed altogether by encoding gate state in subroutine addresses, an idea he motivated by virtual-function dispatch in place of type codes \cite{maurer1993shadow, maurer2000event}. On current out-of-order processors we measure the opposite trade-off: per-gate indirect dispatch dominates the cost, and replacing it with arithmetic over flat records removes it (Section 5.3). Our Single-Invariant Masked Accumulator (SIMA) is an arithmetic realization of this family: each gate keeps one count of inputs equal to a seed value, a mask selects an existence test or parity, and an inversion bit complements the result, so all eight elementary gates share one branch-free rule over a 24-byte record that also holds the output. We do not claim the counting idea as new; we contribute the uniform formulation, its verification, and a measured comparison with a type switch in the same engine.
 >
-> **Microarchitecture and Data-Oriented Design:** The widening disparity between CPU arithmetic throughput and memory latency (the "Memory Wall") has established memory locality as the primary bottleneck in large-scale simulation \cite{chilimbi1999cache}. While high-performance software engineering has widely adopted Data-Oriented Design (DOD) \cite{acton2014data}, commercial EDA tools remain burdened by legacy polymorphic C++ codebases, and interactive educational environments such as Logisim \cite{burch2002logisim} and Digital \cite{neemann2016digital} rely on heap-allocated Java/JVM object graphs subject to garbage collection pauses and cache pollution. Darion introduces a pure Data-Oriented architecture to logic simulation: gate structures are compacted into an exact 24-byte POD layout. Coupled with Kahn-based topological memory reordering, this keeps the working set compact and prefetch-friendly, and the engine's instruction footprint is independent of netlist size.
-> 
-> **Feedback Loops, Bounded Convergence, and Glitch Filtering:** Handling cyclic combinational loops in zero-delay simulation represents a classical challenge \cite{bryant1984switch, malik1994analysis, shiple1996combinational}. Simulators enforce fixed iteration limits on zero-delay loops: Verilator's \texttt{--converge-limit} (default 100 in 4.x and 5.020, 10000 in the current guide; exceeding it is an error), Logisim (1,000 iterations by default, then simulation stops \cite{burch2002logisim}) and Digital (1,000 micro-steps, then an error, with an optional random-order recovery mode \cite{neemann2016digital}); the behaviour of commercial tools was not verified. Formal cycle analysis \cite{malik1994analysis, edwards2003making} relies on expensive ternary BDD or SAT traversals during synthesis. Darion establishes a dynamic two-tier wave budgeting system: for Directed Acyclic Graphs (DAGs), reaching quiescence in a worst-case linear chain requires at most $|V| + 1$ wavefront evaluations, establishing a pigeonhole bound that guarantees zero false positives on acyclic circuits (the exact requirement is the circuit depth, so the bound is loose). For sequential circuits modeled with gate-level feedback latches, Darion uses a $2|V|$ heuristic budget, which we have not proven; non-convergence within it is not fatal because the cone is promoted to timed simulation. When the wave limit is reached, Darion seamlessly promotes oscillating wavefronts into an asynchronous timed priority queue with individual physical gate delays without crashing. Furthermore, Darion incorporates $O(1)$ timestamp validation to implement inertial delay glitch filtering \cite{abramovici1990digital}, physically absorbing transient race-condition spikes in-place.
-> 
-> **Interactive CAD vs. Batch Compilation:** Existing EDA software enforces a strict division between interactive schematic design and high-throughput simulation. Educational visual tools provide intuitive drag-and-drop wiring but degrade severely on large designs due to dynamic object overheads. Conversely, industrial engines achieve exceptional throughput but operate as offline, batch-compiled command-line tools devoid of real-time visual feedback. Darion bridges this divide with a model-view decoupling: the interactive PySide6 frontend communicates with the native C++ simulation backend through integer gate indices and a visual-queue deque, achieving sub-second elaboration of industrial netlists (about 90$\times$ lower turnaround than Verilator's compile flow on `b19`, measured with the Verilog parse included) and competitive simulation throughput on large designs.
+> **Event-driven and levelized simulation.** Event-driven gate simulation goes back to Ulrich's selective trace \cite{ulrich1969exclusive}: only a small fraction of elements is active at once, activity travels in waves from active elements to their destinations, and a per-element schedule marker prevents double scheduling. Levelized compiled simulation evaluates every gate in topological order and is fast when activity is high; LECSIM combines levelized order with event scheduling, but must find strongly connected components and break feedback paths before it can levelize, iterates feedback blocks under a fixed cap, and names recompilation after each circuit change as its major problem \cite{wang1990lecsim}. Maurer showed that a fixed, interpreted engine can run within a small factor of its compiled form while giving first results an order of magnitude sooner \cite{maurer1996compiled}. Modern compiled simulators such as Verilator \cite{verilator_veripool} and activity-aware generators such as ESSENT \cite{beamer2020exploiting} occupy the high-throughput end. Darion keeps a levelized walk (`sweep`) and an event-driven wave engine (`propagate`) over one array; back edges found at run time are handed from the first to the second, a test LECSIM already used, without any loop analysis beforehand.
+>
+> **Counting-based gate evaluation.** Counting the inputs at a gate's dominant value is classical \cite{schuler1972nand}; Maurer's Inversion Algorithm processes AND/NAND/OR/NOR by such a count, XOR/XNOR/NOT/BUFFER by input changes alone, defers output inversion, and removes net values \cite{maurer1994inversion, maurer1999patent}. His EVCF technique then removes state-testing code by holding all state in code addresses, an idea he motivated by virtual-function dispatch replacing type codes \cite{maurer2000event}. Teiche evaluates mixed gate types branch-free in compiled SIMD code by summing inputs and indexing a table \cite{teiche2019simd}. SIMA keeps one incrementally maintained count of inputs equal to a seed value, and evaluates all eight elementary gates by one masked AND and an inversion bit, with a type-agnostic edge update and every gate's value kept for observation. To our knowledge this formulation is new; the counting idea is not.
+>
+> **Dispatch and data layout.** The cost of virtual calls and its dependence on indirect-branch prediction are well studied \cite{driesen1996direct, driesen1998accurate}, and so is cache-conscious layout of pointer structures \cite{chilimbi1999cache, chilimbi1999definition}. On current out-of-order cores we measure the trade-off Maurer argued for in the opposite direction: per-gate indirect dispatch, not type decoding, dominates the cost of an event-driven gate engine, and an ablation attributes most of the roughly 2x gap between an object-graph engine and a flat one to dispatch and the evaluation rule, with layout mattering mainly when memory is scattered and exceeds the last-level cache.
+>
+> **Zero-delay feedback.** Cyclic circuits are analysed with ternary simulation and related methods, for which linear step bounds are known, while binary settling has only an exponential general bound \cite{shiple2002logical, malik1994analysis}; synthesis can also remove cycles \cite{edwards2003making}. Simulators stop zero-delay loops with a fixed iteration limit, usually with an error: Verilator's `--converge-limit`, GHDL's `--stop-delta` \cite{ghdl_docs}, Logisim's 1,000-step default \cite{burch2002logisim} and Digital's 1,000 micro-steps \cite{neemann2016digital} (commercial defaults were not verified). Darion derives the limit from the live size of the netlist, maintained in constant time under editing; the limit never fires on acyclic logic, certifies a traversed loop when it does, and hands the remaining activity to timed simulation instead of stopping.
+>
+> **Interactive and programmatic tools.** Logisim \cite{burch2002logisim}, Digital \cite{neemann2016digital} and DigitalJS \cite{materzok2019digitaljs} are interactive, visual simulators aimed at teaching; PyRTL \cite{clow2017pyrtl} and cocotb make hardware simulation programmable from Python. ESCAPE \cite{fleurkens1996escape} embedded an event-driven simulator in an editor with incremental model updates and an API, and already argued that interactivity need not cost simulator performance. Darion follows that goal at gate level on modern hardware: a load measured in milliseconds, an API that reads any gate, a changed-gate queue whose cost we measure, and throughput that we report against Icarus Verilog and Verilator as reference points rather than competitors.

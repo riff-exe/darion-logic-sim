@@ -246,7 +246,7 @@ In digital logic simulation and Electronic Design Automation (EDA) research, dig
 1. **Discrete-Event / Event-Driven Simulation (DES):** Implemented by **Reactor (Propagate & Sweep)** and **Icarus Verilog**. The simulation engine evaluates a gate if and only if one of its driving input nets undergoes a dynamic value transition.
 2. **Cycle-Based / Static Compiled Simulation (CBS):** Implemented by **Verilator C++**. The circuit netlist is topologically scheduled into a static Directed Acyclic Graph (DAG) and compiled directly into C++ scalar machine instructions. The full combinational logic cone is unconditionally evaluated on every cycle trigger.
 
-When conducting cross-engine benchmarks, researchers observe a remarkable phenomenon: **on small structural netlists (ISCAS-89 `s5378`), Verilator outperforms event-driven simulation by 31× to 85×; yet on standard-cell netlists (IWLS 2005 `b12`), the margin drops to 2.8×; and on mammoth processor netlists (`b18`, `b19`, `vga_lcd`), the scaling inverts on the Cadence-UDP netlists measured here and Reactor outperforms Verilator by up to 2.03×. This does not generalize: in the IWLS runs reported in `Claims.md`, Verilator wins 17 of 21 circuits.**
+When conducting cross-engine benchmarks, researchers observe a remarkable phenomenon: **on small structural netlists (ISCAS-89 `s5378`), Verilator outperforms event-driven simulation by 31× to 85×; yet on standard-cell netlists (IWLS 2005 `b12`), the margin drops to 2.8×; and on mammoth processor netlists (`b18`, `b19`, `vga_lcd`), the scaling inverts on the Cadence-UDP netlists measured here and Reactor outperforms Verilator by up to 2.03×. This does not generalize: in the IWLS runs reported in `Claims.md`, Verilator wins 18 of 21 circuits (recounted 2026-10-22; 84 of 88 over all eight suites).** *(Superseded 2026-10-22: these Verilator numbers came from its blocking lowering of the library's UDP flops, which is wrong and slow; with a correct flop model Verilator is faster on all 88 master-test circuits. See Claim 9 in `research/Claims.md`.)*
 
 This section presents the formal mathematical theory, compiler code-generation analysis, microarchitectural cache dynamics, and empirical state audits that explain this behavior.
 
@@ -309,7 +309,7 @@ $$A^* \approx \frac{1.2\,\text{ns}}{14.5\,\text{ns}} \approx 8\% - 12\%$$
 - **High Activity Regime ($A \gg A^*$, e.g., $A \approx 40\% - 75\%$):**
   In arithmetic data-paths, multipliers (e.g., ISCAS-85 `c6288`), and dense logic cones, a change at the inputs cascades through the majority of gates. Here, Event-Driven Simulation incurs event scheduling overhead on almost every gate without gaining sparsity savings. CBS processes all gates via flat, branchless SIMD/superscalar instructions. **Verilator is 10× to 85× faster.**
 - **Low Activity Regime ($A \ll A^*$, e.g., $A \approx 2\% - 5\%$):**
-  In microprocessors, bus fabrics, and system-on-chip controllers (e.g., IWLS 2005 `b18`, `b19`, OpenCores `vga_lcd`, in the Cadence-UDP netlists measured here), 95% to 98% of the circuit was idle during any clock cycle (unselected registers, quiescent ALUs, inactive decoders). Here, CBS evaluates all 250,000+ gates wastefully. Reactor evaluates only the ~5,000 active gates per clock edge. **Reactor is 1.6× to 2.03× faster than Verilator on these Cadence-UDP netlists only; across all IWLS circuits Verilator is faster on 17 of 21.**
+  In microprocessors, bus fabrics, and system-on-chip controllers (e.g., IWLS 2005 `b18`, `b19`, OpenCores `vga_lcd`, in the Cadence-UDP netlists measured here), 95% to 98% of the circuit was idle during any clock cycle (unselected registers, quiescent ALUs, inactive decoders). Here, CBS evaluates all 250,000+ gates wastefully. Reactor evaluates only the ~5,000 active gates per clock edge. **Reactor is 1.6× to 2.03× faster than Verilator on these Cadence-UDP netlists only; across the 21 ITC99 circuits Verilator is faster on 18 (recounted 2026-10-22).**
 
 ---
 
@@ -658,6 +658,8 @@ When analyzing sequential simulation performance across benchmark suites, users 
 | **IWLS 2005** | `b18.v` | 132,940 | 100,490 ms | **17,470 ms** | **28,440 ms** | **3.5×** | ⚠️ **Reactor is 1.63× FASTER** |
 | **OpenCores** | `vga_lcd.v` | 187,445 | 12,680 ms | **10,180 ms** | **10,390 ms** | **1.2×** | ⚠️ **Reactor is 1.02× FASTER** |
 | **IWLS 2005** | `b19.v` | 257,489 | 146,680 ms | **31,540 ms** | **64,000 ms** | **2.3×** | ⚠️ **Reactor is 2.03× FASTER** |
+
+>*(Superseded 2026-10-22: these Verilator numbers came from its blocking lowering of the library's UDP flops, which is wrong and slow; with a correct flop model Verilator is faster on all 88 master-test circuits. See Claim 9 in `research/Claims.md`.)*
 
 #### Why Does the Verilator Margin Narrow and Invert on Complex Netlists?
 1. **Structural Netlists vs. Standard-Cell UDPs:** In ISCAS-89, gates are native primitives and DFFs are purely synchronous single-edge registers. In IWLS, circuits are synthesized into standard cells (`GSCLib_3.0.v`) with User-Defined Primitives (`udp_dff`). Verilator compiles asynchronous hazard-handling triggers and multi-trigger sensitivity loops (`_eval_ico`, `_eval_act`, `_eval_nba`) for every flip-flop, generating **4.0× more active C++ code (12.3k lines vs. 3.1k lines)** for equal gate counts (`b12` vs `s5378`).

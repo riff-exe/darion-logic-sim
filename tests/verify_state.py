@@ -11,7 +11,11 @@ What it adds over tests/src/verifier_iwls.py
       run    reset deasserted after warmup, inputs toggle with probability 0.1 (state actually evolves)
   * Darion is driven in the same configurations as the benchmarks: rx-prop (SIMULATE, BFS layout) and
     rx-sweep (COMPILE, DFS layout);
-  * reports how many reference bits were X (Icarus, 4-state) and therefore not compared.
+  * reports how many reference bits were X (Icarus, 4-state) and therefore not compared;
+  * the Verilator leg compiles iwls_sequential_harness.verilator_gsclib(): the cell library with its sequential
+    UDPs as nonblocking modules, because Verilator lowers UDP tables to blocking assignments (its BLKSEQ
+    warning), which makes flop-to-flop transfers depend on evaluation order and was the cause of every
+    Verilator/Icarus disagreement seen with this harness (--verilator-udp keeps the original library).
 
 Real workload:  python tests/verify_state.py --workload tv80 [--cycles 20000]
         a Z80 program running on the tv80 netlist, bus trace compared with Icarus (see "workload tv80" below)
@@ -20,7 +24,7 @@ Case study:     python tests/verify_state.py --case-study [--cycles 2000 --seed 
         tv80 with one injected bug (a 2-input cell swapped) runs the Z80 program; the bug is located from the failing
         run with Darion's API and with an Icarus compile/run/VCD workflow; both are timed (see "case study" below)
 
-Usage:  python tests/verify_state.py b14 [--logical 50000] [--ic-logical 5000] [--stim bench|run]
+Usage:  python tests/verify_state.py b14 [--logical 50000] [--ic-logical 5000] [--stim bench|run] [--suite opencores] [--no-verilator] [--all-clocks] [--verilator-udp] [--gls-flops]
         (reference runs are written under a scratch directory, never inside tests/)
 """
 import os
@@ -90,19 +94,28 @@ def make_state_netlist(src, dst):
 # --------------------------------------------------------------------------------------
 # stimulus (same warmup as verifier_iwls.py)
 # --------------------------------------------------------------------------------------
-def make_vectors(n_in, clk_idx, rst_idx, rst_deassert, logical, stim, seed=42):
+def make_vectors(n_in, clk_idx, rst_idx, rst_deassert, logical, stim, seed=42, extra_clks=()):
+    """extra_clks (--all-clocks): secondary clock inputs. Each logical cycle becomes one data vector
+    with every clock low, then per clock one vector with only that clock high and one with it low
+    again, so no rising or falling clock edge (negedge flops, inverted clocks) shares a step with a
+    data change or another clock's edge. Empty = the original single-clock stimulus."""
     rst_assert = 1 - rst_deassert
+    clks = [clk_idx] + list(extra_clks)
     phys = []
     for i in range(50):
         w = [0] * n_in
-        if i < 10:
+        if i == 0:
+            if rst_idx != -1:   # reset inactive first, so asserting it is an edge for edge-triggered async set/reset
+                w[rst_idx] = rst_deassert
+        elif i < 10:
             if rst_idx != -1:
                 w[rst_idx] = rst_assert
         else:
             if rst_idx != -1:
                 w[rst_idx] = rst_deassert
             if clk_idx != -1:
-                w[clk_idx] = (i - 10) % 2
+                j = i - 10
+                w[clks[(j // 2) % len(clks)]] = j % 2
         phys.append(w)
     rng = random.Random(seed)
     cur = [rng.randint(0, 1) for _ in range(n_in)]
@@ -111,14 +124,25 @@ def make_vectors(n_in, clk_idx, rst_idx, rst_deassert, logical, stim, seed=42):
             cur = [rng.randint(0, 1) for _ in range(n_in)]
         else:
             for i in range(n_in):
-                if i != clk_idx and rng.random() < 0.1:
+                if i not in clks and rng.random() < 0.1:
                     cur[i] ^= 1
             if rst_idx != -1:
                 cur[rst_idx] = rst_deassert
-        for clk in (0, 1):
-            v = list(cur)
-            v[clk_idx] = clk
+        if not extra_clks:
+            for clk in (0, 1):
+                v = list(cur)
+                v[clk_idx] = clk
+                phys.append(v)
+            continue
+        low = list(cur)
+        for c in clks:
+            low[c] = 0
+        phys.append(list(low))
+        for c in clks:
+            v = list(low)
+            v[c] = 1
             phys.append(v)
+            phys.append(list(low))
     return phys
 
 
@@ -146,16 +170,18 @@ def run_icarus(vfile, phys):
     return [l.strip().lower() for l in open(out).read().splitlines() if l.strip()]
 
 
-def run_verilator(vfile, phys):
+def run_verilator(vfile, phys, original_udp=False):
     base = os.path.splitext(vfile)[0]
     tb, vec, out, obj = base + "_vl.cpp", base + "_vl_in.txt", base + "_vl_out.txt", base + "_vl_obj"
     module, ports, flat_in, flat_out, _, _ = H.parse_iwls_ports(vfile)
     open(vec, "w").write("\n".join("".join(map(str, v)) for v in phys) + "\n")
     V.generate_verilator_verifier_tb(vfile, tb, module, ports, flat_in, flat_out)
     gsc = H.find_gsclib_path(vfile)
+    if not original_udp:
+        gsc = H.verilator_gsclib(gsc, base + "_gsclib_verilator.v")
     subprocess.run(["verilator", "-O3", "-Wno-fatal", "--default-language", "1364-2001", "--cc", gsc, vfile, "--exe", tb,
                     "--top-module", module, "--Mdir", obj], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    subprocess.run(["make", "-j", str(os.cpu_count() or 4), "-C", obj, "-f", f"V{module}.mk", f"V{module}"],
+    subprocess.run(["make", "-j", str(H.verilator_make_jobs(obj)), "-C", obj, "-f", f"V{module}.mk", f"V{module}"],
                    check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     subprocess.run([f"{obj}/V{module}", vec, out], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return [l.strip() for l in open(out).read().splitlines() if l.strip()]
@@ -666,7 +692,13 @@ def main():
     ap.add_argument("--suite", default="itc99")
     ap.add_argument("--case-study", action="store_true", help="tv80: locate one injected bug with Darion's API and with an Icarus VCD workflow")
     ap.add_argument("--seed", type=int, default=1, help="--case-study: seed for choosing the injected bug")
+    ap.add_argument("--no-verilator", action="store_true", help="skip the Verilator reference (e.g. when its build fails on a large state netlist); compare against Icarus only")
+    ap.add_argument("--all-clocks", action="store_true", help="drive every primary input that clocks a flop as a clock, each in its own step (multi-clock designs)")
+    ap.add_argument("--gls-flops", action="store_true", help="Icarus and Verilator compile the cell library with Darion's gate-level flop and mux cells (same netlist)")
+    ap.add_argument("--verilator-udp", action="store_true", help="Verilator compiles the original library UDP flops (blocking, order-dependent) instead of the nonblocking copy")
     args = ap.parse_args()
+    if args.gls_flops:
+        os.environ["DARION_GLS_FLOPS"] = "1"
     if args.workload == "tv80":
         return workload_tv80(args.cycles or 20000)
     if args.case_study:
@@ -685,11 +717,16 @@ def main():
         deassert = 1 if active_low else 0
         n_out = len(flat_out)
         names = list(flat_out) + list(flops)
-        print(f"{args.circuit}: {len(flops)} flops exposed, {n_out} primary outputs, stim={args.stim}")
+        extra = []
+        if args.all_clocks and clk_idx != -1:
+            clocked = set(re.findall(r"\.(?:CK|CLK)\s*\(\s*([^\s)]+)\s*\)", open(src).read()))
+            extra = [i for i, n in enumerate(flat_in) if n in clocked and i != clk_idx]
+        print(f"{args.circuit}: {len(flops)} flops exposed, {n_out} primary outputs, stim={args.stim}"
+              + (f", clocks {[flat_in[i] for i in [clk_idx] + extra]}" if args.all_clocks else ""))
 
-        phys = make_vectors(len(flat_in), clk_idx, rst_idx, deassert, args.logical, args.stim)
+        phys = make_vectors(len(flat_in), clk_idx, rst_idx, deassert, args.logical, args.stim, extra_clks=extra)
         start = 50
-        ic_phys = phys[: 50 + 2 * args.ic_logical]
+        ic_phys = phys[: 50 + (2 if not extra else 1 + 2 * (1 + len(extra))) * args.ic_logical]
         results = {}
         for mode in ("simulate", "compile"):
             t = time.time()
@@ -697,12 +734,14 @@ def main():
             results[mode] = rows
             print(f"  rx-{'prop' if mode == 'simulate' else 'sweep'}: {len(rows)} vectors in {time.time()-t:.1f}s")
 
-        t = time.time()
-        vl = run_verilator(vfile, phys)
-        print(f"  verilator reference: {len(vl)} vectors in {time.time()-t:.1f}s")
-        for mode, rows in results.items():
-            mism, cmpd, xs, first, cols = compare(rows, vl, start, False)
-            print(f"    rx-{'prop' if mode == 'simulate' else 'sweep'} vs Verilator: {cmpd:,} bits compared, {mism} mismatches in {len(cols)} column(s) {sorted(names[c] for c in cols)[:5]}")
+        vl = None
+        if not args.no_verilator:
+            t = time.time()
+            vl = run_verilator(vfile, phys, args.verilator_udp)
+            print(f"  verilator reference: {len(vl)} vectors in {time.time()-t:.1f}s")
+            for mode, rows in results.items():
+                mism, cmpd, xs, first, cols = compare(rows, vl, start, False)
+                print(f"    rx-{'prop' if mode == 'simulate' else 'sweep'} vs Verilator: {cmpd:,} bits compared, {mism} mismatches in {len(cols)} column(s) {sorted(names[c] for c in cols)[:5]}")
 
         if args.ic_logical:
             t = time.time()
@@ -713,8 +752,9 @@ def main():
             for mode, rows in results.items():
                 mism, cmpd, xs, first, cols = compare(rows[: len(ic)], ic, start, True)
                 print(f"    rx-{'prop' if mode == 'simulate' else 'sweep'} vs Icarus: {cmpd:,} bits compared, {xs:,} X bits skipped, {mism} mismatches in {len(cols)} column(s) {sorted(names[c] for c in cols)[:5]}")
-            mism, cmpd, xs, first, cols = compare(vl[: len(ic)], ic, start, True)
-            print(f"    (reference check) Verilator vs Icarus: {mism} mismatches in {len(cols)} column(s) {sorted(names[c] for c in cols)[:5]}")
+            if vl is not None:
+                mism, cmpd, xs, first, cols = compare(vl[: len(ic)], ic, start, True)
+                print(f"    (reference check) Verilator vs Icarus: {mism} mismatches in {len(cols)} column(s) {sorted(names[c] for c in cols)[:5]}")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 

@@ -200,6 +200,7 @@ class IWLSVerilogRunner:
         connections = []
         assign_statements = []
         gate_statements = []
+        single_bit_ports = []   # (name, bit) for ports declared [k:k]; netlists may use `name` or `name[k]`
 
         # Pass 1: Declare input / output ports and gather gate/assign statements
         for stmt in statements:
@@ -231,6 +232,8 @@ class IWLSVerilogRunner:
                         step = 1 if msb <= lsb else -1
                         for bit in range(msb, lsb + step, step):
                             add_input_var(f"{name}[{bit}]")
+                        if msb == lsb:
+                            single_bit_ports.append((self._clean_ident(name), msb))
                 else:
                     for name in [n.strip() for n in decl.split(',') if n.strip()]:
                         add_input_var(name)
@@ -248,6 +251,8 @@ class IWLSVerilogRunner:
                         step = 1 if msb <= lsb else -1
                         for bit in range(msb, lsb + step, step):
                             add_output_pin(f"{name}[{bit}]")
+                        if msb == lsb:
+                            single_bit_ports.append((self._clean_ident(name), msb))
                 else:
                     for name in [n.strip() for n in decl.split(',') if n.strip()]:
                         add_output_pin(name)
@@ -680,6 +685,14 @@ class IWLSVerilogRunner:
                 break
 
         # Pass 3: Connect combinational pin nets
+        # A [k:k] port can be referenced as `name` or `name[k]` (wb_dma does the former); alias both spellings.
+        for name, bit in single_bit_ports:
+            indexed = f"{name}[{bit}]"
+            if name in self.nodes and indexed not in self.nodes:
+                self.nodes[indexed] = self.nodes[name]
+            elif indexed in self.nodes and name not in self.nodes:
+                self.nodes[name] = self.nodes[indexed]
+
         for tgt_gate, src_items in connections:
             if not tgt_gate:
                 continue

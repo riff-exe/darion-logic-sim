@@ -38,12 +38,12 @@ sys.path.insert(0, _TESTS_DIR)
 sys.path.insert(0, _PROJECT_ROOT)
 
 try:
-    from iwls_sequential_harness import parse_iwls_ports, find_gsclib_path, find_reset_port
+    from iwls_sequential_harness import parse_iwls_ports, find_gsclib_path, find_reset_port, verilator_gsclib, verilator_make_jobs
 except ImportError:
     try:
-        from tests.src.iwls_sequential_harness import parse_iwls_ports, find_gsclib_path, find_reset_port
+        from tests.src.iwls_sequential_harness import parse_iwls_ports, find_gsclib_path, find_reset_port, verilator_gsclib, verilator_make_jobs
     except ImportError:
-        from tests.iwls_sequential_harness import parse_iwls_ports, find_gsclib_path, find_reset_port
+        from tests.iwls_sequential_harness import parse_iwls_ports, find_gsclib_path, find_reset_port, verilator_gsclib, verilator_make_jobs
 
 
 def dump_json_file(filepath, obj, indent=True):
@@ -315,6 +315,7 @@ def run_verilator_state_simulation(v_file: str, vectors: list) -> list:
 
         generate_verilator_verifier_tb(v_file, tb_file, module_name, port_decls, flat_inputs, flat_outputs)
 
+        gsclib_path = verilator_gsclib(gsclib_path, base_path + "_verif_verilator_gsclib.v")
         comp_cmd = [
             "verilator", "-O3", "-Wno-fatal", "--default-language", "1364-2001", "--cc",
             gsclib_path, v_file,
@@ -326,7 +327,7 @@ def run_verilator_state_simulation(v_file: str, vectors: list) -> list:
         if comp_res.returncode != 0:
             raise RuntimeError(f"Verilator compile error: {comp_res.stderr.strip()}")
 
-        build_cmd = ["make", "-j", str(os.cpu_count() or 4), "-C", obj_dir, "-f", f"V{module_name}.mk", f"V{module_name}"]
+        build_cmd = ["make", "-j", str(verilator_make_jobs(obj_dir)), "-C", obj_dir, "-f", f"V{module_name}.mk", f"V{module_name}"]
         build_res = subprocess.run(build_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if build_res.returncode != 0:
             raise RuntimeError(f"Verilator make build error: {build_res.stderr.strip()}")
@@ -351,7 +352,7 @@ def run_verilator_state_simulation(v_file: str, vectors: list) -> list:
         return normalized_results
 
     finally:
-        for p in (tb_file, vec_file, out_file):
+        for p in (tb_file, vec_file, out_file, base_path + "_verif_verilator_gsclib.v"):
             if os.path.exists(p):
                 try: os.remove(p)
                 except OSError: pass

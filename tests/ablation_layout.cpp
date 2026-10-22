@@ -16,7 +16,16 @@
 //         c->d changes the evaluation rule only (same struct, same layout),
 //         d->e changes the struct size only (24 -> 32 bytes; alignment of the 64-byte line),
 //         b->g changes dispatch AND rule at equal object size (40 B virtual -> 40 B SIMA, no vtable call), g->d then changes size only (40 -> 24).
-// Fan-out lists are per-gate malloc'd Profile arrays in every variant, so edges are not a difference.
+//   i  flat+idx   (optional) variant d with 32-bit index edges (8-byte entries instead of 16) and uint32 work queues
+//   j  flat32+idx (optional) variant i with the gate padded to 32 bytes (power-of-two stride); compare with e
+//   k  flat16+CSR (optional) index edges in one shared array ordered by gate placement (CSR); the gate is 16 bytes
+//                 (8-byte header + first-edge offset + edge count) instead of carrying a per-gate list
+//   p  CSR+ptr    (optional) variant k with pointer edges (16-byte entries) and pointer queues; k->p isolates index vs pointer in CSR
+//   q  packed     (optional) variant d with all hitlist arrays copied into one block in placement order (gate stays 24 B,
+//                 loop unchanged); d->q is the contiguous-edges part of p's gain, q->p the 24 -> 16 B gate part
+//         d->i changes the edge reference only (pointer -> index, same gate struct and per-gate lists),
+//         i->k changes where edges live (per-gate malloc'd lists -> one contiguous array) and shrinks the gate 24 -> 16.
+// Fan-out lists are per-gate malloc'd Profile arrays in variants a-g, so edges are not a difference among them.
 // All variants must report identical evaluation counts, changed-gate counts and final-state fingerprints.
 //
 // Build:  g++ -O3 -march=native -std=c++20 -o ablation_layout tests/ablation_layout.cpp
@@ -372,6 +381,207 @@ template <class G, class P> struct Flat : Engine<G, P> {
   }
 };
 
+// ---- q: variant d with every hitlist's data copied into one shared block in placement order (as optimize() could do);
+//      gate (24 B), lists, pointers and the propagate() loop are unchanged, only where the edge arrays live differs ----
+struct FlatPacked : Flat<FG, PolSima<FG>> {
+  Prof<FG> *block = nullptr;
+  FlatPacked(const Net &N) : Flat<FG, PolSima<FG>>(N, "q flat24+packed") {
+    size_t total = 0;
+    for (int s = 0; s < N.n; s++) total += arr[s].hit.size;
+    block = (Prof<FG> *)std::aligned_alloc(64, (total * sizeof(Prof<FG>) + 63) / 64 * 64 + 64);
+    size_t off = 0;
+    for (int s = 0; s < N.n; s++) {                          // slot order = memory order of the gates
+      Hit<FG> &h = arr[s].hit;
+      if (h.size) std::memcpy(block + off, h.data, h.size * sizeof(Prof<FG>));
+      std::free(h.data); h.data = block + off; h.capacity = h.size; off += h.size;
+    }
+  }
+};
+
+// ---- index variants (i, k): the same propagate() loop with gates addressed by their array slot ----
+struct IEdge { uint32_t target; uint8_t logic, seed, index; };          // 8 B (pointer Profile: 16 B)
+static_assert(sizeof(IEdge) == 8, "unexpected edge size");
+struct IHit { IEdge *data = nullptr; uint32_t size = 0, capacity = 0;   // 16 B, same growth policy as Hit
+  void push(const IEdge &e) {
+    if (size == capacity) { capacity = capacity ? capacity * 2 : 2; data = (IEdge *)std::realloc(data, capacity * sizeof(IEdge)); }
+    data[size++] = e;
+  }
+};
+struct IG24 { uint8_t flags = F_UPDATE, output = UNKNOWN, inputlimit = 0, mask = 0xFF, logic = 0, seed = 1; int8_t type = 0; uint8_t reserved = 0; IHit hit; };
+struct IG16 { uint8_t flags = F_UPDATE, output = UNKNOWN, inputlimit = 0, mask = 0xFF, logic = 0, seed = 1; int8_t type = 0; uint8_t reserved = 0; uint32_t first = 0, count = 0; };
+struct IG32 { uint8_t flags = F_UPDATE, output = UNKNOWN, inputlimit = 0, mask = 0xFF, logic = 0, seed = 1; int8_t type = 0; uint8_t reserved = 0; IHit hit; uint8_t pad[8] = {}; };
+static_assert(sizeof(IG24) == 24 && sizeof(IG16) == 16 && sizeof(IG32) == 32, "unexpected index-gate sizes");
+
+template <class G, bool CSR> struct IndexEngine : Variant {
+  using P = PolSima<G>;
+  G *arr = nullptr;
+  std::vector<uint32_t> at;                   // id -> slot
+  std::vector<IEdge> edges;                   // CSR only: all edges, grouped by source slot in placement order
+  std::vector<uint32_t> q0, q1;
+  uint64_t evals = 0, changed = 0;
+
+  IndexEngine(const Net &N, const char *nm) {
+    name = nm; gate_bytes = sizeof(G); at.resize(N.n);
+    arr = (G *)std::aligned_alloc(64, ((size_t)N.n * sizeof(G) + 63) / 64 * 64);
+    for (int i = 0; i < N.n; i++) { at[i] = N.slot[i]; G *g = new (&arr[at[i]]) G(); init_flat(*g, N.type[i]); }
+    // edges in the same order as Engine::wire: target ids ascending, then pin
+    std::vector<std::vector<IEdge>> per(CSR ? N.n : 0);
+    for (int i = N.nin; i < N.n; i++)
+      for (size_t p = 0; p < N.in[i].size(); p++) {
+        int j = N.in[i][p]; G &t = arr[at[i]];
+        IEdge e{at[i], uint8_t(N.out[j] == t.seed), t.seed, uint8_t(p)};
+        if constexpr (CSR) per[at[j]].push_back(e); else arr[at[j]].hit.push(e);
+      }
+    if constexpr (CSR) {
+      for (int s = 0; s < N.n; s++) { arr[s].first = (uint32_t)edges.size(); arr[s].count = (uint32_t)per[s].size(); edges.insert(edges.end(), per[s].begin(), per[s].end()); }
+    }
+    for (int i = 0; i < N.n; i++) { arr[at[i]].output = N.out[i]; arr[at[i]].logic = N.logic[i]; }
+    q0.resize(N.n); q1.resize(N.n);
+  }
+
+  void propagate(size_t end_point) {
+    uint32_t *rq = q0.data(), *wq = q1.data(); size_t size = 0;
+    uint64_t ev = 0, ch = 0;
+    G *const base = arr;
+    while (end_point > 0) {
+      for (size_t index = 0; index < end_point; index++) {
+        G *src = base + rq[index];
+        P::clear_mark(src);
+        uint8_t new_output = src->output;
+        IEdge *pr, *end;
+        if constexpr (CSR) { pr = edges.data() + src->first; end = pr + src->count; }
+        else { pr = src->hit.data; end = pr + src->hit.size; }
+        ev += end - pr;
+        for (; pr < end; pr++) {
+          uint8_t curr = (new_output == pr->seed);
+          G *t = base + pr->target;
+          t->logic += curr - pr->logic;
+          uint8_t before = t->output;
+          if (__builtin_expect(new_output == UNKNOWN, 0)) t->output = UNKNOWN; else P::eval(t);
+          wq[size] = pr->target;
+          bool c = before != t->output;
+          size += (!P::is_marked(t)) & c;
+          P::set_mark(t, c);
+          ch += c;
+          pr->logic = curr;
+        }
+      }
+      end_point = size; size = 0; std::swap(rq, wq);
+    }
+    evals += ev; changed += ch;
+  }
+
+  Result run(const std::vector<std::vector<int>> &toggles, Perf *perf) override {
+    evals = changed = 0;
+    if (perf) perf->start();
+    auto t0 = std::chrono::steady_clock::now();
+    for (const auto &tg : toggles) {
+      size_t n = 0;
+      for (int code : tg) {
+        uint32_t s = at[code >> 2]; G *v = arr + s; int mode = code & 3;
+        uint8_t nv = (mode == 2) ? v->output ^ 1 : mode;
+        if (nv == v->output || P::is_marked(v)) continue;
+        v->output = nv; q0[n++] = s; P::set_mark(v, true);
+      }
+      propagate(n);
+    }
+    auto t1 = std::chrono::steady_clock::now();
+    Result r; r.pmu = perf ? perf->stop() : Counters{};
+    r.ms = std::chrono::duration<double, std::milli>(t1 - t0).count(); r.evals = evals; r.changed = changed;
+    return r;
+  }
+  uint64_t fingerprint(const Net &N) const override {
+    uint64_t h = 1469598103934665603ull;
+    for (int i = 0; i < N.n; i++) { const G &g = arr[at[i]]; h ^= g.output + 1u; h *= 1099511628211ull; h ^= g.logic; h *= 1099511628211ull; }
+    return h;
+  }
+};
+
+// ---- p: CSR with pointer edges (16-byte gate, one contiguous 16-byte-edge array, pointer queues) ----
+struct PG16;
+struct PEdge { PG16 *target; uint8_t logic, seed, index; };             // 16 B, as the pointer Profile
+struct PG16 { uint8_t flags = F_UPDATE, output = UNKNOWN, inputlimit = 0, mask = 0xFF, logic = 0, seed = 1; int8_t type = 0; uint8_t reserved = 0; uint32_t first = 0, count = 0; };
+static_assert(sizeof(PG16) == 16 && sizeof(PEdge) == 16, "unexpected pointer-CSR sizes");
+
+struct CsrPtrEngine : Variant {
+  using G = PG16; using P = PolSima<G>;
+  G *arr = nullptr;
+  std::vector<uint32_t> at;
+  std::vector<PEdge> edges;
+  std::vector<G *> q0, q1;
+  uint64_t evals = 0, changed = 0;
+
+  CsrPtrEngine(const Net &N) {
+    name = "p flat16+CSR+ptr"; gate_bytes = sizeof(G); at.resize(N.n);
+    arr = (G *)std::aligned_alloc(64, ((size_t)N.n * sizeof(G) + 63) / 64 * 64);
+    for (int i = 0; i < N.n; i++) { at[i] = N.slot[i]; G *g = new (&arr[at[i]]) G(); init_flat(*g, N.type[i]); }
+    std::vector<std::vector<PEdge>> per(N.n);
+    for (int i = N.nin; i < N.n; i++)
+      for (size_t p = 0; p < N.in[i].size(); p++) {
+        int j = N.in[i][p]; G &t = arr[at[i]];
+        per[at[j]].push_back(PEdge{&t, uint8_t(N.out[j] == t.seed), t.seed, uint8_t(p)});
+      }
+    for (int s = 0; s < N.n; s++) { arr[s].first = (uint32_t)edges.size(); arr[s].count = (uint32_t)per[s].size(); edges.insert(edges.end(), per[s].begin(), per[s].end()); }
+    for (int i = 0; i < N.n; i++) { arr[at[i]].output = N.out[i]; arr[at[i]].logic = N.logic[i]; }
+    q0.resize(N.n); q1.resize(N.n);
+  }
+
+  void propagate(size_t end_point) {
+    G **rq = q0.data(), **wq = q1.data(); size_t size = 0;
+    uint64_t ev = 0, ch = 0;
+    PEdge *const E = edges.data();
+    while (end_point > 0) {
+      for (size_t index = 0; index < end_point; index++) {
+        G *src = rq[index];
+        P::clear_mark(src);
+        uint8_t new_output = src->output;
+        PEdge *pr = E + src->first, *end = pr + src->count;
+        ev += src->count;
+        for (; pr < end; pr++) {
+          uint8_t curr = (new_output == pr->seed);
+          G *t = pr->target;
+          t->logic += curr - pr->logic;
+          uint8_t before = t->output;
+          if (__builtin_expect(new_output == UNKNOWN, 0)) t->output = UNKNOWN; else P::eval(t);
+          wq[size] = t;
+          bool c = before != t->output;
+          size += (!P::is_marked(t)) & c;
+          P::set_mark(t, c);
+          ch += c;
+          pr->logic = curr;
+        }
+      }
+      end_point = size; size = 0; std::swap(rq, wq);
+    }
+    evals += ev; changed += ch;
+  }
+
+  Result run(const std::vector<std::vector<int>> &toggles, Perf *perf) override {
+    evals = changed = 0;
+    if (perf) perf->start();
+    auto t0 = std::chrono::steady_clock::now();
+    for (const auto &tg : toggles) {
+      size_t n = 0;
+      for (int code : tg) {
+        G *v = arr + at[code >> 2]; int mode = code & 3;
+        uint8_t nv = (mode == 2) ? v->output ^ 1 : mode;
+        if (nv == v->output || P::is_marked(v)) continue;
+        v->output = nv; q0[n++] = v; P::set_mark(v, true);
+      }
+      propagate(n);
+    }
+    auto t1 = std::chrono::steady_clock::now();
+    Result r; r.pmu = perf ? perf->stop() : Counters{};
+    r.ms = std::chrono::duration<double, std::milli>(t1 - t0).count(); r.evals = evals; r.changed = changed;
+    return r;
+  }
+  uint64_t fingerprint(const Net &N) const override {
+    uint64_t h = 1469598103934665603ull;
+    for (int i = 0; i < N.n; i++) { const G &g = arr[at[i]]; h ^= g.output + 1u; h *= 1099511628211ull; h ^= g.logic; h *= 1099511628211ull; }
+    return h;
+  }
+};
+
 // ------------------------------------------------------------------------------------------------ driver
 static double median(std::vector<double> v) { std::sort(v.begin(), v.end()); size_t n = v.size(); return n % 2 ? v[n / 2] : 0.5 * (v[n / 2 - 1] + v[n / 2]); }
 
@@ -401,6 +611,11 @@ int main(int argc, char **argv) {
     else if (c == 'd') vs.emplace_back(new Flat<FG, PolSima<FG>>(N, "d flat24+SIMA"));
     else if (c == 'g') vs.emplace_back(new Flat<FG40, PolSima<FG40>>(N, "g flat40+SIMA"));
     else if (c == 'e') vs.emplace_back(new Flat<FG32, PolSima<FG32>>(N, "e flat32+SIMA"));
+    else if (c == 'i') vs.emplace_back(new IndexEngine<IG24, false>(N, "i flat24+idx"));
+    else if (c == 'k') vs.emplace_back(new IndexEngine<IG16, true>(N, "k flat16+CSR"));
+    else if (c == 'j') vs.emplace_back(new IndexEngine<IG32, false>(N, "j flat32+idx"));
+    else if (c == 'p') vs.emplace_back(new CsrPtrEngine(N));
+    else if (c == 'q') vs.emplace_back(new FlatPacked(N));
   }
   auto toggle_vec = [&](std::mt19937 &g) {
     if (!file_vecs.empty()) return file_vecs[cursor++ % file_vecs.size()];

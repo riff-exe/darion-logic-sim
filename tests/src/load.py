@@ -29,6 +29,9 @@ sys.path.insert(0, _PROJECT_ROOT)
 
 def find_gsclib_path(start_path: str = "") -> str:
     """Locate GSCLib_3.0.v in the repository."""
+    if os.environ.get("DARION_GLS_FLOPS"):
+        from iwls_sequential_harness import find_gsclib_path as _gls_aware
+        return _gls_aware(start_path)
     candidates = [
         os.path.join(_TESTS_DIR, "IWLS2005", "library", "GSCLib_3.0.v"),
         os.path.join(_SCRIPT_DIR, "IWLS2005", "library", "GSCLib_3.0.v"),
@@ -397,12 +400,14 @@ def measure_verilator_ram(v_file: str) -> dict:
         comp_cmd = ["verilator", "-O3", "-Wno-fatal", "--cc", v_file]
         gsclib = find_gsclib_path(v_file)
         if is_iwls_netlist(v_file, v_content) and gsclib:
-            comp_cmd.append(gsclib)
+            from iwls_sequential_harness import verilator_gsclib
+            comp_cmd.append(verilator_gsclib(gsclib, base_path + "_mem_gsclib.v"))
         comp_cmd.extend(["--exe", tb_file, "--top-module", module_name, "--Mdir", obj_dir])
         comp_res = subprocess.run(comp_cmd, capture_output=True, text=True)
         if comp_res.returncode != 0: return {"error": "Parse N/A"}
 
-        build_cmd = ["make", "-j", str(os.cpu_count() or 4), "-C", obj_dir, "-f", f"V{module_name}.mk", f"V{module_name}"]
+        from iwls_sequential_harness import verilator_make_jobs
+        build_cmd = ["make", "-j", str(verilator_make_jobs(obj_dir)), "-C", obj_dir, "-f", f"V{module_name}.mk", f"V{module_name}"]
         build_res = subprocess.run(build_cmd, capture_output=True, text=True)
         if build_res.returncode != 0: return {"error": "Build N/A"}
         
@@ -448,7 +453,7 @@ def measure_verilator_ram(v_file: str) -> dict:
     except Exception as e:
         return {"error": "Subprocess N/A"}
     finally:
-        for p in (tb_file, base_path + "_dummy.cpp", base_path + "_dummy_exe"):
+        for p in (tb_file, base_path + "_dummy.cpp", base_path + "_dummy_exe", base_path + "_mem_gsclib.v"):
             if os.path.exists(p): 
                 try: os.remove(p)
                 except: pass

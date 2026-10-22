@@ -409,7 +409,8 @@ def run_verilator_harness(v_file: str, vectors: int, warmup: int, use_perf: bool
         if comp_res.returncode != 0:
             return {"engine": "Verilator", "file": filename, "error": f"Verilator parse failure: {comp_res.stderr.strip()}"}
 
-        build_cmd = ["make", "-j", str(os.cpu_count() or 4), "-C", obj_dir, "-f", f"V{module_name}.mk", f"V{module_name}"]
+        from iwls_sequential_harness import verilator_make_jobs
+        build_cmd = ["make", "-j", str(verilator_make_jobs(obj_dir)), "-C", obj_dir, "-f", f"V{module_name}.mk", f"V{module_name}"]
         build_res = subprocess.run(build_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         t_comp_end = time.perf_counter_ns()
         compile_ms = (t_comp_end - t_comp_start) / 1_000_000.0

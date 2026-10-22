@@ -529,8 +529,13 @@ def main():
                         help="Save raw JSON results to disk (default: False)")
     parser.add_argument("--keep-artifacts", action="store_true", default=False,
                         help="Retain intermediate compilation and profiling artifacts on disk (default: False)")
+    parser.add_argument("--gls-flops", action="store_true", default=False,
+                        help="Icarus and Verilator compile the cell library with Darion's gate-level flop and mux cells "
+                             "(same netlist as Darion; iwls_sequential_harness.gls_gsclib)")
 
     args = parser.parse_args()
+    if args.gls_flops:
+        os.environ["DARION_GLS_FLOPS"] = "1"   # inherited by every phase's subprocess
 
     global _KEEP_ARTIFACTS
     _KEEP_ARTIFACTS = args.keep_artifacts
@@ -686,6 +691,8 @@ def main():
     md.append(f"- **Simulation Vectors (Phase 3):** {args.vectors:,} (Warmup: {args.warmup})")
     md.append(f"- **Verification Vectors (Phase 2):** {args.verify_vectors:,}")
     md.append(f"- **Hardware Profiler:** Linux `perf` kernel PMU counters\n")
+    if os.environ.get("DARION_GLS_FLOPS"):
+        md.append("- **Reference flop model:** gate-level (`--gls-flops`): Icarus and Verilator compile the cell library with Darion's own flop and mux gates, so all three simulate the same netlist\n")
     md.append("---\n")
 
     # TABLE 1: Zero-Testbench Memory Footprint (Phase 1)
