@@ -8,6 +8,7 @@ import sys
 import os
 import gc
 import random
+import itertools
 import platform
 import tempfile
 import json
@@ -48,7 +49,8 @@ use_reactor = not args.engine  # Reactor (Cython) is default; --engine switches 
 
 if use_reactor:
     print("Using Reactor (Cython) Backend")
-    sys.path.insert(0, os.path.join(root_dir, 'reactor'))
+    # REACTOR_DIR lets the suite run against an alternative (e.g. scratch) engine build, as in timing_lib.py
+    sys.path.insert(0, os.environ.get("REACTOR_DIR") or os.path.join(root_dir, 'reactor'))
 else:
     print("Using Engine (Python) Backend")
     sys.path.insert(0, os.path.join(root_dir, 'engine'))
@@ -3845,6 +3847,15 @@ class ThoroughICTest:
         # Limits
         await self.test_input_limit_handling()
 
+        # Macros (reactor only)
+        await self.test_macros()
+        await self.test_connect_recomputed_source()
+        await self.test_macro_unknown_inputs()
+        await self.test_macro_self_feeding()
+        await self.test_macro_dffsr_scenarios()
+        await self.test_macro_oscillation()
+        await self.test_edits_after_optimize()
+
         status = "PASS" if self.failed == 0 else "FAIL"
         summary = f"  [{status}] Thorough IC: {self.passed}/{self.tests_run} passed"
         if self.failed > 0:
@@ -4158,6 +4169,107 @@ class ThoroughICTest:
         if os.path.exists(fp_in): os.remove(fp_in)
         if os.path.exists(fp_out): os.remove(fp_out)
 
+    async def test_macros(self):
+        """Macro flops (Circuit.make_macro): shift register against the gate-level demos/ICs/DFF.json in all three
+        modes, with and without optimize(); save/load; reset; packaging into an IC (build_ic)."""
+        if not hasattr(Circuit, 'make_macro'):
+            return
+        dff_json = os.path.join(root_dir, "demos", "ICs", "DFF_gate.json")   # gate-level reference (DFF.json is the macro)
+
+        def pin(ic, name, out=False):
+            return next(p for p in (ic.outputs if out else ic.inputs) if p.custom_name == name)
+
+        def shift_register(macro, mode, n=4):
+            c = self.setup_circuit(mode)
+            clk, din = c.getcomponent(VARIABLE_ID), c.getcomponent(VARIABLE_ID)
+            prev, stages = din, []
+            for _ in range(n):
+                if macro:
+                    ic = c.make_macro('dff')
+                    d, ck, q = pin(ic, 'D'), pin(ic, 'CK'), pin(ic, 'Q', True)
+                else:
+                    ic = c.getIC(dff_json)
+                    d, ck, q = pin(ic, 'D'), pin(ic, 'CLK'), pin(ic, 'Q', True)
+                c.connect(d, prev, 0)
+                c.connect(ck, clk, 0)
+                stages.append(q)
+                prev = q
+            return c, clk, din, stages
+
+        def drive(c, clk, din, stages, bits):
+            rows = []
+            c.toggle(clk.location, 0)
+            for b in bits:
+                c.toggle(din.location, b)
+                c.toggle(clk.location, 1)
+                c.toggle(clk.location, 0)
+                rows.append(tuple(s.output for s in stages))
+            return rows
+
+        rng = random.Random(7)
+        bits = [rng.randint(0, 1) for _ in range(40)]
+        expected = [tuple(bits[t - i] for i in range(4)) for t in range(4, len(bits))]
+        for mode, mname in ((SIMULATE, "prop"), (COMPILE, "sweep"), (PRIORITY, "timed")):
+            for opt in (False, True):
+                cm, *rm = shift_register(True, mode)
+                cg, *rg = shift_register(False, mode)
+                if opt:
+                    cm.optimize()
+                    cg.optimize()
+                got, ref = drive(cm, *rm, bits), drive(cg, *rg, bits)
+                tag = f"Macro DFF shift register ({mname}, optimize={opt})"
+                self.assert_true(got[4:] == expected, tag + ": Q_i is the input from i clocks ago")
+                # start-up: an unknown flop stays unknown until a clock edge loads it; the gate-level DFF.json resolves to 0, so they agree once every stage has been loaded
+                self.assert_true(got[4:] == ref[4:], tag + ": matches gate-level DFF.json once the register is filled")
+
+        # save / load
+        cm, clk, din, stages = shift_register(True, SIMULATE)
+        first = drive(cm, clk, din, stages, bits)
+        fp = os.path.join(tempfile.gettempdir(), "macro_shift_test.circ")
+        cm.writetojson(fp)
+        c2 = self.setup_circuit(SIMULATE)
+        c2.readfromjson(fp)
+        clk2, din2 = c2.get_variables()[:2]
+        by_d = {pin(ic, 'D')._sources[0]: ic for ic in c2.get_ics()}
+        cur, qs = din2.location, []
+        for _ in range(4):
+            q = pin(by_d[cur], 'Q', True)
+            qs.append(q)
+            cur = q.location
+        # a loaded macro stays X until an input change reaches it in a wave, so allow one extra clock of warm-up
+        self.assert_true(drive(c2, clk2, din2, qs, bits)[5:] == first[5:], "Macro save/load: same behaviour after warm-up")
+        if os.path.exists(fp): os.remove(fp)
+
+        # reset
+        cm.reset()
+        cm.simulate(SIMULATE)
+        # after reset the flops start from whatever D holds then, so compare once the register has been refilled
+        self.assert_true(drive(cm, clk, din, stages, bits)[4:] == first[4:], "Macro reset: same rerun after refill")
+
+        # packaging a circuit that contains a macro into an IC keeps the macro gate and its output gates
+        c = self.setup_circuit(SIMULATE)
+        i_d, i_ck = c.getcomponent(IC_INPUT_PIN_ID), c.getcomponent(IC_INPUT_PIN_ID)
+        o_q = c.getcomponent(IC_OUTPUT_PIN_ID)
+        inner = c.make_macro('dff')
+        c.connect(pin(inner, 'D'), i_d, 0)
+        c.connect(pin(inner, 'CK'), i_ck, 0)
+        c.connect(o_q, pin(inner, 'Q', True), 0)
+        fp = os.path.join(tempfile.gettempdir(), "macro_packaged_ic.json")
+        c.save_as_ic(fp, "MacroChip", "", "")
+        c3 = self.setup_circuit(SIMULATE)
+        chip = c3.getIC(fp)
+        kinds = sorted(g.id for g in chip.internal)
+        self.assert_true(MACRO_GATE_ID in kinds and kinds.count(BUFFER_ID) == 2, f"Packaged macro IC keeps the macro gate and its outputs (as buffers): {kinds}")
+        dv, cv = c3.getcomponent(VARIABLE_ID), c3.getcomponent(VARIABLE_ID)
+        c3.connect(chip.inputs[0], dv, 0)
+        c3.connect(chip.inputs[1], cv, 0)
+        for val in (1, 0):
+            c3.toggle(dv.location, val)
+            c3.toggle(cv.location, 1)
+            c3.toggle(cv.location, 0)
+            self.assert_true(chip.outputs[0].output == val, f"Packaged macro IC clocks in {val}")
+        if os.path.exists(fp): os.remove(fp)
+
     async def test_input_limit_handling(self):
         """Test that IC gates resize inputs correctly and don't default to 1."""
         c = self.setup_circuit()
@@ -4202,6 +4314,243 @@ class ThoroughICTest:
         
         if os.path.exists(fp): os.remove(fp)
 
+
+
+    # ---- macro behaviour, connect, and edits after optimize (added 2026-10-25) ----
+    @staticmethod
+    def _ic_pin(ic, *names, out=False):
+        return next(p for p in (ic.outputs if out else ic.inputs) if p.custom_name in names)
+
+    async def test_connect_recomputed_source(self):
+        """connect() recomputes a source whose output was unknown; the source's other targets must see the change."""
+        self.log("connect: other targets of a recomputed unknown source")
+        for mode, mname in ((SIMULATE, "prop"), (COMPILE, "sweep")):
+            c = self.setup_circuit(mode)
+            a, b, k, z = (c.getcomponent(VARIABLE_ID) for _ in range(4))
+            u = c.getcomponent(AND_ID); s_ = c.getcomponent(NOR_ID); t = c.getcomponent(OR_ID); y = c.getcomponent(BUFFER_ID)
+            c.connect(u, a.location, 0); c.connect(u, b.location, 1)
+            c.connect(s_, u.location, 0); c.connect(s_, k.location, 1)
+            c.connect(t, z.location, 0); c.connect(t, s_.location, 1)
+            for v, x in ((a, 1), (b, 1), (k, 1), (z, 0)): c.toggle(v.location, x)
+            c.disconnect(u, 0)                      # u unknown, so s_ and t unknown
+            self.assert_true(s_.output == UNKNOWN and t.output == UNKNOWN, f"Unknown source propagates ({mname})")
+            c.connect(y, s_.location, 0)            # recomputes s_ (NOR of unknown and 1 is 0) while wiring y
+            self.assert_true(s_.output == LOW, f"Source recomputed by connect ({mname})")
+            self.assert_true(t.output == LOW, f"Other target of the recomputed source is updated ({mname})")
+
+    async def test_macro_unknown_inputs(self):
+        """Macro flops with unknown inputs: unknown -> 0 -> 1 on the clock, and a clock that is cut and reconnected."""
+        self.log("macro: unknown inputs and clock edges")
+        if not hasattr(Circuit, 'make_macro'):
+            return
+        for mode, mname in ((SIMULATE, "prop"), (COMPILE, "sweep")):
+            for opt in (False, True):
+                for kind in ("dff", "dffsr"):
+                    for order in ("data first", "clock first"):
+                        for dv in (0, 1):
+                            c = self.setup_circuit(mode)
+                            clk, d, rn, sn = (c.getcomponent(VARIABLE_ID) for _ in range(4))
+                            ic = c.make_macro(kind)
+                            if kind == "dffsr":                   # variables start at 0, which would assert reset and set: release them before wiring
+                                c.toggle(rn.location, 1); c.toggle(sn.location, 1)
+                            c.connect(self._ic_pin(ic, "D"), d, 0); c.connect(self._ic_pin(ic, "CK", "CLK"), clk, 0)
+                            if kind == "dffsr":
+                                c.connect(self._ic_pin(ic, "RN"), rn, 0); c.connect(self._ic_pin(ic, "SN"), sn, 0)
+                            if opt: c.optimize()
+                            q = self._ic_pin(ic, "Q", out=True)
+                            for v, x in (((d, dv), (clk, 0)) if order == "data first" else ((clk, 0), (d, dv))): c.toggle(v.location, x)
+                            self.assert_true(q.output == (0 if kind == "dff" else UNKNOWN), f"{kind} starts at {0 if kind == 'dff' else 'unknown'} before its first clock edge ({mname}, optimize={opt}, {order})")
+                            c.toggle(clk.location, 1)         # nothing else changed between the unknown -> 0 and the rise
+                            self.assert_true(q.output == dv, f"{kind} takes D={dv} on the first rising edge after unknown -> 0 ({mname}, optimize={opt}, {order})")
+        # cut the clock of a DFFSR holding a value, change D, reconnect, then give one clean pulse
+        for mode, mname in ((SIMULATE, "prop"), (COMPILE, "sweep")):
+            for q0 in (0, 1):
+                c = self.setup_circuit(mode)
+                clk, d, rn, sn = (c.getcomponent(VARIABLE_ID) for _ in range(4))
+                ic = c.make_macro("dffsr"); ck = self._ic_pin(ic, "CK", "CLK")
+                c.connect(self._ic_pin(ic, "D"), d, 0); c.connect(ck, clk, 0)
+                c.connect(self._ic_pin(ic, "RN"), rn, 0); c.connect(self._ic_pin(ic, "SN"), sn, 0)
+                for v, x in ((sn, 1), (clk, 0), (d, q0), (rn, 0), (rn, 1)): c.toggle(v.location, x)
+                c.toggle(clk.location, 1); c.toggle(clk.location, 0)
+                q = self._ic_pin(ic, "Q", out=True)
+                self.assert_true(q.output == q0, f"DFFSR holds {q0} ({mname})")
+                src = ck._sources[0]
+                c.disconnect(ck, 0); c.toggle(d.location, 1 - q0); c.connect(ck, src, 0)
+                self.assert_true(q.output == q0, f"DFFSR keeps {q0} while its clock was cut ({mname})")
+                c.toggle(clk.location, 1); c.toggle(clk.location, 0)
+                self.assert_true(q.output == 1 - q0, f"DFFSR takes D after the clock is reconnected ({mname})")
+
+    def _flop_net(self, kind, mode, macro, n):
+        """n flops (macro DFF.json or gate-level DFF_gate.json) wired as a toggle, ring, Johnson, swap or counter."""
+        ics_dir = os.path.join(root_dir, "demos", "ICs")
+        c = self.setup_circuit(mode)
+        clk = c.getcomponent(VARIABLE_ID)
+        ics = [c.getIC(os.path.join(ics_dir, "DFF.json" if macro else "DFF_gate.json")) for _ in range(n)]
+        D = [self._ic_pin(i, "D") for i in ics]; Q = [self._ic_pin(i, "Q", out=True) for i in ics]   # DFF_gate.json has no QN pin
+        for i in ics: c.connect(self._ic_pin(i, "CK", "CLK"), clk, 0)
+        def inv(src):
+            g = c.getcomponent(NOT_ID); c.connect(g, src.location, 0); return g
+        if kind == "toggle":
+            for i in range(n): c.connect(D[i], inv(Q[i]), 0)
+        elif kind == "ring":
+            for i in range(n): c.connect(D[i], Q[i - 1], 0)
+        elif kind == "johnson":
+            c.connect(D[0], inv(Q[n - 1]), 0)
+            for i in range(1, n): c.connect(D[i], Q[i - 1], 0)
+        elif kind == "swap":
+            c.connect(D[0], Q[1], 0); c.connect(D[1], Q[0], 0)
+        elif kind == "counter":
+            carry = Q[0]; c.connect(D[0], inv(Q[0]), 0)
+            for i in range(1, n):
+                x = c.getcomponent(XOR_ID); c.connect(x, Q[i].location, 0); c.connect(x, carry.location, 1); c.connect(D[i], x, 0)
+                a = c.getcomponent(AND_ID); c.connect(a, carry.location, 0); c.connect(a, Q[i].location, 1); carry = a
+        return c, clk, Q
+
+    async def test_macro_self_feeding(self):
+        """Flops whose D comes from their own or a neighbour's output start and run like the gate-level flop."""
+        self.log("macro: self-feeding flops against the gate-level flop")
+        if not hasattr(Circuit, 'make_macro'):
+            return
+        for kind in ("toggle", "ring", "johnson", "swap", "counter"):
+            for mode, mname in ((SIMULATE, "prop"), (COMPILE, "sweep")):
+                traces = []
+                for macro in (True, False):
+                    c, clk, Q = self._flop_net(kind, mode, macro, 2 if kind == "swap" else 4)
+                    rows = [tuple(q.output for q in Q)]
+                    c.toggle(clk.location, 0); rows.append(tuple(q.output for q in Q))
+                    for _ in range(10):
+                        c.toggle(clk.location, 1); c.toggle(clk.location, 0); rows.append(tuple(q.output for q in Q))
+                    traces.append((rows, c.timed_queue_size()))
+                self.assert_true(traces[0][0] == traces[1][0], f"{kind} macro flops match the gate-level flops from power-up ({mname})")
+                self.assert_true(traces[0][1] == 0, f"{kind} macro flops do not reach the wave limit ({mname})")
+
+    async def test_macro_dffsr_scenarios(self):
+        """DFFSR macro against DFFSR_gate.json: reset, set, hold, clocking, shift chain, ring and counter, plus hide and reveal."""
+        self.log("macro: DFFSR scenarios against the gate-level flop")
+        if not hasattr(Circuit, 'make_macro'):
+            return
+        ics_dir = os.path.join(root_dir, "demos", "ICs")
+        def build(macro, mode, topo, n):
+            c = self.setup_circuit(mode)
+            v = {k: c.getcomponent(VARIABLE_ID) for k in ("clk", "d", "rn", "sn")}
+            ics = [c.getIC(os.path.join(ics_dir, "DFFSR.json" if macro else "DFFSR_gate.json")) for _ in range(n)]
+            D = [self._ic_pin(i, "D") for i in ics]; Q = [self._ic_pin(i, "Q", out=True) for i in ics]; QN = [self._ic_pin(i, "QN", out=True) for i in ics]
+            for i in ics:
+                c.connect(self._ic_pin(i, "CLK"), v["clk"], 0); c.connect(self._ic_pin(i, "RN"), v["rn"], 0); c.connect(self._ic_pin(i, "SN"), v["sn"], 0)
+            if topo == "single": c.connect(D[0], v["d"], 0)
+            elif topo == "chain":
+                c.connect(D[0], v["d"], 0)
+                for i in range(1, n): c.connect(D[i], Q[i - 1], 0)
+            elif topo == "ring":
+                c.connect(D[0], QN[n - 1], 0)
+                for i in range(1, n): c.connect(D[i], Q[i - 1], 0)
+            elif topo == "counter":
+                carry = Q[0]; c.connect(D[0], QN[0], 0)
+                for i in range(1, n):
+                    x = c.getcomponent(XOR_ID); c.connect(x, Q[i].location, 0); c.connect(x, carry.location, 1); c.connect(D[i], x, 0)
+                    a = c.getcomponent(AND_ID); c.connect(a, carry.location, 0); c.connect(a, Q[i].location, 1); carry = a
+            return c, v, ics, Q, QN
+        def script(seed, hide):
+            rng = random.Random(seed); ops = [("set", "sn", 1), ("set", "clk", 0), ("set", "d", 0), ("set", "rn", 0), ("set", "rn", 1)]
+            for _ in range(60):
+                r = rng.random()
+                if r < 0.5: ops += [("set", "clk", 1), ("set", "clk", 0)]
+                elif r < 0.65: ops.append(("set", "d", rng.randint(0, 1)))
+                elif r < 0.78: ops += [("set", "rn", 0), ("set", "rn", 1)]
+                elif r < 0.9: ops += [("set", "sn", 0), ("set", "sn", 1)]
+                elif hide: ops += [("hide",), ("reveal",)]     # hidden and revealed again with no events in between
+            return ops
+        def run(macro, mode, topo, n, ops, opt):
+            c, v, ics, Q, QN = build(macro, mode, topo, n)
+            if opt: c.optimize()
+            tr = []
+            for op in ops:
+                if op[0] == "set": c.toggle(v[op[1]].location, op[2])
+                elif op[0] == "hide": c.hide([ics[0]])
+                elif op[0] == "reveal": c.reveal([ics[0]])
+                tr.append(tuple((q.output, qn.output) for q, qn in zip(Q, QN)))
+            return tr
+        for topo, n, hide in (("single", 1, False), ("single", 1, True), ("chain", 4, False), ("ring", 4, False), ("counter", 4, False)):
+            for mode, mname in ((SIMULATE, "prop"), (COMPILE, "sweep")):
+                for opt in (False, True):
+                    same = True
+                    for seed in range(3):
+                        ops = script(seed, hide)
+                        m = run(True, mode, topo, n, ops, opt); g = run(False, mode, topo, n, ops, opt)
+                        # compare once the inputs are known (the first five operations set them)
+                        same = same and all(m[k] == g[k] for k in range(4, len(ops)))
+                    self.assert_true(same, f"DFFSR {topo}{' with hide/reveal' if hide else ''} matches the gate-level flop ({mname}, optimize={opt})")
+
+    async def test_macro_oscillation(self):
+        """An oscillating ring that clocks macro flops hits the wave limit, hands the rest to the timed queue and leaves valid flops."""
+        self.log("macro: oscillating ring clocking flops")
+        if not hasattr(Circuit, 'make_macro'):
+            return
+        ics_dir = os.path.join(root_dir, "demos", "ICs")
+        for mode, mname in ((SIMULATE, "prop"), (COMPILE, "sweep")):
+            c = self.setup_circuit(mode)
+            en, one, rst = (c.getcomponent(VARIABLE_ID) for _ in range(3))
+            a = c.getcomponent(NAND_ID); b = c.getcomponent(NOT_ID); d = c.getcomponent(NOT_ID)
+            c.connect(a, en, 0); c.connect(b, a.location, 0); c.connect(d, b.location, 0); c.connect(a, d.location, 1)
+            qs = []
+            for _ in range(4):
+                ic = c.getIC(os.path.join(ics_dir, "DFFSR.json"))
+                c.connect(self._ic_pin(ic, "CLK"), d.location, 0); c.connect(self._ic_pin(ic, "D"), self._ic_pin(ic, "QN", out=True), 0)
+                c.connect(self._ic_pin(ic, "SN"), one, 0); c.connect(self._ic_pin(ic, "RN"), rst, 0); qs.append(self._ic_pin(ic, "Q", out=True))
+            c.toggle(one.location, 1); c.toggle(rst.location, 0); c.toggle(rst.location, 1); c.toggle(en.location, 0)
+            c.eval_count = 0
+            c.toggle(en.location, 1)
+            self.assert_true(c.timed_queue_size() > 0, f"Oscillation reaches the wave limit and goes to the timed queue ({mname})")
+            self.assert_true(all(q.output in (0, 1) for q in qs), f"Flops clocked by the oscillating ring hold known values ({mname})")
+            self.assert_true(c.eval_count > 0, f"Macro changes are counted in evaluations ({mname})")
+
+    async def test_edits_after_optimize(self):
+        """Random acyclic circuits: after edits (new gates, disconnect, reconnect, a second optimize) every fully connected gate with
+        known inputs holds its function's value, and without disconnects the optimized circuit matches an unoptimized twin."""
+        self.log("edits after optimize()")
+        types = [AND_ID, OR_ID, NAND_ID, NOR_ID, XOR_ID]
+        fn = {AND_ID: lambda a, b: a & b, OR_ID: lambda a, b: a | b, NAND_ID: lambda a, b: 1 - (a & b),
+              NOR_ID: lambda a, b: 1 - (a | b), XOR_ID: lambda a, b: a ^ b}
+        def stale(gates):
+            loc = {g.location: g for g in gates}
+            for g in gates:
+                if g.id == VARIABLE_ID or -1 in g._sources: continue
+                ins = [loc[s].output for s in g._sources]
+                if UNKNOWN in ins: continue
+                if g.output != fn[g.id](ins[0], ins[1]): return True
+            return False
+        def run(seed, mode, optimize, disconnects, second):
+            rng = random.Random(seed); c = self.setup_circuit(mode)
+            vs = [c.getcomponent(VARIABLE_ID) for _ in range(6)]; gates = list(vs); conns = []; trace = []; bad = False
+            def add():
+                g = c.getcomponent(rng.choice(types)); a = rng.choice(gates); b = rng.choice(gates)
+                c.connect(g, a.location, 0); c.connect(g, b.location, 1); conns.extend([(g, 0, a), (g, 1, b)]); gates.append(g)
+            for _ in range(rng.randint(20, 100)): add()
+            for v in vs: c.toggle(v.location, rng.randint(0, 1))
+            if optimize: c.optimize()
+            for rnd in range(5):
+                for _ in range(rng.randint(5, 30)): add()
+                if disconnects:
+                    for _ in range(rng.randint(3, 20)):
+                        g, idx, a = rng.choice(conns)
+                        if g._sources[idx] != -1: c.disconnect(g, idx)
+                    for g, idx, a in conns:
+                        if g._sources[idx] == -1 and rng.random() < 0.6: c.connect(g, a.location, idx); bad = bad or stale(gates)
+                if second and optimize and rnd == 2: c.optimize()
+                for v in vs: c.toggle(v.location, rng.randint(0, 1))
+                bad = bad or stale(gates)
+                trace.append(tuple(g.output for g in gates))
+            return trace, bad
+        for mode, mname in ((SIMULATE, "prop"), (COMPILE, "sweep")):
+            stale_runs = diffs = 0
+            for seed in range(10):
+                for opt, sec in ((False, False), (True, False), (True, True)):
+                    stale_runs += run(seed, mode, opt, True, sec)[1]
+                ref, _ = run(seed, mode, False, False, False)
+                for opt, sec in ((True, False), (True, True)):
+                    diffs += run(seed, mode, opt, False, sec)[0] != ref
+            self.assert_true(stale_runs == 0, f"No stale gate after random edits with disconnects, optimized or not ({mname})")
+            self.assert_true(diffs == 0, f"Edited optimized circuits match their unoptimized twins ({mname})")
 
 
 class IOTestSuite:
@@ -4367,6 +4716,7 @@ class IOTestSuite:
             crashed = True
             
         self.assert_true(crashed or res is None, "getIC handles/rejects normal circuit JSON appropriately")
+        self.assert_true(res is None and not crashed, "getIC returns None for a one-gate circuit file (no read past the end of the list)")
         os.remove(fp)
 
     async def test_load_ic_as_circuit(self):

@@ -698,8 +698,8 @@ class VerilogRunner:
           - propagate_ms  : BFS wavefront (SIMULATE mode), the existing path.
           - sweep_ms      : Linear forward-pass (COMPILE mode) — reactor only.
             sweep() is triggered via simulate(COMPILE) + batch_toggle() when
-            MODE==COMPILE. Requires a topologically sorted gate_infolist
-            (i.e. optimize() must have been called first) to be meaningful.
+            MODE==COMPILE. Correct in any gate order (back edges fall back to
+            propagate), but only fast after optimize() (topological order).
         """
         measured = max(vectors - warmup, 1)
         total_needed = warmup + measured
@@ -1674,7 +1674,7 @@ def _save_results(all_results: list, args):
     lines.append("    - Engine/Reactor: timing covers only the core batch_toggle loop.")
     lines.append("    - Reactor propagate: SIMULATE mode, BFS double-buffer wavefront per toggle.")
     lines.append("    - Reactor sweep: COMPILE mode, single forward-pass over sorted gate list.")
-    lines.append("      sweep() requires optimize() to have run first (topological order).")
+    lines.append("      sweep() is correct in any gate order (back edges fall back to propagate) but only fast after optimize().")
     lines.append("    - Icarus: VPI inner-loop timer (QueryPerformanceCounter) excludes $readmemb.")
     lines.append("=" * W)
     # with open(txt_path, 'w', encoding='utf-8') as f:

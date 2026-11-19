@@ -41,7 +41,8 @@ import subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-for p in (os.path.join(HERE, "src"), HERE, ROOT, os.path.join(ROOT, "reactor")):
+# REACTOR_DIR lets the check run against an alternative (e.g. scratch) engine build, as in timing_lib.py
+for p in (os.path.join(HERE, "src"), HERE, ROOT, os.environ.get("REACTOR_DIR") or os.path.join(ROOT, "reactor")):
     if p not in sys.path:
         sys.path.insert(0, p)
 
@@ -706,7 +707,8 @@ def main():
     if not args.circuit:
         ap.error("circuit is required unless --workload or --case-study is given")
 
-    src = os.path.join(ROOT, "tests", "IWLS2005", args.suite, args.circuit + ".v")
+    # NETLIST_ROOT replaces tests/ as the root of the suite directories (e.g. a copy holding the gate-level-flop netlists)
+    src = os.path.join(os.environ.get("NETLIST_ROOT") or os.path.join(ROOT, "tests"), "IWLS2005", args.suite, args.circuit + ".v")
     work = tempfile.mkdtemp(prefix="verify_state_")
     try:
         vfile = os.path.join(work, args.circuit + ".v")

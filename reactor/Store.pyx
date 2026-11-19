@@ -1,4 +1,4 @@
-from Gates cimport Gate,CPP_Gate,vector,Profile
+from Gates cimport Gate,MacroGate,CPP_Gate,vector,Profile
 from libcpp.vector cimport vector
 from IC cimport IC
 from Const cimport *
@@ -15,6 +15,7 @@ cdef tuple namelist=(
     'In',
     'Out',
     'IC',
+    'Macro',
 )
 
 cdef object get(int choice, vector[CPP_Gate]& gate_infolist, vector[unsigned int]& gate_clocks, list gate_verse):
@@ -38,8 +39,11 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, vector[unsigned int
         ic.gate_verse = gate_verse
         return ic
     else:
-        gate = Gate(choice,namelist[choice])
-        if choice==VARIABLE_ID: lim=0
+        if choice == MACRO_GATE_ID:
+            gate = MacroGate(choice, namelist[choice])
+        else:
+            gate = Gate(choice,namelist[choice])
+        if choice==VARIABLE_ID or choice == MACRO_GATE_ID: lim=0
         elif choice>=SINGLE_INPUT_ID: lim=1
         else: lim=2
         
@@ -87,6 +91,9 @@ cdef object get(int choice, vector[CPP_Gate]& gate_infolist, vector[unsigned int
             elif choice == NOT_ID:
                 gate.info.seed = 0
                 gate.info.mask = 0xFF
+            elif choice == MACRO_GATE_ID:  # XOR's seed and mask: any input change flips it, so it gets queued
+                gate.info.seed = 1
+                gate.info.mask = 1
             elif choice >= BUFFER_ID:
                 gate.info.seed = 1
                 gate.info.mask = 0xFF

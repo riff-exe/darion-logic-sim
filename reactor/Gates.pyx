@@ -239,6 +239,8 @@ cdef class Gate:
         if self_info.type == VARIABLE_ID or self._sources[index] != -1:
             return
         cdef CPP_Gate* src_info = &gate_infolist[source]
+        if src_info.type == MACRO_GATE_ID:  # its hitlist slot holds the macro core, it drives through its output gates
+            return
         
         if src_info.output == UNKNOWN:
             (<Gate>PyList_GET_ITEM(self.gate_verse, source)).process()
@@ -515,6 +517,122 @@ cdef class Gate:
 
 cdef class Variable(Gate):
     pass
+
+# Macro kinds: input and output pin names. The behaviour of each kind is its C++ core (Macro.h, make_core).
+MACRO_KINDS = {
+    'dff': (('CK', 'D'), ('Q', 'QN')),
+    'dffsr': (('CK', 'D', 'RN', 'SN'), ('Q', 'QN')),
+}
+
+def macro_map(str kind, int init=UNKNOWN):
+    '''The IC data (as in an IC file) for a macro: input pins -> macro gate -> output pins. The core writes the
+    output pins directly; they have no source'''
+    cdef tuple ins = MACRO_KINDS[kind][0]
+    cdef tuple outs = MACRO_KINDS[kind][1]
+    cdef int n_in = len(ins), n_out = len(outs), macro = n_in
+    cdef list out_pins = [macro + 1 + j for j in range(n_out)]
+    cdef list m = [[name, IC_INPUT_PIN_ID, i, 1, [-1]] for i, name in enumerate(ins)]
+    m.append(['', MACRO_GATE_ID, macro, n_in, list(range(n_in)), kind, out_pins, init])
+    m += [[name, IC_OUTPUT_PIN_ID, out_pins[j], 1, [-1]] for j, name in enumerate(outs)]
+    return [kind, IC_ID, [], '', m]
+
+cdef class MacroGate(Gate):
+    '''A gate whose evaluation is done by a C++ core: its inputs are ordinary sources, it drives the gates listed in
+    outs (its IC's output pins, which have no source) directly, and it keeps the core in its hitlist slot (it has no
+    fan-out of its own)'''
+    def __init__(self, int id, str name):
+        Gate.__init__(self, id, name)
+        self.kind = ''
+        self.outs = []
+        self._sources = []
+
+    def __dealloc__(self):
+        if self.core != NULL:
+            del self.core
+            self.core = NULL
+
+    @property
+    def init(self):
+        '''Power-up / after-reset state of the macro (0, 1 or 2 = unknown, the default)'''
+        return self.core.init if self.core != NULL else UNKNOWN
+
+    @init.setter
+    def init(self, int value):
+        if self.core != NULL:
+            self.core.init = value
+
+    @property
+    def memory(self):
+        '''Input values the core saw at its last eval'''
+        if self.core == NULL:
+            return []
+        return [self.core.memory[i] for i in range(self.core.n_in)]
+
+    cpdef bint setup(self, str kind):
+        '''Attach the core for kind and size the input list; once, before any connection'''
+        if self.core != NULL or kind not in MACRO_KINDS:
+            return False
+        cdef bytes name = kind.encode()
+        self.core = make_core(name)
+        if self.core == NULL:
+            return False
+        self.kind = kind
+        self._sources = [-1] * self.core.n_in
+        self.info.inputlimit = self.core.n_in
+        self.info.reserved = self.core.n_in
+        self.info.hitlist.data = <Profile*><void*>self.core
+        return True
+
+    cpdef void sync_core(self):
+        '''Refill the core's pin locations and the hitlist link (after loading or optimize())'''
+        cdef int i
+        if self.core == NULL:
+            return
+        for i in range(self.core.n_in):
+            self.core.inputs[i] = self._sources[i]
+        for i in range(min(self.core.n_out, len(self.outs))):
+            self.core.outputs[i] = (<Gate>self.outs[i]).location
+        self.info.hitlist.data = <Profile*><void*>self.core
+        self.info.hitlist.size = 0
+        self.info.hitlist.capacity = 0
+
+    cdef void process(self):
+        '''Wiring never gives a macro gate a value: it stays unknown until an input change reaches it in a wave
+        and its core runs'''
+        self.info.output = UNKNOWN
+
+    cdef void reset(self):
+        Gate.reset(self)
+        if self.core != NULL:
+            self.core.reset()
+
+    cpdef list full_data(self):
+        cdef list dictionary = Gate.full_data(self)
+        dictionary.append(self.kind)
+        dictionary.append([(<Gate>o).location for o in self.outs])
+        dictionary.append(self.init)
+        return dictionary
+
+    cpdef list partial_data(self):
+        cdef CPP_Gate* gate_infolist = (self.info - self.location)
+        cdef list dictionary = Gate.partial_data(self)
+        dictionary.append(self.kind)
+        dictionary.append([(<Gate>o).location if (gate_infolist[(<Gate>o).location].flags & FLAG_MARK) else -1 for o in self.outs])
+        dictionary.append(self.init)
+        return dictionary
+
+    cdef void clone(self, list dictionary, unordered_map[int, int]& pseudo):
+        cdef int index, source
+        self.custom_name = dictionary[CUSTOM_NAME]
+        if not self.setup(dictionary[MACRO_KIND]):
+            raise ValueError(f"unknown macro kind {dictionary[MACRO_KIND]!r}")
+        self.outs = [self.gate_verse[pseudo[loc]] for loc in dictionary[MACRO_OUTS] if loc != -1]
+        if len(dictionary) > MACRO_INIT:
+            self.init = dictionary[MACRO_INIT]
+        for index, source in enumerate(dictionary[SOURCES]):
+            if source != -1:
+                self.connect(pseudo[source], index)
+        self.sync_core()
 
 cdef class Probe(Gate):
     pass

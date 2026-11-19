@@ -7,6 +7,11 @@ CXXFLAGS (type-switch evaluator) and one without (SIMA), then:
     python tests/ablation_eval.py <reactor_build_dir> <label> b14 b15 b17
 
 Both variants must print the same `evals` and `fp` (same work, same final state); only the time differs.
+FRAGMENT=N (env) fragments the heap before each load: N list-sized blocks (24-64 B) are allocated and a random
+half freed, leaving holes the parse and optimize() allocate into (the long-session model of the packed-hitlist
+plan); used to compare an unpacked and a packed build. Circuits are `name` (ITC99) or `suite/name` (itc99, opencores,
+faraday, iscas85, epfl); NETLIST_ROOT (env) replaces tests/ as the root of the suite directories (for example a copy
+holding the gate-level-flop netlists).
 
 Netlist export for the standalone layout ablation (tests/ablation_layout.cpp --netlist):
 
@@ -19,13 +24,22 @@ Cost of the UI coupling and API latency (run pinned: taskset -c 2):
 
     python tests/ablation_eval.py --ui-cost <reactor_build_dir> b15 prop|sweep   # engine time with the visual queue active vs blind
     python tests/ablation_eval.py --latency <reactor_build_dir> b15              # per-call API latency (median, p99, max)
+
+Mode against layout (run pinned: taskset -c 2):
+
+    python tests/ablation_eval.py --layouts <reactor_build_dir> <label> iscas85/c6288 b15 ...
+
+runs prop and sweep on the BFS layout (optimize() in SIMULATE, the prop default), the DFS layout (COMPILE, the sweep
+default) and the unoptimized one (raw: creation order, lists not packed), all six interleaved in every repeat; prints
+the median engine time, spread and evaluations per pair, and checks that every pair ends in the same state (a
+fingerprint over the runner's named nets, independent of gate placement).
 """
 import os, sys, random, gc, time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
     print(__doc__); sys.exit(0)
 EXPORT = sys.argv[1] == "--export"
-MODE_FLAG = sys.argv[1] if sys.argv[1] in ("--ui-cost", "--latency") else None
+MODE_FLAG = sys.argv[1] if sys.argv[1] in ("--ui-cost", "--latency", "--layouts") else None
 if EXPORT or MODE_FLAG:
     sys.argv.pop(1)
 rdir, label = sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else ""
@@ -36,17 +50,40 @@ import Const, Circuit
 assert os.path.dirname(os.path.abspath(Circuit.__file__)) == os.path.abspath(rdir), Circuit.__file__
 import benchmark_iwls as B
 LOGICAL = int(os.environ.get("LOGICAL", 3000)); REPS = int(os.environ.get("REPS", 3))
+FRAGMENT = int(os.environ.get("FRAGMENT", 0))
+NETLIST_ROOT = os.environ.get("NETLIST_ROOT", f"{ROOT}/tests")   # suite directories with .v + parsed .json (e.g. a gate-level-flop copy)
+_held = []
+
+def fragment():
+    if not FRAGMENT:
+        return
+    import ctypes
+    libc = ctypes.CDLL(None)
+    libc.malloc.restype = ctypes.c_void_p
+    libc.malloc.argtypes = [ctypes.c_size_t]
+    libc.free.argtypes = [ctypes.c_void_p]
+    rng = random.Random(len(_held))
+    for b in [libc.malloc(rng.choice((24, 32, 48, 64))) for _ in range(FRAGMENT)]:
+        if rng.random() < 0.5:
+            libc.free(b)
+        else:
+            _held.append(b)
 
 
-SUITES = {"itc99": ("IWLS2005/itc99", True), "opencores": ("IWLS2005/opencores", True), "iscas85": ("ISCAS85", False), "epfl": ("EPFL_parsed", False)}
+SUITES = {"itc99": ("IWLS2005/itc99", True), "opencores": ("IWLS2005/opencores", True), "faraday": ("IWLS2005/faraday", True),
+          "iscas85": ("ISCAS85", False), "epfl": ("EPFL_parsed", False), "epfl_large": ("EPFL_large_parsed", False),
+          "mammoth": ("EPFL_mammoth_parsed", False), "iscas89": ("ISCAS89", "89")}
 
 def _runner(spec, mode, optimize=True):
-    """spec is `circuit` (ITC99) or `suite/circuit`. IWLS suites are sequential (reset sequence, own runner);
-    ISCAS85 and EPFL are combinational (benchmark.VerilogRunner, no reset)."""
+    """spec is `circuit` (ITC99) or `suite/circuit`. IWLS suites and ISCAS89 are sequential (reset sequence, own
+    runners); ISCAS85 and EPFL are combinational (benchmark.VerilogRunner, no reset)."""
     suite, name = spec.split("/") if "/" in spec else ("itc99", spec)
     sub, iwls = SUITES[suite]
-    path = f"{ROOT}/tests/{sub}/{name}.v"
+    path = f"{NETLIST_ROOT}/{sub}/{name}.v"
     sm = "compile" if mode == "sweep" else "simulate"
+    if iwls == "89":
+        import benchmark_89 as B89
+        return B89.SequentialVerilogRunner(path, Circuit.Circuit, Const, is_reactor=True, mode="reactor", use_optimize=optimize, sim_mode=sm)
     if iwls:
         return B.IWLSVerilogRunner(path, Circuit.Circuit, Const, is_reactor=True, mode="reactor", use_optimize=optimize, sim_mode=sm)
     import benchmark as BM
@@ -141,17 +178,14 @@ def latency(name, n=20000):
     gc.enable()
 
 def one(name, mode):
-    r = B.IWLSVerilogRunner(f"{ROOT}/tests/IWLS2005/itc99/{name}.v", Circuit.Circuit, Const, is_reactor=True, mode="reactor",
-                            use_optimize=True, sim_mode=("compile" if mode == "sweep" else "simulate"))
+    fragment()
+    r = _runner(name, mode)
     c = r.circuit
     Const.set_MODE(Const.COMPILE if mode == "sweep" else Const.SIMULATE)
     nin = len(r.input_vars)
-    bs = nin + (1 if r.const_1_node is not None else 0) + (1 if r.const_0_node is not None else 0)
-    c.batch_toggle(r.flatten_batches(r.build_reset_batches(50)), bs)
-    rng = random.Random(42)
-    lg = [[rng.randint(0, 1) for _ in range(nin)] for _ in range(LOGICAL)]
-    c.batch_toggle(r.flatten_batches(r.build_batches(lg[:20])), bs)
-    flat = r.flatten_batches(r.build_batches(lg[20:]))
+    bs = nin + (1 if getattr(r, "const_1_node", None) is not None else 0) + (1 if getattr(r, "const_0_node", None) is not None else 0)
+    lg = _warm(r, c, bs, nin, LOGICAL)
+    flat = [x for b in r.build_batches(lg[20:]) for x in b]
     c.eval_count = 0; gc.collect(); gc.disable()
     ms = c.batch_toggle(flat, bs)
     gc.enable()
@@ -160,6 +194,41 @@ def one(name, mode):
     fp = sum((g.output & 3) * (i % 7 + 1) for i, g in enumerate(c.gate_verse)) & 0xFFFFFFFF
     return ms, c.eval_count, fp
 
+LAYOUTS = (("bfs", "prop", True), ("dfs", "sweep", True), ("raw", "prop", False))   # name, mode optimize() sorts for, optimized
+
+def crossed(name, layout, mode):
+    """`one` with the layout chosen independently of the run mode."""
+    _, lmode, opt = next(l for l in LAYOUTS if l[0] == layout)
+    fragment()
+    r = _runner(name, lmode, opt)
+    c = r.circuit
+    c.simulate(Const.COMPILE if mode == "sweep" else Const.SIMULATE)
+    nin = len(r.input_vars)
+    bs = nin + (1 if getattr(r, "const_1_node", None) is not None else 0) + (1 if getattr(r, "const_0_node", None) is not None else 0)
+    lg = _warm(r, c, bs, nin, LOGICAL)
+    flat = [x for b in r.build_batches(lg[20:]) for x in b]
+    c.eval_count = 0; gc.collect(); gc.disable()
+    ms = c.batch_toggle(flat, bs)
+    gc.enable()
+    fp = hash(tuple(sorted((k, getattr(v, "output", -1) & 3) for k, v in r.nodes.items()))) & 0xFFFFFFFF
+    return ms, c.eval_count, fp
+
+def layouts(names):
+    import statistics as st
+    combos = [(l[0], m) for l in LAYOUTS for m in ("prop", "sweep")]
+    for name in names:
+        res = {k: [] for k in combos}
+        for _ in range(REPS):
+            for k in combos:
+                res[k].append(crossed(name, *k))
+        fps = {x[2] for v in res.values() for x in v}
+        for (lay, mode), v in res.items():
+            t = sorted(x[0] for x in v)
+            print(f"{label:6s} {name:22s} {lay:3s} {mode:5s} median {st.median(t):9.2f} ms  [{t[0]:.2f}, {t[-1]:.2f}]  "
+                  f"evals {v[0][1]}  fp {'/'.join(sorted({str(x[2]) for x in v}))}  {'same' if len(fps) == 1 else 'STATE DIFFERS'}", flush=True)
+
+if MODE_FLAG == "--layouts":
+    layouts(sys.argv[3:]); sys.exit(0)
 if MODE_FLAG == "--ui-cost":
     ui_cost(label, sys.argv[3]); sys.exit(0)
 if MODE_FLAG == "--latency":

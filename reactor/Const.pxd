@@ -4,6 +4,7 @@ cpdef enum:
     LOW = 0
     ERROR = 2
     UNKNOWN = 2
+    MACRO = 3         # a macro gate's output after its core ran: evaluate() never gives it (see Macro.h)
     PRIMARY = 2
 
     DESIGN = 0
@@ -38,14 +39,10 @@ cpdef enum:
     IC_OUTPUT_PIN_ID = 10
 
     IC_ID = 11
-    TOTAL = 12
+    MACRO_GATE_ID = 12
+    TOTAL = 13
 
     FLAG_NEGATE=1<<0
-    FLAG_VALID=1<<1
-    LOGIC_1=1<<4
-    LOGIC_2=1<<5
-    LOGIC_3=1<<6
-    # FLAG_OTHER=1<<6
     FLAG_BOUNDARY=1<<7
 
     LUT= 0x254
@@ -60,6 +57,9 @@ cpdef enum:
     TAG=NAME+4
     DESCRIPTION=NAME+6
     PIN_ORIENTATIONS=NAME+7
+    MACRO_KIND=NAME+6
+    MACRO_OUTS=NAME+7
+    MACRO_INIT=NAME+8
     
 cdef extern from *:
     """

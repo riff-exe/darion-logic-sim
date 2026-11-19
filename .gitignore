@@ -44,3 +44,5 @@ harness_build/*.vpi
 harness_build/*.o
 tests/*/
 !tests/src/
+
+CLAUDE.md

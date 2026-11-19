@@ -207,7 +207,8 @@ class SequentialVerilogRunner:
 
     def _parse_verilog(self, filepath):
         json_path = filepath if filepath.endswith('.json') else filepath.replace('.v', '.json')
-        if os.path.exists(json_path) and hasattr(self.circuit, 'readfromjson'):
+        # an explicitly passed flop file (dff_file) means: parse the .v with that flop, not the stored .json
+        if os.path.exists(json_path) and hasattr(self.circuit, 'readfromjson') and not self.dff_file:
             self.circuit.readfromjson(json_path)
             v_path = filepath if filepath.endswith('.v') else filepath.replace('.json', '.v')
             if os.path.exists(v_path) and parse_verilog_ports_89:
@@ -1115,7 +1116,7 @@ def _save_results_89(all_results: list, args):
     txt_lines.append(f"  Circuits       : {len(all_results)}")
     txt_lines.append(f"  Optimize       : {args.optimize}")
     txt_lines.append("  Reactor modes  : propagate = BFS wavefront (SIMULATE mode)")
-    txt_lines.append("                   sweep     = linear fwd-pass (COMPILE mode, requires optimize())")
+    txt_lines.append("                   sweep     = linear fwd-pass (COMPILE mode, fast only after optimize())")
     txt_lines.append("  Speedup baseline: Icarus Verilog VPI")
     txt_lines.append("=" * W)
 

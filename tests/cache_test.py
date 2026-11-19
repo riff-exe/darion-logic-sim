@@ -79,7 +79,8 @@ if use_reactor_oop:
     sys.path.insert(0, os.path.join(root_dir, 'reactor_oop'))
 elif use_reactor:
     print("Using Reactor (Cython) Backend")
-    sys.path.insert(0, os.path.join(root_dir, 'reactor'))
+    # REACTOR_DIR lets the sweep run against an alternative (e.g. scratch) engine build, as in verify_state.py
+    sys.path.insert(0, os.environ.get("REACTOR_DIR") or os.path.join(root_dir, 'reactor'))
 else:
     print("Using Engine (Python) Backend")
     sys.path.insert(0, os.path.join(root_dir, 'engine'))

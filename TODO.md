@@ -1,53 +1,65 @@
 # TODO
 
-State as of 2026-10-21. Findings live in `research/Claims.md` (Claim 13 and "Still open"); this file is only the task list. The laptop (Ryzen 5 PRO 5675U) work is finished and committed; its data is in `Benchmark/5675U/`. Do not commit unless the user asks.
+State as of 2026-10-25. Findings are in `research/Claims.md`; designs and the sweep layout study in `research/Design_Notes.md`; data in `Benchmark/`. This file lists open work. There is no fixed venue or deadline; the work is an open research effort on the engine and its measurements.
 
-## Done (do not redo)
-* [x] Claims audit, gate mutation fix (`Gate.retype`), SIMA `switch` ablation, timing suites, state verification (0 mismatches vs Icarus).
-* [x] Fan-in guard (committed as `3a3c370`).
-* [x] Flop-cut experiment run, documented as Claim 12, code removed.
-* [x] OOP versus data-oriented evidence collected from existing benchmarks and written up as Claim 13: ITC99 PMU counters for b15/b17/b18/b19 (`Benchmark/master_test/ITC99.md`, 2.1-2.4x fewer cycles), 67-size chain and tree sweeps to about 985k gates (`Benchmark/perf/Cache_data*.md`).
-* [x] ESSENT/GSIM baselines dropped from scope.
-* [x] Laptop (second-platform) work, 2026-10-21: full-engine PMU repeats, ablation harness on real and synthetic netlists, ISCAS85 and OpenCores runs, and reruns for struct size, L3 cliff, predictor memorization and SMT noise (quiet run with the sibling offline). Results in Claim 13, data in `Benchmark/5675U/`.
+## Future work (four directions)
 
-## Open, in order
+### 1. A better optimization system, starting with variables
+Scope to be defined; the starting point is the variable (input) gates and what depends on them. Constraints that apply to any layout work (author, 2026-10-24): `optimize()` runs no simulation, so layout and cut decisions are structural; the layout does not depend on ICs or IC names and has to work for flip-flops built from raw gates.
+* [ ] Define what is measured first (sweep span, evaluations, instructions per evaluation) so each idea can be judged on the existing benchmark set (`tests/ablation_eval.py --layouts`).
+* [ ] Record which ideas have been measured already (`research/Design_Notes.md` section 3) so they are not repeated.
 
-### 1. Documentation fixes (light, no CPU)
-* [x] `README.md`: replace "Very accurate to real-life circuit behavior" with wording that matches the timing report ("exact for its delay model, not calibrated to a cell library").
-* [x] `tests/benchmark_documentation.md`: scope "95-98% of the circuit is idle" and "Reactor is 1.6x to 2.03x faster than Verilator" to the Cadence-UDP netlists they came from; note that the IWLS runs in the claims doc have Verilator winning 17 of 21. Mark the UDP-trigger / branch-miss explanation of the Verilator slowdown as unchecked next to the measured code-footprint and IPC mechanism.
+### 2. High-impedance values and macros
+Current macros: `dff` and `dffsr` (`research/Design_Notes.md` section 1).
+* [ ] **High-Z, option A (no engine change):** a tri-state buffer as `AND(data, enable)` and a bus as an N-input OR gate. A floating bus reads 0 and contention is not visible.
+* [ ] **High-Z, option B:** a high-impedance value (3, written by a `tribuf` macro), the four hot-loop checks `new_output != UNKNOWN` changed to `new_output < UNKNOWN` so ordinary gates treat Z like unknown (same single compare; confirm no cost with the pinned benchmark protocol), and a `bus` macro that resolves N drivers (all Z gives Z, one driver gives its value, agreeing drivers give that value, disagreeing drivers give unknown). Verify against Icarus (`bufif1`, `tri`). **Preferred over option C (2026-10-25):** unknown is a debugging marker with no hardware meaning, while high impedance is a real state of tri-state nets, so they are different kinds of value and should be different values; it also it keeps the X/Z distinction at the resolver (a driver producing X still contaminates the bus) and allows value-for-value comparison with Icarus on `tri` nets. Use 3 for Z and move the `MACRO` sentinel to 4 so the two never share a value. **Z must pass through IC pins (found 2026-10-25 by reading the loop):** an IC input pin is implemented as an ordinary BUFFER-type gate, and the unknown branch of the loop would turn a driver's Z (and any Z/X change) into plain unknown before it reaches a `bus` macro. Set a free `flags` bit (bits 4-6 are unused) on IC input and output pin gates only in `Store.get` (a pin is wiring, which carries Z; a BUFFER gate is logic and turns Z into unknown, as in Verilog) and, in the unknown branch, assign `target.output = new_output` for flagged gates and `UNKNOWN` for all others (the branch is rare, so the known-value path is unchanged). NOT, BUFFER, AND, OR and the other gates stay unflagged, so a floating input into them still reads as unknown; no primitive gate ever writes Z, only the `tribuf` and `bus` macros do. Scope: `reactor/` only. `reactor_oop/`, `engine/` and the UI are not changed for this; they do not model Z, so tri-state circuits are not compared across engines. Inside `reactor/`, check the places that assume outputs are 0 to 2 (save/load, `getoutput`, truth tables), and have the unknown-input count treat Z as unknown.
+* [ ] **High-Z, option C (author's idea, 2026-10-25):** reuse unknown (2) as high impedance outside design mode. A Z at a gate input is handled like unknown by the existing evaluation (Z behaves as X at gate inputs). It still needs a `tribuf` macro (unknown when disabled) and a `bus` macro to join several drivers into one net, since every input pin has one source. Cost: the resolver cannot tell a disabled driver from a driver producing a real X, so an X from one driver is ignored while another driver is active. Floating and contended buses both read as unknown.
+* [ ] Memory macros: ROM (combinational read), RAM (synchronous write, combinational read), image loader, circuit-file save and load of the contents, peek/poke/dump API, parameterized width and depth. Decide how the combinational read settles (address bits arrive in different waves).
+* [ ] Register file (two read ports, one write port) and an N-bit register with load enable and reset.
+* [ ] Optional word-level macros: counter, adder/subtractor, comparator, shifter, N:1 word mux, decoder.
+* [ ] Combinational macros need sort support: a macro gate has no outgoing edges and its output pins are roots, so `optimize()` cannot place consumers after it. The sort should treat input-to-output-pin as a dependency for combinational kinds.
+* [ ] Power-up setting for macros (optional): the rule is now "a DFF starts at 0, a DFFSR stays unknown until a clock edge or an async input loads it" (`Design_Notes.md` section 1; the stored `init` value is unused and could be removed from the format). A circuit setting (unknown, zero, or random with a seed) would let Verilator-like and silicon-like starts be compared on the same netlist; a seed sweep shows whether a design depends on unreset power-up state (candidate: the tv80 workload, whose cycle trace differs between the unknown and the zero start while its program result is the same). Measured against Verilator on 13 designs (`Design_Notes.md` section 1): the zero start matches it better (sasc and i2c exact, wb_dma and mem_ctrl 8x and 31x fewer mismatching bits) and the unknown start matches Icarus (and tv80); a setting would let each oracle be compared in its own mode. Find why aes_core, wb_dma and mem_ctrl still differ from Verilator with a zero start. Also check whether the old disagreement between the tv80 Verilator testbench and Icarus is the 2-state start. Add `verify_state.py --workload tv80` to the regular checks, since the integrity suite does not run it.
+* [ ] mem_ctrl needs the DFFSR unknown-D-loads-0 sample to match Icarus (181 propagate and 124 sweep mismatches without it, all on the first vector after the reset phase, on control flops Icarus holds at 1). DFF samples an unknown D as unknown; DFFSR as 0, which differs from the library cell (x). The macro's asynchronous handling differs from the cell in 18 of 81 single-flop combinations (`Design_Notes.md` section 1); closing that gap is optional because no design check depends on it. Investigated (`Design_Notes.md` section 1): not spurious unknown gates, not the asynchronous rule, not a propagate/sweep difference under the runner's stimulus. Next: dump the RN, SN, D and clock of one mismatching flop over the first 50 vectors in Darion and Icarus (the verifier only exposes Q).
+* [ ] DFF's clock edge test is `ck != 0` while DFFSR's is `ck == 1`; make them the same and rerun the 13 Icarus comparisons and the tv80 workload.
+* [ ] Follow-ups on the flop macros: strict rising edge (`ck == 1`) instead of `ck != 0`; the same unknown-D rule in DFF and DFFSR; the behaviour of a cut RN or SN; hide/reveal and disconnect behaviour compared with the gate-level flop (`research/Design_Notes.md` section 1, known differences); a UI-visible mapping for the macro gate's output value; macros inside user-created ICs (nested save and load); the unused `init` field.
 
-### 2. Consolidate `tests/` (merge, do not delete; keep the old files until outputs match)
-* [x] `workload_tv80.py` into `verify_state.py` as a `--workload tv80` mode (drop the duplicated loader).
-* [x] `test_timing_verification.py` + `test_timing_extended.py` + `bench_timed_vs_icarus.py` into one `test_timing.py` with `--suite topologies|extended|bench`; `timing_lib.py` stays as helper. Verify old and new outputs match side by side.
-* [x] `test_retype.py` into `tests/integrity_test.py` next to its existing `test_transfer_info`.
-* [x] `ablation_eval.py`: keep standalone, next to `cache_perf.py` / `pmu_harness.py`.
-* [x] Update filenames in the claims doc, `research/Timing_Report.md` and docstrings afterwards.
-* [x] The tv80 Verilator testbench disagrees with Icarus from half-cycle 25 (Darion matches Icarus), also with a longer reset. Dropped the Verilator leg; root cause not investigated.
+### 3. Optimizing with Tarjan
+The structural latch cut with Tarjan's component order was measured in a scratch build and is not in the engine (`research/Design_Notes.md` section 3: 1.277x geomean in sweep over 58 raw-gate designs, none slower than 3%, `optimize()` about 9% longer; combinational circuits keep the original sort).
+* [ ] Re-implement from the recorded design in `reactor/Circuit.pyx` and rerun the checks on the real build: integrity and timing suites, state against Icarus, random circuits with edits after `optimize()`, speed on the 58 raw-gate designs and the combinational set.
+* [ ] ISCAS89 raw-gate designs against Icarus (they were only compared with the original order).
+* [ ] Dense, uniformly clocked arrays (LFSR, Johnson counter, latch counters) were 3 to 26% slower; look for a static discriminator or a different treatment.
+* [ ] State held in loops without a mutual 2-cycle is not detected; consider a bounded short-cycle search.
+* [ ] Second machine (Zen 3).
 
-### 3. OOP versus data-oriented: remaining experiments (CPU-exclusive, run one at a time)
-* [x] Standalone C++ ablation harness (outside `reactor/`) with four variants: (a) heap objects + virtual `compute()` (as `reactor_oop`), (b) the same objects packed in an arena, still virtual, (c) flat 24-byte structs with `switch(type)`, (d) flat structs with the SIMA rule. Same algorithm and traversal; check identical evaluation counts and final-state fingerprints. Step a-to-b is layout only, b-to-c is the vtable only, c-to-d is the evaluation rule.
-* [x] Repeats: 7-10 interleaved runs, pinned core, median and spread, for the harness over a size sweep and for the ITC99 `rx-prop` vs `rx-oop` counters on b15/b17/b18/b19. First check whether `tests/src/perf.py` already averages iterations.
-* [x] Predictor-memorization test (optional): randomize the input each iteration in the chain benchmark and see whether the OOP misprediction onset at about 600 gates moves.
-* [x] Optional: 24- versus 32-byte struct (done in the harness, variants e and g).
-* [x] Write the results into Claim 13, separating the vtable and layout parts; if they interact, say so.
+### 4. CPU simulation
+* [ ] Wire the Z80 core (tv80, about 16k gates, currently stepped from Python with its memory in Python) to RAM and ROM macros inside the circuit, with a clock and reset driver, and compare against the existing Icarus workload in `verify_state.py --workload tv80`. Depends on the memory macros in item 2.
+* [ ] A CPU built from gates and macros through the API (a flat generator script, no UI needed). Choose the design to implement (a published textbook or course CPU is a candidate), then datapath and control, an assembler, a reference emulator in Python and co-simulation tests. Needs a decision on the shared bus: Darion has no tri-state value yet (item 2), so a muxed bus or option B.
 
-### 4. Before writing the paper
-* [x] Scope stated: engine and API only, no rendering (Paper_Notes section 1).
-* [x] Second-machine run sheet written (Paper_Notes 6b). **The author runs it** on a second CPU and brings back the logs. Run on a Ryzen 5 PRO 5675U laptop 2026-10-21 (plus reruns for struct size, predictor and SMT noise), results in Claim 13; ARM and Intel still not covered.
-* [x] Maurer patents read in full; SIMA-versus-Maurer comparison in `research/Related_Works.md` 0.5. Maurer's ICCAD 2000 paper read in full too (audit 0.5); his 1994 Inversion paper is the primary citation for counting.
-* [x] Bug-localisation case study on tv80 (`tests/verify_state.py --case-study`), results in the claims doc (Claim 7).
-* [x] Oscillation test against Digital (ring oscillator, NAND latch), results in Paper_Notes 3e.
-* [x] Paper outline (Paper_Notes section 8).
+## Engine
+* [ ] Packed hitlists: record the numbers in `Benchmark/9700X.md` and Claim 13 (rx-prop and rx-sweep gain, rx-oop does not). Summary is in `Design_Notes.md` section 2.
+* [ ] Macro dispatch cost on circuits without macros was measured on 2026-10-25: within 0.3% of the previous build; record the table in `Benchmark/9700X.md`.
+* [ ] Partially unknown inputs: make the result independent of event order without losing latch start-up. Constraint (author, 2026-10-25): unknown is a debugging marker and a gate with some known inputs must still evaluate from the known ones, because that is what starts cross-coupled latches and gate-level flops from design mode (Icarus's 4-state rules keep them `x`, `Design_Notes.md` section 2b). Rejected: "any unknown input gives unknown" and the standard controlling-value rule, which would leave such loops unknown. Candidate: a gate is unknown only when every connected input is unknown, and otherwise evaluates from its known inputs on every path (drop the forced unknown on a trigger). That still needs a stored count of unknown inputs per gate, so the output can return to known when an input resolves and can become unknown when the last known input goes: for example counted like unconnected pins in `inputlimit`, with a per-edge unknown flag (`Profile` has five unused bytes). The 24-byte gate has no spare byte and a larger struct was measured to cost time (`Claims.md` Claim 13, struct size), and the edge update runs for every circuit, so measure the cost first with the pinned protocol, and check every gate-level flop design (`DFF_gate.json`, `DFFSR_gate.json`, ITC99 and ISCAS89 raw-gate netlists) still starts and matches Icarus.
+* [ ] Evaluation order within a wave to avoid re-evaluating reconvergent logic (the fan-out split cut c6288's evaluations by 31% as a side effect; not adopted).
+* [ ] `README.md` line 97 describes a "three sized book-array" in which NOT/BUF bypass it; this looks older than the current SIMA rule (`logic` count, one rule for all eight types). The author is to check this user-facing text.
 
-### 4b. Needs other hardware (found by the laptop work)
-* [ ] Run the Paper_Notes 6b sheet on an ARM machine and an Intel machine; only one older x86 (Zen 3) is covered.
-* [ ] Repeat the Zen 5 struct-size and L3-cliff comparison across several processes (the current Zen 5 figures are single calls and the per-process slow mode may affect them).
-* [ ] Find the cause of the per-process fast/slow mode (b17 `rx-prop` +35% cycles at identical instructions with the SMT sibling offline; harness slow mode at 500k+ gates). Hypothesis: page or cache-set placement of the gate array. Not tested.
+## Gate-level flop comparison (same netlist in Darion, Icarus and Verilator)
+Started 2026-10-22: `master_test.py --gls-flops` / `verify_state.py --gls-flops` (env `DARION_GLS_FLOPS`, library copy from `iwls_sequential_harness.gls_gsclib()`) gives Icarus and Verilator Darion's `DFFSR.json` flop and MX2X1 gates. Done: ITC99, OpenCores and DMA master test (all designs pass verification); b18 and b19 re-run alone (Verilator 55.8 s and 122 s against rx-prop 15.5 s and 27.2 s). Remaining:
+* [ ] Re-run des_perf and vga_lcd (Verilator gave no time in the batch run).
+* [ ] Replace the env-variable switch with `--rtl` (default) / `--gls` flags on every test script, both = run Icarus and Verilator in both models with side-by-side columns.
+* [ ] ISCAS89: gate-level `DFF` (the `tests/src/DFF.json` network) replacing the behavioural `module dff` in `iscas89_sequential_harness.py`, `verifier_89.py`, `load.py`; check X start-up in Icarus (no reset in ISCAS89).
+* [ ] Record the gate-level results in `Benchmark/` and the claims (like-for-like against Icarus; against Verilator it shows where the difference comes from).
+* [ ] tv80 workload: its Verilator testbench probably diverged for the same reason as the blocking-UDP race; re-test with the nonblocking library.
+
+## Test tooling
+* [ ] `tests/src/benchmark.py` starts `perf record` and sends "enable" through a non-blocking FIFO write after a fixed 0.1 s sleep; under load the enable is lost and `perf.py` prints an empty table without any error. Retry the open until perf has the FIFO, or fail loudly.
+
+## Needs other hardware
+* [ ] Run the Research_Notes 6b sheet on an ARM machine and an Intel machine; only one older x86 (Zen 3) is covered.
 * [ ] Explain why `rx-prop` loses ground relative to Icarus on ISCAS85 on the laptop while `rx-sweep` gains (sweep retires about half the instructions of prop; the machine-specific part is unexplained), and why the full-engine ratio sits above the harness ratio by more than 0.25 there.
 
-### 5. Planned by the author (engine change, author implements)
-* [ ] Replace the name heuristic for sequential ICs (`dff`/`flip`/`latch`/`tlat` in the IC name, `reactor/IC.pyx`, which sets `FLAG_BOUNDARY` on output pins) with an optional flip-flop flag in the IC's JSON; cut at the IC boundary when set. Afterwards, re-run `tests/verify_state.py b15` (rx-sweep) and the integrity tests.
+## Done (details in `research/Claims.md` and `research/Design_Notes.md`)
+Claims audit, gate mutation fix, SIMA `switch` ablation, timing suites, state verification (0 mismatches against Icarus); fan-in guard; flop-cut experiment (Claim 12, replaced by macros); OOP against data-oriented evidence (Claim 13, both machines); Verilator library fix and master-test re-runs (Claim 9 superseded); pointers against indices and CSR (index edges 13 to 14% slower); packed hitlists with signed `capacity` and macros implemented (`Design_Notes.md`); macro queueing by the `MACRO` output value, start-up rule removed, macro changes counted in evaluations (2026-10-25); heap overflow in hitlist growth after `optimize()` found and fixed (2026-10-25); `tests/` consolidated; `get_ic` bounds fix (a latent out-of-bounds read exposed by heap layout, 2026-10-25); DFFSR checked against the library cell over 81 single-flop combinations (18 differ, no design check depends on them); macro power-up rule decided from the tv80 workload (unknown until loaded, unless `init`, 2026-10-25); Maurer patents and papers read; Digital oscillation test; bug-localisation case study on tv80; Tarjan layout study (scratch build, `Design_Notes.md` section 3); code cleanup of `reactor/` (commented-out dead code and unused flag constants removed, 2026-10-25); `connect` propagation fix for recomputed unknown sources and the macro, connect and edit-after-optimize checks added to `tests/integrity_test.py` (2026-10-25).
 
 ## Parked
-* Unverified citations (Digital simulator oscillation limit, VCS/Xcelium defaults, Wang and Maurer pages, Riedel pages, LCS reference); only matters for a paper.
-* Delay calibration to a cell library (Tier 1: fit per-type delays, check against OpenSTA/SDF), EPFL large/mammoth and multi-clock Opencores verification, Verilator flop-quirk root cause.
+* Unverified citations (Digital simulator oscillation limit, VCS/Xcelium defaults, Wang and Maurer pages, Riedel pages, LCS reference).
+* Delay calibration to a cell library (fit per-type delays, check against OpenSTA/SDF).

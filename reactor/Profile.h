@@ -36,15 +36,25 @@ struct Task {
 // ──────────────────────────────────────────────────────────────────────────
 
 // ─── HitList (Dynamic Array) ──────────────────────────────────────────────
+// `capacity` is signed and carries the ownership of `data`:
+//   capacity > 0: the list's own malloc'd array with `capacity` slots (freed with the list, grown with realloc);
+//   capacity < 0: a slice of the packed edge block that optimize() built (see pack_gate) with -capacity slots. The
+//                 list may use its slots (appends after removals stay inside the slice) but never frees them; when
+//                 it needs more it mallocs a new array, copies and turns positive;
+//   capacity == 0: no storage: empty, or borrowed (a macro gate keeps its MacroCore* in `data`, size 0, see Macro.h).
+// Removing an edge only lowers `size`; the slots stay until the list is freed or optimize() packs it again.
 struct HitList {
   Profile *data;
   uint32_t size;
-  uint32_t capacity;
+  int32_t capacity;
 
   HitList() noexcept : data(nullptr), size(0), capacity(0) {}
 
+  // number of slots behind `data`, whichever way it is owned (x = -y for a slice)
+  inline uint32_t slots() const noexcept { return capacity < 0 ? uint32_t(-capacity) : uint32_t(capacity); }
+
   ~HitList() noexcept {
-    if (data) {
+    if (data && capacity > 0) {
       std::free(data);
       data = nullptr;
     }
@@ -58,7 +68,7 @@ struct HitList {
       if (data) {
         std::memcpy(data, other.data, other.size * sizeof(Profile));
         size = other.size;
-        capacity = other.size;
+        capacity = int32_t(other.size);
       }
     }
   }
@@ -68,14 +78,15 @@ struct HitList {
       return *this;
     }
 
-    if (capacity < other.size) {
+    if (slots() < other.size) {
       Profile *new_data = static_cast<Profile *>(
-          std::realloc(data, other.size * sizeof(Profile)));
+          capacity > 0 ? std::realloc(data, other.size * sizeof(Profile))
+                       : std::malloc(other.size * sizeof(Profile)));
       if (!new_data) {
         return *this;
       }
       data = new_data;
-      capacity = other.size;
+      capacity = int32_t(other.size);
     }
     if (other.size)
       std::memcpy(data, other.data, other.size * sizeof(Profile));
@@ -87,7 +98,7 @@ struct HitList {
     if (this == &other) {
       return *this;
     }
-    if (data) {
+    if (data && capacity > 0) {
       std::free(data);
     }
     data = other.data;
@@ -124,12 +135,21 @@ struct HitList {
     return data[idx];
   }
 
+  inline void grow() {
+    uint32_t cur = slots();
+    uint32_t new_capacity = cur ? cur * 2 : 2;
+    Profile *new_data = static_cast<Profile *>(
+        capacity > 0 ? std::realloc(data, new_capacity * sizeof(Profile))
+                     : std::malloc(new_capacity * sizeof(Profile)));
+    if (capacity <= 0 && size)               // leaving a slice of the packed block: copy its edges out
+      std::memcpy(new_data, data, size * sizeof(Profile));
+    data = new_data;
+    capacity = int32_t(new_capacity);
+  }
+
   inline void push_back(const Profile &p) {
-    if (size == capacity) {
-      capacity = (capacity == 0) ? 2 : capacity * 2;
-      data = static_cast<Profile *>(
-          std::realloc(data, capacity * sizeof(Profile)));
-    }
+    if (size >= slots())
+      grow();
     data[size++] = p;
   }
 
@@ -212,12 +232,27 @@ inline Profile::Profile(CPP_Gate *t, uint8_t i, uint8_t o) : target(t), index(i)
 }
 
 inline void HitList::emplace_back(CPP_Gate *t, uint8_t i, uint8_t o) {
-  if (size == capacity) {
-    capacity = (capacity == 0) ? 2 : capacity * 2;
-    data = static_cast<Profile *>(
-        std::realloc(data, capacity * sizeof(Profile)));
-  }
+  if (size >= slots())
+    grow();
   data[size++] = Profile(t, i, o);
+}
+
+// optimize(): copy src into dst (a default-constructed gate) and place src's edges at *cursor, inside one block
+// that holds every gate's edges in gate order. The copied list is a slice (negative capacity: -size slots), so it
+// is never freed on its own and leaves the block (copy on growth) if it outgrows its slots. An empty list keeps
+// only borrowed data (a macro gate's core).
+inline void pack_gate(CPP_Gate &dst, const CPP_Gate &src, Profile **cursor) noexcept {
+  std::memcpy(static_cast<void *>(&dst), static_cast<const void *>(&src), offsetof(CPP_Gate, hitlist));
+  dst.hitlist.size = src.hitlist.size;
+  dst.hitlist.capacity = 0;
+  if (src.hitlist.size) {
+    dst.hitlist.capacity = -int32_t(src.hitlist.size);   // a slice: -size slots
+    std::memcpy(*cursor, src.hitlist.data, src.hitlist.size * sizeof(Profile));
+    dst.hitlist.data = *cursor;
+    *cursor += src.hitlist.size;
+  } else {
+    dst.hitlist.data = src.hitlist.capacity ? nullptr : src.hitlist.data;
+  }
 }
 
 // Compile-time assertion: hitlist must be 8-byte aligned at offset 8, and total

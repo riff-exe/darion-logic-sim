@@ -1,6 +1,6 @@
 # distutils: language = c++
 from Const cimport HIGH, LOW, ERROR, UNKNOWN, DESIGN, SIMULATE, COMPILE, PRIORITY, MODE
-from libc.stdint cimport uint8_t, int8_t, uint32_t
+from libc.stdint cimport uint8_t, int8_t, uint16_t, uint32_t, int32_t
 from libcpp.unordered_map cimport unordered_map
 from libcpp.deque cimport deque
 cdef extern from "<vector>" namespace "std" nogil:
@@ -53,7 +53,7 @@ cdef extern from "Profile.h" nogil:
     cdef cppclass HitList:
         Profile* data
         uint32_t size
-        uint32_t capacity
+        int32_t capacity
         HitList()
         bint empty()
         Profile* begin()
@@ -76,6 +76,21 @@ cdef extern from "Profile.h" nogil:
         CPP_Gate(uint8_t t, uint8_t lim)
         void evaluate() noexcept nogil
         uint8_t compute() noexcept nogil
+    void pack_gate(CPP_Gate& dst, CPP_Gate& src, Profile** cursor) noexcept
+
+cdef extern from "Macro.h" nogil:
+    cdef cppclass MacroCore:
+        uint16_t n_in
+        uint16_t n_out
+        int* inputs
+        int* outputs
+        uint8_t* memory
+        int* changed
+        uint16_t n_changed
+        uint8_t init
+        void eval(CPP_Gate* G, CPP_Gate* self) noexcept
+        void reset() noexcept
+    MacroCore* make_core(const char* kind)
 
 cdef enum GateFlags:
     FLAG_VALUE     = 1 << 0
@@ -120,6 +135,18 @@ cdef class Gate:
 
 cdef class Variable(Gate):
     pass
+
+cdef class MacroGate(Gate):
+    cdef public str kind
+    cdef public list outs
+    cdef MacroCore* core
+    cpdef bint setup(self, str kind)
+    cpdef void sync_core(self)
+    cdef void process(self)
+    cdef void reset(self)
+    cpdef list full_data(self)
+    cpdef list partial_data(self)
+    cdef void clone(self, list dictionary, unordered_map[int,int]& pseudo)
 
 cdef class Probe(Gate):
     pass

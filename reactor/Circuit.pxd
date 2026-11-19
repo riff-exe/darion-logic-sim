@@ -31,14 +31,15 @@ cdef class Circuit:
     cdef public int wave_multiplier
     cdef public int wave_offset
     cdef public unsigned int Global_Clock
-    cdef unsigned int[12] Global_delay
-    cdef unsigned int[12] FanIn_delay
-    cdef unsigned int[12] FanOut_delay
+    cdef unsigned int[13] Global_delay
+    cdef unsigned int[13] FanIn_delay
+    cdef unsigned int[13] FanOut_delay
     cdef priority_queue[Task, vector[Task], greater[Task]] time_queue
     cdef priority_queue[unsigned int, vector[unsigned int], greater[unsigned int]] time_limit
     cdef deque[int] visual_queue   # C++ deque of dirty gate locations for UI consumer
     cdef vector[vector[CPP_Gate*]] queue
     cdef vector[CPP_Gate] gate_infolist
+    cdef Profile* edge_block   # every gate's edges in gate order, written by optimize() (packed hitlists)
     cdef vector[unsigned int] gate_clocks
     cpdef object getcomponent(self, int choice)
     cpdef object getobj(self, tuple code)
@@ -62,6 +63,7 @@ cdef class Circuit:
     cpdef void disconnect(self, Gate target, int index)
     cpdef void delobj(self, object obj)
     cpdef IC build_ic(self, dict pin_orientations=*)
+    cpdef IC make_macro(self, str kind)
     cpdef IC getIC(self, location)
     cpdef object get_ic(self, str location)
     cpdef IC load_ic(self, list crct)

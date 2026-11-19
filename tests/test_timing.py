@@ -390,9 +390,9 @@ def test_dff_clock_pulse_width():
     print("TEST 6: Master-Slave D Flip-Flop Clock Width Violation")
     print("=" * 75)
 
-    dff_path = "tests/src/DFF.json"
+    dff_path = "tests/src/DFF_gate.json"
     if not os.path.exists(dff_path):
-        print("  Skipping: tests/src/DFF.json not found.")
+        print("  Skipping: tests/src/DFF_gate.json not found.")
         return
 
     def eval_dff_clk_width(pw):
@@ -447,9 +447,9 @@ def test_glitch_clocked_dff():
     print("TEST 7: Dynamic Hazard Glitch Clocking Flip-Flop (TIMING FAILURE REPRODUCED)")
     print("=" * 75)
 
-    dff_path = "tests/src/DFF.json"
+    dff_path = "tests/src/DFF_gate.json"
     if not os.path.exists(dff_path):
-        print("  Skipping: tests/src/DFF.json not found.")
+        print("  Skipping: tests/src/DFF_gate.json not found.")
         return
 
     # In zero-delay logic: AND(X, ~X) is 0 identically. Clock never transitions.
@@ -512,9 +512,9 @@ def test_toggle_counter_overclocking():
     print("TEST 8: Synchronous Toggle Counter Overclocking (TIMING FAILURE REPRODUCED)")
     print("=" * 75)
 
-    dff_path = "tests/src/DFF.json"
+    dff_path = "tests/src/DFF_gate.json"
     if not os.path.exists(dff_path):
-        print("  Skipping: tests/src/DFF.json not found.")
+        print("  Skipping: tests/src/DFF_gate.json not found.")
         return
 
     # T-Flip-Flop: D = XOR(Q, 1). Toggles on each clock edge.
@@ -746,9 +746,9 @@ def test_ripple_counter_decoder_glitch():
     print("TEST 12: Asynchronous Ripple Counter Decoded Output Glitch (TIMING FAILURE REPRODUCED)")
     print("=" * 75)
 
-    dff_path = "tests/src/DFF.json"
+    dff_path = "tests/src/DFF_gate.json"
     if not os.path.exists(dff_path):
-        print("  Skipping: tests/src/DFF.json not found.")
+        print("  Skipping: tests/src/DFF_gate.json not found.")
         return
 
     # In a 2-bit ripple counter driving a decoder:
@@ -834,9 +834,9 @@ def test_pipeline_clock_skew():
     print("TEST 13: Pipeline Clock Skew Race-Through (TIMING FAILURE REPRODUCED)")
     print("=" * 75)
 
-    dff_path = "tests/src/DFF.json"
+    dff_path = "tests/src/DFF_gate.json"
     if not os.path.exists(dff_path):
-        print("  Skipping: tests/src/DFF.json not found.")
+        print("  Skipping: tests/src/DFF_gate.json not found.")
         return
 
     # 2-Stage Shift Register: DFF1 -> DFF2
@@ -1012,9 +1012,9 @@ def test_ring_oscillator_overclocking():
     print("TEST 16: Ring Oscillator Self-Oscillation Driving Overclocked DFF")
     print("=" * 75)
 
-    dff_path = "tests/src/DFF.json"
+    dff_path = "tests/src/DFF_gate.json"
     if not os.path.exists(dff_path):
-        print("  Skipping: tests/src/DFF.json not found.")
+        print("  Skipping: tests/src/DFF_gate.json not found.")
         return
 
     # In zero-delay logic: A ring oscillator either crashes the simulator (cyclic loop error)
@@ -1172,7 +1172,7 @@ def run_topologies():
 # =============================================================================
 # suite: extended
 # =============================================================================
-DFF_JSON = os.path.join(ROOT, "tests", "src", "DFF.json")
+DFF_JSON = os.path.join(ROOT, "tests", "src", "DFF_gate.json")
 CASES = []
 
 
@@ -2549,7 +2549,7 @@ def load_iscas89(name, optimize=False):
     if not os.path.exists(path):
         raise Skip(f"{path} missing")
     return SequentialVerilogRunner(path, Circuit.Circuit, Const, is_reactor=True, use_optimize=optimize,
-                                   dff_file=os.path.join(ROOT, "tests", "src", "DFF.json"))
+                                   dff_file=os.path.join(ROOT, "tests", "src", "DFF_gate.json"))
 
 
 def physical_vectors(rng, n_inputs, clk_idx, nvec, flush=10):
@@ -3162,7 +3162,7 @@ def load89(name):
     from benchmark_89 import SequentialVerilogRunner
     return SequentialVerilogRunner(os.path.join(ROOT, "tests", "ISCAS89", name + ".v"), Circuit.Circuit, Const,
                                    is_reactor=True, use_optimize=False,
-                                   dff_file=os.path.join(ROOT, "tests", "src", "DFF.json"))
+                                   dff_file=os.path.join(ROOT, "tests", "src", "DFF_gate.json"))
 
 
 def bench89(name, nvec, repeat, gap=800, flush=10, warm=300):

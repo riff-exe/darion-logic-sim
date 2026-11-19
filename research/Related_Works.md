@@ -1,6 +1,6 @@
 # Literature Review, Prior Art Audit, and Novelty Defense
 **Project:** Darion Logic Sim (`darion-logic-sim`)  
-**Target Venues (revised 2026-10-21):** realistic first targets are a regional or local conference or a workshop; a mid-tier venue or a software and tools journal is possible after the extension work (stable documented API, second platform, some real use). The earlier list (DAC, ICCAD, TCAD, DATE) is not realistic for the current state of the work: selective venues need a new technique or a surprising, broadly confirmed result.
+**Status:** a literature review that supports the design and the measurements. No publication venue or deadline is set.
 
 ---
 
@@ -75,7 +75,7 @@ Every bibliographic entry below was looked up against Crossref (the DOI registry
 - Maurer US 5,856,933 and US 6,131,081 (full); Maurer ICCAD 2000 (full); Teiche/Apple US 10,331,830 (shuffle and popcount embodiments).
 - Beamer and Donofrio, DAC 2020 (ESSENT), open copy on eScholarship. Relevant points:
   - ESSENT assumes the design is acyclic after preprocessing; combinational loops are merged into an SCC "supernode" re-evaluated until convergence (supports the sweep comparison, Claim 5).
-  - It triggers partitions with a branch-free OR-reduction (related to Darion's branch-free enqueue; cite it).
+  - It triggers partitions with a branch-free OR-reduction (related to Darion's branch-free enqueue).
   - It argues that per-signal activity tracking costs more than it saves and coarsens to partitions of 10-100s of elements. Darion keeps per-gate granularity cheap through a contiguous array and a flag test: a design difference to state.
   - Reports 1.5-29.3x over a leading open-source and an industrial simulator.
 - Driesen and Hölzle, OOPSLA 1996 (abstract and introduction, copy on aminer). C++ programs spend a median 5.2% of their time in dispatch (13.7% "all virtuals"), and the overhead is "likely to increase moderately" on future processors. Darion's ~2x per-gate dispatch cost is consistent: a gate evaluation is tiny, so dispatch dominates it.
@@ -84,7 +84,7 @@ Every bibliographic entry below was looked up against Crossref (the DOI registry
   - Brzozowski and Seger's ternary simulation: TernSim-A and TernSim-B each "converge in at most m steps" by monotonicity.
   - Malik's algorithm: topological rounds, "convergence is guaranteed within k rounds, where k is the number of feedback vertices".
   - Brzozowski and Seger's Theorem 6: a binary network with m bounded delays may need up to (2^m − 2)·D time to pass its transients.
-  - **Must be cited next to V+1/2V.** Linear bounds are known for monotone ternary *analysis*; the known general bound for binary settling is exponential, which supports "2V cannot be proven". Darion's contribution is a live-size cutoff in a binary simulator with a non-fatal handoff, not the existence of linear bounds.
+  - **Relevant to V+1/2V.** Linear bounds are known for monotone ternary *analysis*; the known general bound for binary settling is exponential, which supports "2V cannot be proven". Darion's contribution is a live-size cutoff in a binary simulator with a non-fatal handoff, not the existence of linear bounds.
 - Tool documentation and source: Digital `Model.java` 0.31; the Logisim docs; the Verilator guide; GHDL docs (`--stop-delta`, 5,000); the Vivado error text (10,000).
 
 **B. Known through a reliable secondary source (cite only for what that source supports):**
@@ -103,7 +103,7 @@ Every bibliographic entry below was looked up against Crossref (the DOI registry
   - Maurer removes the value branch with alternating code pointers, and removes evaluation by never storing values.
   - SIMA removes the value branch arithmetically, with `(new == edge.seed) - edge.last`.
   - SIMA replaces the count tests with one masked AND, while keeping every value.
-  Use the 1994 pseudocode as the "before" in the paper's SIMA figure.
+  The 1994 pseudocode is the closest published form of the algorithm that SIMA reformulates.
 - The paper explicitly calls oblivious levelized compiled-code simulation "the primary competition". It does not handle unknown values or loops beyond LECSIM's ("asynchronous cyclic circuits" may need more than one pass, per the patents).
 
 **A++. Fleurkens, "Interactive Modelling and Simulation of Heterogeneous Systems", PhD thesis, TU Eindhoven, 1996, DOI 10.6100/IR456563 (ESCAPE). Read in full on 2026-10-21. Closest prior art for Darion's *positioning*.**
@@ -121,7 +121,7 @@ Every bibliographic entry below was looked up against Crossref (the DOI registry
 - *Small SCCs* (no nested SCCs) are compiled into one code block with local iteration until stable. The cap is **2^m+1 iterations for m feedback arcs**; for large m, or SCCs containing latches, a user-specified default. Exceeding it calls `unstable_error()`.
 - *Large SCCs, top-level loop control (Fig. 5):* one queue per level; inserting a block into a level lower than the current one sets `unstable = 1`, and the whole level scan repeats until stable or a user-specified iteration limit. **This is the same runtime test as Darion's `target <= curr`**, so Darion must cite it and not claim the test. Darion's response (event-driven handoff on the same data, live-size budget, non-fatal promotion) and its preprocessing (no SCC/feedback-arc analysis) remain different. Updated in the novelty table and Claim 5.
 - *Oscillation bound:* LECSIM's static bound is exponential in feedback arcs (2^m+1), consistent with Brzozowski and Seger's exponential binary bound; it has no size-linear budget. Context for V+1/2V (Claim 3a++).
-- *Quotes useful for the paper:*
+- *Quotes:*
   - "A primitive gate ... needs only two or three instructions for evaluation, but it may take hundreds instructions to schedule its evaluation": scheduling, not evaluation, dominates. Darion's flag-test enqueue answers this.
   - Compile time is "the major problem": 7.4 to 553 s on ISCAS85 (Fig. 9) against 0.9 to 25 s parse for the interpreter, so LECSIM "is inefficient for the applications where only a few input vectors are simulated after each circuit modification". This is exactly the interactive case; supports Claim 8 (turnaround) as a long-known trade-off that Darion addresses, not a new observation.
   - Levelized compiled simulation loses to event-driven interpretive simulation only below about 1% activity (citing HSS); LECSIM beats FHDL below 10-19% activity. Context for Darion's activity discussion.
@@ -139,10 +139,10 @@ Every bibliographic entry below was looked up against Crossref (the DOI registry
 **A+++++. Ulrich, "Exclusive Simulation of Activity in Digital Networks", CACM 12(2):102-110, 1969, DOI 10.1145/362848.362870. Read in full on 2026-10-21.**
 - *Selective trace:* only about 1% of elements are active at once (citing Case et al. 1964); following "paths of activity" saves about 88% of run time at a 12x overhead factor. Origin citation for event-driven gate simulation.
 - *Wave view:* active set A1 drives destination set B1; the responding subset becomes A2, "and thus a new wave of activity is started", until an empty set ends it. This is the conceptual ancestor of Darion's wave-counted `propagate` (and of counting waves against a budget), though Ulrich sets no wave limit.
-- *Element model:* a descriptor cell holds the type code, the full input/output bit pattern and a **schedule marker** set when the element is scheduled. That is prior art for Darion's per-gate "already queued" flag test; cite it. Behaviour is a per-type subroutine selected by the type code (the dispatch-by-type that SIMA removes).
+- *Element model:* a descriptor cell holds the type code, the full input/output bit pattern and a **schedule marker** set when the element is scheduled. That is prior art for Darion's per-gate "already queued" flag test. Behaviour is a per-type subroutine selected by the type code (the dispatch-by-type that SIMA removes).
 - *Scheduling:* the Δt-loop, a circular table of time slots with modulo-L insertion and constant cost per event, i.e. the timing wheel. Fan-out lists are circular so a whole fan-out is one event.
 - *Feedback:* with real element delays, "manual preprocessing and/or extra programming to detect and handle feedback loops is unnecessary", and "unrealistic zero-delay-element simulations are avoided, and the possibility of program-induced feedback loops is therefore eliminated".
-  - *Use in the paper:* event-driven simulation never needed loop analysis (Ulrich 1969); levelized simulation did (LECSIM: SCCs, feedback-path breaking, iteration caps). Darion's sweep keeps levelized order without the analysis by falling back to the event-driven engine on back edges. That bridges the two lines of work rather than claiming loop tolerance as new.
+  - *Relevance:* event-driven simulation never needed loop analysis (Ulrich 1969); levelized simulation did (LECSIM: SCCs, feedback-path breaking, iteration caps). Darion's sweep keeps levelized order without the analysis by falling back to the event-driven engine on back edges. It combines the two lines of work and does not claim loop tolerance as new.
 - *Stated disadvantage:* every element must be initialised to consistent states before simulation starts.
 - Clocked systems: skip-and-scan of the wheel; clocked elements rescheduled to the next clock edge.
 - *Observability, an early mention (checked 2026-10-22):* Ulrich lists as an advantage that selective path simulation "leads to advantages for output and display" (selective output of the active paths). It is a one-line remark, not a design for interactive use; it can be cited for the idea that activity tracking also serves observation.
@@ -154,7 +154,7 @@ Every bibliographic entry below was looked up against Crossref (the DOI registry
 - Edwards 2003, "Making Cyclic Circuits Acyclic": synthesis method that turns a cyclic circuit into an equivalent acyclic one for the inputs where it neither oscillates nor holds state, using Malik's three-valued definition; worst-case exponential. Use only as context ("cyclic circuits are troublesome for most circuit analysis tools"); it says nothing about simulation step limits.
 - Driesen and Hölzle 1996: the full paper is in the folder; the quoted 5.2% / 13.7% medians and "likely to increase moderately" were re-checked.
 
-**C. Not read, worth reading before submission (get them in a browser or through the university library):**
+**C. Not read yet (available in a browser or through the university library):**
 - EPICS 2025 (paywalled).
 - Driesen and Hölzle ISCA 1998 (only the UCSB tech-report abstract).
 - Burch 2002 (Logisim).
@@ -176,7 +176,7 @@ Every bibliographic entry below was looked up against Crossref (the DOI registry
 
 | Claim | Status after the check |
 |---|---|
-| SIMA (one incrementally kept seed-relative count, one mask/invert rule for eight gates, type-agnostic edge update) | **Novel formulation (revised 2026-10-21 after reading Maurer 1994-2000 and Teiche/Apple 2019 in full).** Counting at a dominant value is Maurer's and classical, and branch-free mixed-type evaluation from a sum plus a table is Teiche/Apple's (compiled SIMD). No source found encodes the basis as (seed, mask, invert) over one incremental count, answers existence and parity with one masked AND, or keeps the edge update free of gate type; it is also what makes the homogeneous data-oriented layout possible. Measured benefit: 1.35-1.5x over a type switch (harness), 1.1-1.7x on the evaluation step (engine). Wording: "to our knowledge"; see Paper_Notes 2.2 "What SIMA really is". |
+| SIMA (one incrementally kept seed-relative count, one mask/invert rule for eight gates, type-agnostic edge update) | **Novel formulation (revised 2026-10-21 after reading Maurer 1994-2000 and Teiche/Apple 2019 in full).** Counting at a dominant value is Maurer's and classical, and branch-free mixed-type evaluation from a sum plus a table is Teiche/Apple's (compiled SIMD). No source found encodes the basis as (seed, mask, invert) over one incremental count, answers existence and parity with one masked AND, or keeps the edge update free of gate type; it is also what makes the homogeneous data-oriented layout possible. Measured benefit: 1.35-1.5x over a type switch (harness), 1.1-1.7x on the evaluation step (engine). Wording: "to our knowledge"; see Research_Notes 2.2 "What SIMA really is". |
 | Conditional-free gate evaluation | Prior art (Maurer 2000); different mechanism. |
 | Data-oriented layout, cache-conscious structures | Prior art as a technique (Chilimbi 1999; DOD practice). Novelty is the measurement in gate-level simulation. |
 | Virtual-call cost, `switch` not a fix, predictor effects | Known phenomena (Driesen and Hölzle). Yours: the controlled attribution on 24 real netlists plus synthetic sweeps, and the repeated-sequence effect on the target predictor (a supported hypothesis, mechanism not probed). |
@@ -190,7 +190,7 @@ Overall (revised 2026-10-21, after reading Maurer 1993-2000 and Teiche/Apple 201
 - the type-agnostic O(1) edge update;
 - the live-size, edit-tracking V+1 oscillation budget, with its soundness proof and non-fatal handoff.
 
-The measured reversal of Maurer's dispatch trade-off on modern CPUs is a finding in its own right. Together with the verification, the observation-cost results and the case study, this is a design paper with original mechanisms and the evidence for them. See Paper_Notes section 1b.
+The measured reversal of Maurer's dispatch trade-off on modern CPUs is a finding in its own right. Together with the verification, the observation-cost results and the case study, this is a design paper with original mechanisms and the evidence for them. See Research_Notes section 1b.
 
 ### 0.5 SIMA versus Maurer's inversion algorithm (patents read in full, 2026-10-21)
 
@@ -228,10 +228,10 @@ The measured reversal of Maurer's dispatch trade-off on modern CPUs is a finding
 - Cite as related: Maurer (counting with deferred inversion; conditional-free through code addresses; XOR by events) and Teiche/Apple (branch-free count-plus-table evaluation of mixed types in compiled SIMD simulation).
 - Scope the "no branch misses" statement to the evaluation step. The hot loop keeps two branches: the unknown-value check and the unconnected-input check. Both are almost always predictable; the misprediction counts in Claim 13 are the evidence.
 
-**What to write in the paper:**
+**Relation to Maurer's work, in summary:**
 1. "Darion's gate evaluation follows the counting approach of Maurer [patents; ICCAD 2000]: a per-gate count of inputs at a designated value, updated in O(1) from per-edge state, with output inversion separated from the count."
 2. "It differs in three ways: (a) it keeps every gate's value, so any gate can be read during simulation, where Maurer removes non-monitored net values and rewrites the circuit for speed; (b) a single arithmetic rule with a parity mask covers all eight gate types, instead of per-type event routines, and the engine also carries an unknown value; (c) it uses a fixed prebuilt engine over a flat array, not generated code."
-3. "We do not claim the counting idea; we measure what the uniform rule buys over a type switch in the same engine (Claim 1) and over virtual dispatch (Claim 13)."
+3. "The counting idea is not claimed; the work measures what the uniform rule buys over a type switch in the same engine (Claim 1) and over virtual dispatch (Claim 13)."
 
 **The ICCAD 2000 paper (EVCF), read in full on 2026-10-21:**
 * **Mechanism.** Every piece of state is a code address:
